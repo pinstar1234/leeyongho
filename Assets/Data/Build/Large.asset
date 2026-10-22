@@ -19,6 +19,8 @@ MonoBehaviour:
   requiredPower: 0
   maintenanceCost: 0
   constructionCost: 0
+  satisfactionImpact: 3
+  satisfactionRadius: 3
   buildingPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
   previewPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
   buildingIcon: {fileID: 0}

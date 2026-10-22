@@ -1,7 +1,8 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using InfraTown.Grid;
+using InfraTown.Core;
+using InfraTown.Economy;
 
 namespace InfraTown.Building
 {
@@ -60,11 +61,9 @@ namespace InfraTown.Building
 
             _selectedBuildingData = data;
 
-            // 반투명 프리뷰 오브젝트 생성
             GameObject prefabToInstantiate = data.previewPrefab != null ? data.previewPrefab : data.buildingPrefab;
             _previewInstance = Instantiate(prefabToInstantiate);
 
-            // 프리뷰에 Collider가 있다면 레이캐스트 방해 방지를 위해 비활성화
             foreach (var col in _previewInstance.GetComponentsInChildren<Collider>())
             {
                 col.enabled = false;
@@ -89,18 +88,17 @@ namespace InfraTown.Building
 
             _previewInstance.SetActive(true);
 
-            // 규격(1x1, 2x2, 3x3)에 따른 타일 피벗 위치 계산
             Vector2Int size = _selectedBuildingData.GridSize;
             Vector3 worldPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
             _previewInstance.transform.position = worldPos;
 
-            // 건설 가능 여부 체크하여 프리뷰 마테리얼 색상 변경
+            // 자금 및 타일 점유 가능 여부 종합 체크
             bool canBuild = CanPlaceBuilding(gridPos.x, gridPos.y, size.x, size.y);
             SetPreviewMaterial(canBuild ? validPreviewMaterial : invalidPreviewMaterial);
         }
 
         /// <summary>
-        /// 클릭 시 실제 건물 건설 및 그리드 점유 등록
+        /// 클릭 시 실제 건물 건설 및 자금 차감 / 그리드 점유 등록
         /// </summary>
         private void TryPlaceBuilding(Vector2Int gridPos)
         {
@@ -110,6 +108,15 @@ namespace InfraTown.Building
 
             if (CanPlaceBuilding(gridPos.x, gridPos.y, size.x, size.y))
             {
+                int cost = _selectedBuildingData.constructionCost;
+
+                // 자금 차감 검증 (잔액 부족 시 건설 취소)
+                if (EconomyManager.Instance != null && !EconomyManager.Instance.TrySpendMoney(cost))
+                {
+                    Debug.LogWarning("[BuildingManager] 건설 자금이 부족하여 설치할 수 없습니다!");
+                    return;
+                }
+
                 Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
                 GameObject buildingObj = Instantiate(_selectedBuildingData.buildingPrefab, spawnPos, Quaternion.identity);
 
@@ -125,13 +132,11 @@ namespace InfraTown.Building
                     }
                 }
 
-                // 취소 없이 연속 건설을 위해 프리뷰 유지
+                // GameLoopManager에 건물을 등록하여 만족도 계산 업데이트
+                GameLoopManager.Instance?.RegisterBuilding(instance);
             }
         }
 
-        /// <summary>
-        /// 건물이 건설 가능한지 타일 범위를 검증
-        /// </summary>
         private bool CanPlaceBuilding(int startX, int startZ, int sizeX, int sizeZ)
         {
             if (startX < 0 || startZ < 0 || startX + sizeX > 60 || startZ + sizeZ > 40)
@@ -144,12 +149,19 @@ namespace InfraTown.Building
                     if (_occupiedGrid[x, z] != null) return false;
                 }
             }
+
+            // 자금 잔액 부족 시 프리뷰를 빨간색으로 표기
+            if (_selectedBuildingData != null && EconomyManager.Instance != null)
+            {
+                if (EconomyManager.Instance.CurrentMoney < _selectedBuildingData.constructionCost)
+                {
+                    return false;
+                }
+            }
+
             return true;
         }
 
-        /// <summary>
-        /// 타일 크기에 따른 건물 월드 좌표 계산 (다중 타일 지원)
-        /// </summary>
         private Vector3 GetBuildingWorldPosition(int startX, int startZ, int sizeX, int sizeZ)
         {
             float tileSize = 2.0f;
@@ -178,7 +190,6 @@ namespace InfraTown.Building
 
         private void HandleBuildingDestroyed(BuildingInstance building)
         {
-            // 점유되어 있던 타일 영역 해제
             Vector2Int size = building.Data.GridSize;
             Vector2Int pos = building.OriginGridPos;
 

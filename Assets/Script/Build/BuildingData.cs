@@ -13,7 +13,8 @@ namespace InfraTown.Building
     {
         Essential, // 필수 시설 (주택, 소방서, 병원 등)
         Facility,  // 편의 시설 (마을회관, 편의점 등)
-        Nimbys     // 혐오/불쾌 시설 (축사, 쓰레기 매립지 등)
+        Nimbys,    // 혐오/불쾌 시설 (축사, 쓰레기 매립지 등)
+        Housing    // 주택 (만족도를 개별 소유하는 주요 거주 건물)
     }
 
     [CreateAssetMenu(fileName = "NewBuildingData", menuName = "InfraTown/Building Data")]
@@ -24,20 +25,24 @@ namespace InfraTown.Building
         public string buildingName;
 
         [Header("5가지 핵심 규격 데이터")]
-        public BuildingSizeType sizeType;   // 1. 소형, 중형, 대형
-        public BuildingType category;       // 2. 필수, 편의, 혐오
-        public int requiredPower;           // 3. 필요 전기량 (kW)
-        public int maintenanceCost;         // 4. 유지비 ($/월)
-        public int constructionCost;        // 5. 건설 비용 ($)
+        public BuildingSizeType sizeType;   // 소형, 중형, 대형
+        public BuildingType category;       // 필수, 편의, 혐오, 주택(Housing)
+        public int requiredPower;           // 필요 전기량
+        public int maintenanceCost;         // 유지비
+        public int constructionCost;        // 건설 비용
+
+        [Header("만족도 및 영향 범위 (DB 설정)")]
+        [Tooltip("주위 주택 만족도에 주는 영향 수치 (+: 상승, -: 하락)")]
+        public float satisfactionImpact = 0f;
+
+        [Tooltip("영향을 미치는 타일 범위 반지름 (예: 3 = 주변 3타일 내 주택에 영향)")]
+        public int satisfactionRadius = 3;
 
         [Header("그래픽 및 프리팹")]
-        public GameObject buildingPrefab;   // 실제 설치될 건물 프리팹
-        public GameObject previewPrefab;    // 반투명 배치 전 프리팹 (선택)
-        public Sprite buildingIcon;         // UI용 아이콘
+        public GameObject buildingPrefab;
+        public GameObject previewPrefab;
+        public Sprite buildingIcon;
 
-        /// <summary>
-        /// 규격 크기에 따른 그리드 점유 칸 수 (소형:1, 중형:2, 대형:3)
-        /// </summary>
         public Vector2Int GridSize => sizeType switch
         {
             BuildingSizeType.Small => new Vector2Int(1, 1),

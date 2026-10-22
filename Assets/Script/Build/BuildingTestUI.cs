@@ -10,11 +10,13 @@ namespace InfraTown.UI
         [SerializeField] private BuildingData smallBuildingData;
         [SerializeField] private BuildingData mediumBuildingData;
         [SerializeField] private BuildingData largeBuildingData;
+        [SerializeField] private BuildingData HouseBuildingData;
 
         [Header("UI Buttons")]
         [SerializeField] private Button btnSmall;
         [SerializeField] private Button btnMedium;
         [SerializeField] private Button btnLarge;
+        [SerializeField] private Button btnHouse;
         [SerializeField] private Button btnCancel;
 
         private void Start()
@@ -22,6 +24,7 @@ namespace InfraTown.UI
             if (btnSmall != null) btnSmall.onClick.AddListener(() => OnSelectBuilding(smallBuildingData));
             if (btnMedium != null) btnMedium.onClick.AddListener(() => OnSelectBuilding(mediumBuildingData));
             if (btnLarge != null) btnLarge.onClick.AddListener(() => OnSelectBuilding(largeBuildingData));
+            if (btnHouse != null) btnHouse.onClick.AddListener(() => OnSelectBuilding(HouseBuildingData));
             if (btnCancel != null) btnCancel.onClick.AddListener(OnCancel);
         }
 
