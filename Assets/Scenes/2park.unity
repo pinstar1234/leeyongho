@@ -1221,6 +1221,7 @@ MonoBehaviour:
   btnInfo: {fileID: 2052743965}
   btnDemolish: {fileID: 882479423}
   infoPanel: {fileID: 1803791088}
+  infoPanelCanvasGroup: {fileID: 0}
   txtBuildingName: {fileID: 1425319398}
   imgBuildingIcon: {fileID: 1434665389}
   txtCategory: {fileID: 991451188}
@@ -4117,7 +4118,7 @@ Transform:
   m_GameObject: {fileID: 1916866156}
   serializedVersion: 2
   m_LocalRotation: {x: 0.5, y: 0, z: 0, w: 0.8660254}
-  m_LocalPosition: {x: 60, y: 70, z: 0}
+  m_LocalPosition: {x: 60, y: 77.37, z: -4.25}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
