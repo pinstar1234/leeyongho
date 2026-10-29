@@ -14,6 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   buildingID: 3
   buildingName: "\uB300\uD615"
+  description: "\uD070 \uAC74\uBB3C"
   sizeType: 2
   category: 0
   requiredPower: 0
@@ -23,4 +24,4 @@ MonoBehaviour:
   satisfactionRadius: 3
   buildingPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
   previewPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
-  buildingIcon: {fileID: 0}
+  buildingIcon: {fileID: 21300000, guid: 69be30bcd0e67724585e2cf6c25fe51f, type: 3}

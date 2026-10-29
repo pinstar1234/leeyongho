@@ -23,6 +23,8 @@ namespace InfraTown.Building
         [Header("기본 정보 및 해금 조건")]
         public string buildingID;
         public string buildingName;
+        [TextArea(3, 5)] // 인스펙터에서 여러 줄을 입력할 수 있게 해줌
+        public string description; //  새로 추가된 하단 설명란
 
         [Tooltip("이 건물이 해금되기 위해 필요한 최소 '현재 인구수'")]
         public int requiredPopulation = 0; // 예: 0명(기본), 50명(티어1), 150명(티어2)
