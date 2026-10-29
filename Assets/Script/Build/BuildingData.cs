@@ -22,6 +22,8 @@ namespace InfraTown.Building
         [Header("기본 정보")]
         public string buildingID;
         public string buildingName;
+        [TextArea(3, 5)] // 인스펙터에서 여러 줄을 입력할 수 있게 해줌
+        public string description; //  새로 추가된 하단 설명란
 
         [Header("5가지 핵심 규격 데이터")]
         public BuildingSizeType sizeType;   // 1. 소형, 중형, 대형
