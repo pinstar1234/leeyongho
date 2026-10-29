@@ -3,6 +3,7 @@ using UnityEngine;
 using InfraTown.Grid;
 using InfraTown.Core;
 using InfraTown.Economy;
+using InfraTown.Population;
 
 namespace InfraTown.Building
 {
@@ -17,17 +18,25 @@ namespace InfraTown.Building
         [SerializeField] private Material validPreviewMaterial;   // 건설 가능 (초록 반투명)
         [SerializeField] private Material invalidPreviewMaterial; // 건설 불가능 (빨강 반투명)
 
+        [Header("하이라이트 컨트롤러 참조")]
+        [SerializeField] private GridHighlightController highlightController;
+
         private BuildingData _selectedBuildingData;
         private GameObject _previewInstance;
         private MeshRenderer[] _previewRenderers;
 
-        // 타일별 건물 점유 상태 관리 (60x40)
+        // 60x40 타일별 점유중인 건물 인스턴스 저장 배열
         private BuildingInstance[,] _occupiedGrid = new BuildingInstance[60, 40];
 
         private void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
+
+            if (highlightController == null)
+            {
+                highlightController = GetComponent<GridHighlightController>();
+            }
         }
 
         private void Start()
@@ -39,6 +48,11 @@ namespace InfraTown.Building
             }
 
             BuildingInstance.OnBuildingDestroyed += HandleBuildingDestroyed;
+
+            if (highlightController != null)
+            {
+                highlightController.HideHighlight();
+            }
         }
 
         private void OnDestroy()
@@ -53,10 +67,33 @@ namespace InfraTown.Building
         }
 
         /// <summary>
-        /// UI 버튼 클릭 시 건설할 건물을 선택하는 함수
+        /// 특정 건물이 현재 인구수 기준으로 해금되었는지 여부 확인
+        /// </summary>
+        public bool IsBuildingUnlocked(BuildingData data)
+        {
+            if (data == null) return false;
+
+            int currentPop = PopulationManager.Instance != null
+                ? PopulationManager.Instance.CurrentPopulation
+                : 0;
+
+            return currentPop >= data.requiredPopulation;
+        }
+
+        /// <summary>
+        /// UI 버튼으로 건설할 건물을 선택 (해금 여부 검증)
         /// </summary>
         public void SelectBuildingToBuild(BuildingData data)
         {
+            if (data == null) return;
+
+            // 1. 현재 인구수 기반 해금 검증
+            if (!IsBuildingUnlocked(data))
+            {
+                Debug.LogWarning($"[BuildingManager] '{data.buildingName}'은(는) 해금되지 않았습니다. (필요 인구수: {data.requiredPopulation}명)");
+                return;
+            }
+
             CancelBuildingMode();
 
             _selectedBuildingData = data;
@@ -74,35 +111,56 @@ namespace InfraTown.Building
         }
 
         /// <summary>
-        /// 마우스 가리키는 타일에 맞춰 프리뷰를 Snap 및 위치 이동
+        /// 마우스 위치에 따른 건물 프리뷰 모델 및 점유 타일 전체 하이라이트 갱신
         /// </summary>
         private void UpdateBuildingPreview(Vector2Int gridPos)
         {
-            if (_selectedBuildingData == null || _previewInstance == null) return;
+            if (_selectedBuildingData == null)
+            {
+                if (highlightController != null) highlightController.HideHighlight();
+                return;
+            }
+
+            if (_previewInstance == null) return;
 
             if (gridPos.x == -1 || gridPos.y == -1)
             {
                 _previewInstance.SetActive(false);
+                if (highlightController != null) highlightController.HideHighlight();
                 return;
             }
 
             _previewInstance.SetActive(true);
 
             Vector2Int size = _selectedBuildingData.GridSize;
+
             Vector3 worldPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
             _previewInstance.transform.position = worldPos;
 
-            // 자금 및 타일 점유 가능 여부 종합 체크
             bool canBuild = CanPlaceBuilding(gridPos.x, gridPos.y, size.x, size.y);
             SetPreviewMaterial(canBuild ? validPreviewMaterial : invalidPreviewMaterial);
+
+            if (highlightController != null)
+            {
+                highlightController.ShowHighlightArea(gridPos.x, gridPos.y, size.x, size.y);
+                highlightController.SetColor(canBuild ? Color.green : Color.red);
+            }
         }
 
         /// <summary>
-        /// 클릭 시 실제 건물 건설 및 자금 차감 / 그리드 점유 등록
+        /// 건물 실제 건설 처리 및 타일 점유 배열 전체 등록
         /// </summary>
         private void TryPlaceBuilding(Vector2Int gridPos)
         {
             if (_selectedBuildingData == null) return;
+
+            // 해금 상태 다시 검증
+            if (!IsBuildingUnlocked(_selectedBuildingData))
+            {
+                Debug.LogWarning("[BuildingManager] 해금 조건 미달로 건설할 수 없습니다.");
+                CancelBuildingMode();
+                return;
+            }
 
             Vector2Int size = _selectedBuildingData.GridSize;
 
@@ -110,10 +168,9 @@ namespace InfraTown.Building
             {
                 int cost = _selectedBuildingData.constructionCost;
 
-                // 자금 차감 검증 (잔액 부족 시 건설 취소)
                 if (EconomyManager.Instance != null && !EconomyManager.Instance.TrySpendMoney(cost))
                 {
-                    Debug.LogWarning("[BuildingManager] 건설 자금이 부족하여 설치할 수 없습니다!");
+                    Debug.LogWarning("[BuildingManager] 건설 자금이 부족합니다!");
                     return;
                 }
 
@@ -123,7 +180,6 @@ namespace InfraTown.Building
                 BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
                 instance.Init(_selectedBuildingData, gridPos);
 
-                // 그리드 점유 배열 등록
                 for (int x = gridPos.x; x < gridPos.x + size.x; x++)
                 {
                     for (int z = gridPos.y; z < gridPos.y + size.y; z++)
@@ -132,7 +188,6 @@ namespace InfraTown.Building
                     }
                 }
 
-                // GameLoopManager에 건물을 등록하여 만족도 계산 업데이트
                 GameLoopManager.Instance?.RegisterBuilding(instance);
             }
         }
@@ -150,7 +205,6 @@ namespace InfraTown.Building
                 }
             }
 
-            // 자금 잔액 부족 시 프리뷰를 빨간색으로 표기
             if (_selectedBuildingData != null && EconomyManager.Instance != null)
             {
                 if (EconomyManager.Instance.CurrentMoney < _selectedBuildingData.constructionCost)
@@ -186,6 +240,11 @@ namespace InfraTown.Building
             {
                 Destroy(_previewInstance);
             }
+
+            if (highlightController != null)
+            {
+                highlightController.HideHighlight();
+            }
         }
 
         private void HandleBuildingDestroyed(BuildingInstance building)
@@ -197,19 +256,15 @@ namespace InfraTown.Building
             {
                 for (int z = pos.y; z < pos.y + size.y; z++)
                 {
-                    if (_occupiedGrid[x, z] == building)
+                    if (x >= 0 && x < 60 && z >= 0 && z < 40)
                     {
-                        _occupiedGrid[x, z] = null;
+                        if (_occupiedGrid[x, z] == building)
+                        {
+                            _occupiedGrid[x, z] = null;
+                        }
                     }
                 }
             }
-        }
-
-        public BuildingData GetBuildingDataByIndex(int index)
-        {
-            if (index >= 0 && index < buildingDatabase.Count)
-                return buildingDatabase[index];
-            return null;
         }
     }
 }

@@ -6,86 +6,90 @@ namespace InfraTown.Grid
     {
         [Header("Highlight Prefab & Visuals")]
         [SerializeField] private GameObject highlightPrefab;
-        [SerializeField] private float yOffset = 0.02f; // Z-fighting(깜빡임) 방지를 위한 Y축 미세 띄움
-        [SerializeField] private float smoothSpeed = 25f; // 마우스 이동 시 하이라이트 이동 부드러움 정도
+        [SerializeField] private float yOffset = 0.05f; // Z-Fighting(깜빡임) 방지용 Y축 값
 
         private GameObject _highlightInstance;
-        private Vector3 _targetPosition;
-        private bool _isVisible = false;
+        private Renderer _highlightRenderer;
+        private const float TileSize = 2.0f; // 1타일 = 2m
 
-        private void Start()
+        private void Awake()
         {
+            InitHighlightObject();
+        }
+
+        private void InitHighlightObject()
+        {
+            if (_highlightInstance != null) return;
+
             if (highlightPrefab != null)
             {
-                // 단 1개의 하이라이트 인스턴스만 생성하여 재사용
                 _highlightInstance = Instantiate(highlightPrefab, transform);
-                _highlightInstance.SetActive(false);
+            }
+            else
+            {
+                // 프리팹 미지정 시 기본 3D Quad 자동 생성 (안전장치)
+                _highlightInstance = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                _highlightInstance.transform.SetParent(transform);
+
+                // 콜라이더 제거 (마우스 Raycast 방해 방지)
+                if (_highlightInstance.TryGetComponent<Collider>(out var col))
+                {
+                    Destroy(col);
+                }
             }
 
-            // GridManager 호버 이벤트 구독
-            if (LightweightGridManager.Instance != null)
-            {
-                LightweightGridManager.Instance.OnGridHoverChanged += HandleGridHoverChanged;
-            }
-        }
-
-        private void OnDestroy()
-        {
-            if (LightweightGridManager.Instance != null)
-            {
-                LightweightGridManager.Instance.OnGridHoverChanged -= HandleGridHoverChanged;
-            }
-        }
-
-        private void Update()
-        {
-            if (_isVisible && _highlightInstance != null)
-            {
-                // 목표 위치로 부드럽게 이동 (보간)
-                _highlightInstance.transform.position = Vector3.Lerp(
-                    _highlightInstance.transform.position,
-                    _targetPosition,
-                    Time.deltaTime * smoothSpeed
-                );
-            }
+            _highlightInstance.name = "GridHighlight_Instance";
+            _highlightRenderer = _highlightInstance.GetComponent<Renderer>();
+            _highlightInstance.SetActive(false); // 시작 시 비활성화
         }
 
         /// <summary>
-        /// 마우스 가리키는 타일 좌표 변경 시 호출되는 이벤트 핸들러
+        /// 건물이 점유할 전체 타일 영역(sizeX x sizeZ) 하이라이트 켜기
         /// </summary>
-        private void HandleGridHoverChanged(Vector2Int gridPos)
+        public void ShowHighlightArea(int startX, int startZ, int sizeX, int sizeZ)
         {
-            if (_highlightInstance == null) return;
+            if (_highlightInstance == null) InitHighlightObject();
 
-            // -1, -1은 그리드 범위를 벗어난 상태
-            if (gridPos.x == -1 || gridPos.y == -1)
+            if (startX < 0 || startZ < 0)
             {
-                _isVisible = false;
-                _highlightInstance.SetActive(false);
+                HideHighlight();
                 return;
             }
 
-            // LightweightGridManager에서 해당 타일의 월드 중앙 위치 계산
-            Vector3 worldPos = LightweightGridManager.Instance.GetWorldPosition(gridPos.x, gridPos.y);
-            _targetPosition = new Vector3(worldPos.x, worldPos.y + yOffset, worldPos.z);
+            // 1. 전체 점유 타일 범위의 중앙 월드 좌표 산출
+            float posX = (startX * TileSize) + (sizeX * TileSize * 0.5f);
+            float posZ = (startZ * TileSize) + (sizeZ * TileSize * 0.5f);
 
-            if (!_isVisible)
+            // 2. 바닥 평면에 평평하게 배치 (Quad 회전 X: 90도)
+            _highlightInstance.transform.position = new Vector3(posX, yOffset, posZ);
+            _highlightInstance.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+
+            // 3. 건물의 타일 규격(2m, 4m, 6m)에 맞는 스케일 적용
+            _highlightInstance.transform.localScale = new Vector3(sizeX * TileSize, sizeZ * TileSize, 1f);
+
+            if (!_highlightInstance.activeSelf)
             {
-                _isVisible = true;
-                _highlightInstance.transform.position = _targetPosition; // 최초 활성화 시 즉시 위치 세팅
                 _highlightInstance.SetActive(true);
             }
         }
 
         /// <summary>
-        /// 건물 설치 가이드 모드 등 상황에 따라 하이라이트 색상을 바꿀 수 있는 함수
+        /// 하이라이트 비활성화
         /// </summary>
-        public void SetHighlightColor(Color color)
+        public void HideHighlight()
         {
-            if (_highlightInstance != null && _highlightInstance.TryGetComponent<Renderer>(out var rend))
+            if (_highlightInstance != null && _highlightInstance.activeSelf)
             {
-                rend.material.SetColor("_BaseColor", color);
-                rend.material.SetColor("_EmissionColor", color * 1.5f);
+                _highlightInstance.SetActive(false);
+            }
+        }
+
+        public void SetColor(Color color)
+        {
+            if (_highlightRenderer != null)
+            {
+                _highlightRenderer.material.SetColor("_BaseColor", color);
+                _highlightRenderer.material.SetColor("_Color", color);
             }
         }
     }
