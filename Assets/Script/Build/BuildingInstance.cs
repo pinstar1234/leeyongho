@@ -19,21 +19,31 @@ namespace InfraTown.Building
             OriginGridPos = gridPos;
         }
 
-        private void OnMouseOver()
+
+        private void OnMouseDown()
         {
-            // 우클릭 더블클릭 검출
-            if (Input.GetMouseButtonDown(1))
+            // 마우스 왼쪽 버튼 클릭 시 UI 호출 (UI 클릭 시 레이캐스트 방지 등은 상황에 맞게 추가)
+            if (InfraTown.UI.BuildingUIManager.Instance != null)
             {
-                float timeSinceLastClick = Time.time - _lastRightClickTime;
-
-                if (timeSinceLastClick <= DoubleClickThreshold)
-                {
-                    DestroyBuilding();
-                }
-
-                _lastRightClickTime = Time.time;
+                InfraTown.UI.BuildingUIManager.Instance.OnBuildingClicked(this);
             }
         }
+
+        //private void OnMouseOver()
+        //{
+        //    // 우클릭 더블클릭 검출
+        //    if (Input.GetMouseButtonDown(1))
+        //    {
+        //        float timeSinceLastClick = Time.time - _lastRightClickTime;
+
+        //        if (timeSinceLastClick <= DoubleClickThreshold)
+        //        {
+        //            DestroyBuilding();
+        //        }
+
+        //        _lastRightClickTime = Time.time;
+        //    }
+        //}
 
         public void DestroyBuilding()
         {
