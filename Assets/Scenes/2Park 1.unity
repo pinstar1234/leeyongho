@@ -2381,6 +2381,7 @@ GameObject:
   - component: {fileID: 551138983}
   - component: {fileID: 551138985}
   - component: {fileID: 551138984}
+  - component: {fileID: 551138986}
   m_Layer: 5
   m_Name: DimbackDrop
   m_TagString: Untagged
@@ -2445,6 +2446,18 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 551138982}
   m_CullTransparentMesh: 1
+--- !u!225 &551138986
+CanvasGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 551138982}
+  m_Enabled: 1
+  m_Alpha: 1
+  m_Interactable: 1
+  m_BlocksRaycasts: 1
+  m_IgnoreParentGroups: 0
 --- !u!1 &569262470
 GameObject:
   m_ObjectHideFlags: 0
@@ -4157,6 +4170,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   overviewPanel: {fileID: 1958122039}
   closeButton: {fileID: 926827306}
+  windowRect: {fileID: 1934576214}
+  dimCanvasGroup: {fileID: 551138986}
+  slideDuration: 0.4
+  slideInEase: 9
+  slideOutEase: 8
   powerText: {fileID: 1709451826}
   populationText: {fileID: 658481060}
   subsidyText: {fileID: 1459617482}
