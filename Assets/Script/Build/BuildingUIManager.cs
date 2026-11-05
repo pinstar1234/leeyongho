@@ -1,9 +1,9 @@
-﻿using UnityEngine;
+﻿using System.Collections.Generic;
+using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using InfraTown.Building;
 using DG.Tweening;
-using System.Collections.Generic;
 
 namespace InfraTown.UI
 {
@@ -11,7 +11,7 @@ namespace InfraTown.UI
     {
         public static BuildingUIManager Instance { get; private set; }
 
-        [Header("Action UI (좌/우 버튼 패널)")]
+        [Header("Action UI (정보/철거 버튼 패널)")]
         public GameObject actionPanel;
         public Button btnInfo;
         public Button btnDemolish;
@@ -20,22 +20,23 @@ namespace InfraTown.UI
         [SerializeField] private GameObject buildSubMenuPanel;
         [SerializeField] private CanvasGroup subMenuCanvasGroup;
 
-        [Header("Info UI (팝업 패널)")]
+        [Header("Info UI (상세 정보 팝업 패널)")]
         public GameObject infoPanel;
         public CanvasGroup infoPanelCanvasGroup;
 
-        // ★ 1. 기존 buildButton 대신 3개 시설 카테고리 버튼 선언
-        [Header("Category Main Buttons (메인 시설 버튼들)")]
+        [Header("Category Main Buttons (메인 시설 카테고리 버튼)")]
         [SerializeField] private Button btnFacility;   // 편의시설
         [SerializeField] private Button btnEssential;  // 필수시설
         [SerializeField] private Button btnNimbys;     // 혐오시설
+        [SerializeField] private Button btnHousing;    // 주택 (추가 연동)
 
-        [Header("Sub Buttons (크기 선택 버튼들)")]
-        [SerializeField] private Button smallButton;   // Small
-        [SerializeField] private Button mediumButton;  // Medium
-        [SerializeField] private Button largeButton;   // Large
-        [SerializeField] private Button cancelButton;  // Cancel
+        [Header("Sub Buttons (크기 선택 버튼)")]
+        [SerializeField] private Button smallButton;   // Small (1x1)
+        [SerializeField] private Button mediumButton;  // Medium (2x2)
+        [SerializeField] private Button largeButton;   // Large (3x3)
+        [SerializeField] private Button cancelButton;  // Cancel (취소)
 
+        [Header("Building Info Elements")]
         public TextMeshProUGUI txtBuildingName;
         public Image imgBuildingIcon;
         public TextMeshProUGUI txtCategory;
@@ -47,9 +48,9 @@ namespace InfraTown.UI
         private BuildingInstance _selectedBuilding;
         private Camera _mainCamera;
 
-        // 애니메이션 및 현재 선택 카테고리 상태 관리
-        private BuildingType _currentSelectedCategory = BuildingType.Facility; // 현재 선택된 시설 종류
-        private Button _lastClickedCategoryButton; // 마지막으로 누른 버튼 추적
+        // 애니메이션 및 현재 선택된 카테고리 상태 관리
+        private BuildingType _currentSelectedCategory = BuildingType.Facility;
+        private Button _lastClickedCategoryButton;
         private List<RectTransform> _subButtonRects = new List<RectTransform>();
         private List<Vector2> _subButtonOriginPositions = new List<Vector2>();
         private Sequence _buildMenuSequence;
@@ -73,7 +74,7 @@ namespace InfraTown.UI
                 }
             }
 
-            // CanvasGroup 세팅
+            // CanvasGroup 검사 및 설정
             if (buildSubMenuPanel != null && subMenuCanvasGroup == null)
             {
                 subMenuCanvasGroup = buildSubMenuPanel.GetComponent<CanvasGroup>();
@@ -84,7 +85,7 @@ namespace InfraTown.UI
             if (buildSubMenuPanel != null)
                 buildSubMenuPanel.SetActive(false);
 
-            // ★ 2. 메인 카테고리 버튼 3개 각각에 클릭 이벤트 연결
+            // 메인 카테고리 버튼 이벤트 바인딩
             if (btnFacility != null)
                 btnFacility.onClick.AddListener(() => OnClickCategoryMainButton(btnFacility, BuildingType.Facility));
 
@@ -94,39 +95,42 @@ namespace InfraTown.UI
             if (btnNimbys != null)
                 btnNimbys.onClick.AddListener(() => OnClickCategoryMainButton(btnNimbys, BuildingType.Nimbys));
 
-            // 서브 버튼 이벤트 연결
+            if (btnHousing != null)
+                btnHousing.onClick.AddListener(() => OnClickCategoryMainButton(btnHousing, BuildingType.Housing));
+
+            // 서브 버튼 이벤트 바인딩
             if (cancelButton != null)
                 cancelButton.onClick.AddListener(CloseBuildMenu);
 
             if (smallButton != null)
-                smallButton.onClick.AddListener(() => OnSelectBuildingSize("Small"));
+                smallButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Small));
 
             if (mediumButton != null)
-                mediumButton.onClick.AddListener(() => OnSelectBuildingSize("Medium"));
+                mediumButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Medium));
 
             if (largeButton != null)
-                largeButton.onClick.AddListener(() => OnSelectBuildingSize("Large"));
+                largeButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Large));
         }
 
         private void Start()
         {
-            btnInfo.onClick.AddListener(ShowInfoPanel);
-            btnDemolish.onClick.AddListener(DemolishSelectedBuilding);
-            btnCloseInfo.onClick.AddListener(CloseAllUI);
+            if (btnInfo != null) btnInfo.onClick.AddListener(ShowInfoPanel);
+            if (btnDemolish != null) btnDemolish.onClick.AddListener(DemolishSelectedBuilding);
+            if (btnCloseInfo != null) btnCloseInfo.onClick.AddListener(CloseAllUI);
+
             CloseAllUI();
         }
 
         // ==========================================
-        // ★ 3. 카테고리 버튼 클릭 통합 제어 로직
+        // 카테고리 메인 버튼 클릭 처리
         // ==========================================
         private void OnClickCategoryMainButton(Button clickedBtn, BuildingType category)
         {
-            // 클릭된 버튼 쫀득한 Punch 효과
             clickedBtn.transform.DOKill();
             clickedBtn.transform.localScale = Vector3.one;
             clickedBtn.transform.DOPunchScale(Vector3.one * 0.2f, 0.25f, 10, 1f);
 
-            // 이미 열려 있는 상태에서 같은 버튼을 다시 누르면 메뉴 닫기 (토글)
+            // 열려있는 상태에서 동일 버튼 클릭 시 서브메뉴 닫기
             if (_isBuildMenuOpen && _lastClickedCategoryButton == clickedBtn)
             {
                 CloseBuildMenu();
@@ -134,12 +138,9 @@ namespace InfraTown.UI
                 return;
             }
 
-            // 현재 카테고리 갱신
             _currentSelectedCategory = category;
             _lastClickedCategoryButton = clickedBtn;
-            Debug.Log($"선택된 카테고리: {GetCategoryName(category)}");
 
-            // 서브메뉴 열기
             OpenBuildMenu();
         }
 
@@ -157,7 +158,7 @@ namespace InfraTown.UI
                 _buildMenuSequence.Join(subMenuCanvasGroup.DOFade(1f, 0.2f));
             }
 
-            // 4개 서브 버튼이 0.05초 간격으로 순차 팝업
+            // 서브 버튼 순차 팝업 애니메이션
             for (int i = 0; i < _subButtonRects.Count; i++)
             {
                 RectTransform rt = _subButtonRects[i];
@@ -201,56 +202,73 @@ namespace InfraTown.UI
         }
 
         // ==========================================
-        // ★ 4. 크기 선택 시 카테고리와 크기 정보 조합
+        // 크기 선택 시 BuildingManager 실제 데이터 호출 연동
         // ==========================================
-        private void OnSelectBuildingSize(string size)
+        private void OnSelectBuildingSize(BuildingSizeType sizeType)
         {
-            Debug.Log($"건설 요청 -> 카테고리: {_currentSelectedCategory} | 크기: {size}");
             CloseBuildMenu();
 
-            // 추후 연결 예시:
-            // BuildingManager.Instance.StartPlacingBuilding(_currentSelectedCategory, size);
+            // BuildingManager와 연동하여 DB 조건에 맞는 건물 검색 후 건설 모드 진입
+            if (BuildingManager.Instance != null)
+            {
+                BuildingData targetData = BuildingManager.Instance.GetBuildingDataByCategoryAndSize(_currentSelectedCategory, sizeType);
+
+                if (targetData != null)
+                {
+                    BuildingManager.Instance.SelectBuildingToBuild(targetData);
+                }
+                else
+                {
+                    Debug.LogWarning($"[BuildingUIManager] 조건에 맞는 건물 DB를 찾을 수 없습니다. (카테고리: {_currentSelectedCategory}, 규격: {sizeType})");
+                }
+            }
         }
 
         // ==========================================
-        // 기존 건물 클릭, 정보창, 철거 로직 유지
+        // 건물 클릭, 정보창, 철거 제어
         // ==========================================
         public void OnBuildingClicked(BuildingInstance building)
         {
             _selectedBuilding = building;
-            infoPanel.SetActive(false);
+            if (infoPanel != null) infoPanel.SetActive(false);
 
-            actionPanel.SetActive(true);
-            actionPanel.transform.position = _mainCamera.WorldToScreenPoint(building.transform.position);
-
-            actionPanel.transform.localScale = Vector3.zero;
-            actionPanel.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
+            if (actionPanel != null)
+            {
+                actionPanel.SetActive(true);
+                actionPanel.transform.position = _mainCamera.WorldToScreenPoint(building.transform.position);
+                actionPanel.transform.localScale = Vector3.zero;
+                actionPanel.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
+            }
         }
 
         private void ShowInfoPanel()
         {
-            if (_selectedBuilding == null) return;
+            if (_selectedBuilding == null || _selectedBuilding.Data == null) return;
 
-            actionPanel.SetActive(false);
-            infoPanel.SetActive(true);
+            if (actionPanel != null) actionPanel.SetActive(false);
+            if (infoPanel != null) infoPanel.SetActive(true);
 
             BuildingData data = _selectedBuilding.Data;
-            txtBuildingName.text = data.buildingName;
 
-            if (data.buildingIcon != null)
+            if (txtBuildingName != null) txtBuildingName.text = data.buildingName;
+
+            if (imgBuildingIcon != null)
             {
-                imgBuildingIcon.sprite = data.buildingIcon;
-                imgBuildingIcon.gameObject.SetActive(true);
-            }
-            else
-            {
-                imgBuildingIcon.gameObject.SetActive(false);
+                if (data.buildingIcon != null)
+                {
+                    imgBuildingIcon.sprite = data.buildingIcon;
+                    imgBuildingIcon.gameObject.SetActive(true);
+                }
+                else
+                {
+                    imgBuildingIcon.gameObject.SetActive(false);
+                }
             }
 
-            txtCategory.text = $"<b>분류:</b> {GetCategoryName(data.category)}";
-            txtPower.text = $"<b>전력 소비:</b> {data.requiredPower} kW";
-            txtCost.text = $"<b>유지비:</b> ${data.maintenanceCost}/월\n<b>건설비:</b> ${data.constructionCost}";
-            txtDescription.text = data.description;
+            if (txtCategory != null) txtCategory.text = $"<b>분류:</b> {GetCategoryName(data.category)}";
+            if (txtPower != null) txtPower.text = $"<b>전력 소비:</b> {data.requiredPower} kW";
+            if (txtCost != null) txtCost.text = $"<b>유지비:</b> {data.maintenanceCost:N0}원/월\n<b>건설비:</b> {data.constructionCost:N0}원";
+            if (txtDescription != null) txtDescription.text = data.description;
 
             if (infoPanelCanvasGroup != null)
             {
@@ -258,15 +276,19 @@ namespace InfraTown.UI
                 infoPanelCanvasGroup.DOFade(1f, 0.25f);
             }
 
-            infoPanel.transform.localScale = Vector3.one * 0.8f;
-            infoPanel.transform.DOScale(Vector3.one, 0.4f).SetEase(Ease.OutBack);
+            if (infoPanel != null)
+            {
+                infoPanel.transform.localScale = Vector3.one * 0.8f;
+                infoPanel.transform.DOScale(Vector3.one, 0.4f).SetEase(Ease.OutBack);
+            }
         }
 
         private void DemolishSelectedBuilding()
         {
             if (_selectedBuilding != null)
             {
-                _selectedBuilding.DestroyBuilding();
+                // 주택 파괴 시 인구 및 건물 인스턴스 파괴
+                Destroy(_selectedBuilding.gameObject);
                 _selectedBuilding = null;
             }
             CloseAllUI();
@@ -274,14 +296,14 @@ namespace InfraTown.UI
 
         public void CloseAllUI()
         {
-            if (actionPanel.activeSelf)
+            if (actionPanel != null && actionPanel.activeSelf)
             {
                 actionPanel.transform.DOKill();
                 actionPanel.transform.DOScale(Vector3.zero, 0.2f).SetEase(Ease.InBack)
                     .OnComplete(() => actionPanel.SetActive(false));
             }
 
-            if (infoPanel.activeSelf)
+            if (infoPanel != null && infoPanel.activeSelf)
             {
                 infoPanel.transform.DOKill();
                 if (infoPanelCanvasGroup != null)
@@ -298,13 +320,14 @@ namespace InfraTown.UI
 
         private string GetCategoryName(BuildingType type)
         {
-            switch (type)
+            return type switch
             {
-                case BuildingType.Essential: return "필수 시설";
-                case BuildingType.Facility: return "편의 시설";
-                case BuildingType.Nimbys: return "혐오 시설";
-                default: return "알 수 없음";
-            }
+                BuildingType.Essential => "필수 시설",
+                BuildingType.Facility => "편의 시설",
+                BuildingType.Nimbys => "불쾌 시설",
+                BuildingType.Housing => "주택",
+                _ => "미분류"
+            };
         }
     }
 }
