@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using InfraTown.Building;
 using InfraTown.Economy;
+using InfraTown.Satisfaction;
 
 namespace InfraTown.Population
 {
@@ -10,17 +11,14 @@ namespace InfraTown.Population
     {
         public static PopulationManager Instance { get; private set; }
 
-        [Header("인구수 정보")]
-        [SerializeField] private int currentPopulation = 0;     // 현재 실제 인구수
-        [SerializeField] private int maxPopulationCapacity = 0; // 현재 총 인구 한계치
+        [Header("인구 현황")]
+        [SerializeField] private int currentPopulation = 0;
+        [SerializeField] private int maxPopulationCapacity = 0;
 
         public int CurrentPopulation => currentPopulation;
         public int MaxPopulationCapacity => maxPopulationCapacity;
 
-        // 초과 인구 비율 (0.05 = 5% 초과 상태)
-        public float OverCapacityRatio { get; private set; } = 0f;
-
-        // 인구 변화 이벤트 (현재 인구수, 인구 한계치)
+        // 인구 변동 이벤트 (현재 인구, 한계 인구)
         public event Action<int, int> OnPopulationChanged;
 
         private void Awake()
@@ -29,97 +27,122 @@ namespace InfraTown.Population
             Instance = this;
         }
 
+        private void Start()
+        {
+            OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
+        }
+
         /// <summary>
-        /// 설치된 전체 주택의 데이터베이스(housingCapacity) 값을 합산하여 최대 인구 한계치를 재계산
+        /// 외부 호출용 인구 한계 수량 재계산
         /// </summary>
         public void RecalculateCapacity(List<BuildingInstance> allBuildings)
         {
-            int newCapacity = 0;
+            RecalculatePopulationCapacity(allBuildings);
+        }
+
+        /// <summary>
+        /// 건물이 건설되거나 파괴되었을 때 한계 인구수를 재계산하고 인구 유입을 갱신
+        /// </summary>
+        public void RecalculatePopulationCapacity(List<BuildingInstance> allBuildings)
+        {
+            int totalCapacity = 0;
 
             foreach (var building in allBuildings)
             {
                 if (building == null || building.Data == null) continue;
 
-                // 주택(Housing)인 경우 ScriptableObject DB에 설정된 housingCapacity 사용
                 if (building.Data.category == BuildingType.Housing)
                 {
-                    newCapacity += building.Data.housingCapacity;
+                    totalCapacity += building.Data.housingCapacity;
                 }
             }
 
-            maxPopulationCapacity = newCapacity;
+            maxPopulationCapacity = totalCapacity;
 
-            // 인구수 변경 이벤트 및 정부 지원금 한계 수치 자동 갱신 연동
-            NotifyPopulationUpdated();
+            if (currentPopulation > maxPopulationCapacity)
+            {
+                currentPopulation = maxPopulationCapacity;
+            }
+
+            OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
+            EconomyManager.Instance?.UpdateGovernmentSubsidyLimit(currentPopulation);
         }
 
         /// <summary>
-        /// 1주일마다 호출되는 인구 갱신 로직 (주 단위 틱)
+        /// 주간 단위 인구 유입/유출 업데이트 (매개변수 없는 버전)
         /// </summary>
-        public void ProcessWeeklyPopulationUpdate(float currentSatisfaction)
+        public void ProcessWeeklyPopulationUpdate()
         {
-            if (maxPopulationCapacity <= 0)
-            {
-                currentPopulation = 0;
-                OverCapacityRatio = 0f;
-                NotifyPopulationUpdated();
-                return;
-            }
-
-            // 최대 인구 한계치의 105% (5% 초과) 한계 지정
-            int absoluteMaxLimit = Mathf.FloorToInt(maxPopulationCapacity * 1.05f);
-
-            // 만족도가 40% 이상일 때 유입, 낮으면 유출
-            if (currentSatisfaction >= 40f)
-            {
-                int growthAmount = Mathf.Max(1, Mathf.FloorToInt(maxPopulationCapacity * 0.1f));
-                currentPopulation = Mathf.Min(currentPopulation + growthAmount, absoluteMaxLimit);
-            }
-            else
-            {
-                int decayAmount = Mathf.Max(1, Mathf.FloorToInt(currentPopulation * 0.1f));
-                currentPopulation = Mathf.Max(0, currentPopulation - decayAmount);
-            }
-
-            // 한계 초과 비율 산출
-            if (currentPopulation > maxPopulationCapacity && maxPopulationCapacity > 0)
-            {
-                OverCapacityRatio = (float)(currentPopulation - maxPopulationCapacity) / maxPopulationCapacity;
-            }
-            else
-            {
-                OverCapacityRatio = 0f;
-            }
-
-            // 인구수 변경 이벤트 및 정부 지원금 한계 수치 자동 갱신 연동
-            NotifyPopulationUpdated();
-
-            Debug.Log($"[1주일 인구 갱신] 현재 인구: {currentPopulation} / 한계치: {maxPopulationCapacity} (초과율: {OverCapacityRatio * 100:F1}%)");
+            ProcessWeeklyPopulationUpdate(0);
         }
 
         /// <summary>
-        /// 인구수 변경 알림 및 지원금 한계 수치 갱신 함수
+        /// 주간 단위 인구 유입/유출 업데이트 (float 인자 수신 오버로드 - 에러 해결)
         /// </summary>
-        private void NotifyPopulationUpdated()
+        public void ProcessWeeklyPopulationUpdate(float timeOrDelta)
         {
+            ProcessWeeklyPopulationUpdate(Mathf.RoundToInt(timeOrDelta));
+        }
+
+        /// <summary>
+        /// 주간 단위 인구 유입/유출 업데이트 (int 인자 수신 오버로드)
+        /// </summary>
+        public void ProcessWeeklyPopulationUpdate(int weekIndex)
+        {
+            // 수용 공간이 남아있고 만족도가 높을 때 인구 유입
+            if (currentPopulation < maxPopulationCapacity)
+            {
+                float avgSatisfaction = SatisfactionManager.Instance != null
+                    ? SatisfactionManager.Instance.CurrentAverageSatisfaction
+                    : 70f;
+
+                // 만족도가 50% 이상일 때 주간 자연 유입 발생
+                if (avgSatisfaction >= 50f)
+                {
+                    int growthAmount = Mathf.Clamp(Mathf.RoundToInt((avgSatisfaction - 40f) * 0.1f), 1, 5);
+                    AddPopulation(growthAmount);
+                    Debug.Log($"[PopulationManager] 주간 인구 유입: +{growthAmount}명 (현재: {currentPopulation}/{maxPopulationCapacity})");
+                }
+            }
+        }
+
+        /// <summary>
+        /// 주간 단위 인구 유입/유출 업데이트 (건물 리스트 수신 오버로드)
+        /// </summary>
+        public void ProcessWeeklyPopulationUpdate(List<BuildingInstance> allBuildings)
+        {
+            if (allBuildings != null)
+            {
+                RecalculatePopulationCapacity(allBuildings);
+            }
+            ProcessWeeklyPopulationUpdate(0);
+        }
+
+        /// <summary>
+        /// 인구 수동 추가/변경 (테스트 및 이벤트용)
+        /// </summary>
+        public void AddPopulation(int amount)
+        {
+            currentPopulation = Mathf.Clamp(currentPopulation + amount, 0, maxPopulationCapacity);
             OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
 
-            // 인구수가 변함에 따라 정부 지원금의 최대 한계 수치를 실시간으로 재계산
-            if (EconomyManager.Instance != null)
-            {
-                EconomyManager.Instance.UpdateGovernmentSubsidyLimit(currentPopulation);
-            }
+            EconomyManager.Instance?.UpdateGovernmentSubsidyLimit(currentPopulation);
         }
 
         /// <summary>
-        /// 인구 한계 초과로 인한 만족도 패널티 산출 (초과 퍼센트의 10배 차감)
+        /// 한계 인구 초과율에 따른 만족도 감점 수치 반환
         /// </summary>
         public float GetOverCapacitySatisfactionPenalty()
         {
-            if (OverCapacityRatio <= 0f) return 0f;
+            if (maxPopulationCapacity <= 0) return 0f;
 
-            float overPercentage = OverCapacityRatio * 100f;
-            return overPercentage * 10f;
+            if (currentPopulation > maxPopulationCapacity)
+            {
+                float overRatio = (float)(currentPopulation - maxPopulationCapacity) / maxPopulationCapacity;
+                return overRatio * 100f * 0.5f;
+            }
+
+            return 0f;
         }
     }
 }
