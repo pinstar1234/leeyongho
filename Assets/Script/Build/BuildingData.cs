@@ -25,12 +25,12 @@ namespace InfraTown.Building
         public string buildingName;
 
         [Tooltip("이 건물이 해금되기 위해 필요한 최소 '현재 인구수'")]
-        public int requiredPopulation = 0; // 예: 0명(기본), 50명(티어1), 150명(티어2)
+        public int requiredPopulation = 0;
 
         [Header("5가지 핵심 규격 데이터")]
         public BuildingSizeType sizeType;   // 소형, 중형, 대형
         public BuildingType category;       // 필수, 편의, 혐오, 주택(Housing)
-        public int requiredPower;           // 필요 전기량
+        public int requiredPower;           // 필요 전기량 (소모 전력)
         public int maintenanceCost;         // 유지비
         public int constructionCost;        // 건설 비용
 
@@ -42,8 +42,12 @@ namespace InfraTown.Building
         [Tooltip("주위 주택 만족도에 주는 영향 수치 (+: 상승, -: 하락)")]
         public float satisfactionImpact = 0f;
 
-        [Tooltip("영향을 미치는 타일 범위 반지름")]
+        [Tooltip("만족도 영향을 미치는 타일 범위 반지름 (예: 3 = 주변 3타일 내 주택에 영향)")]
         public int satisfactionRadius = 3;
+
+        [Header("전력 및 전봇대 관련 범위 (DB 설정)")]
+        [Tooltip("전봇대/발전소 등이 전기를 커버하거나 공급하는 타일 범위 반지름 (예: 4 = 주변 4타일 범위)")]
+        public int powerSupplyRadius = 4;
 
         [Header("그래픽 및 프리팹")]
         public GameObject buildingPrefab;
