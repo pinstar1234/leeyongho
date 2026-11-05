@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 using InfraTown.Grid;
 using InfraTown.Core;
@@ -64,6 +64,24 @@ namespace InfraTown.Building
             }
 
             BuildingInstance.OnBuildingDestroyed -= HandleBuildingDestroyed;
+        }
+
+        /// <summary>
+        /// 지정된 카테고리(필수/편의/불쾌/주택) 및 규격(소형/중형/대형)에 부합하는 건물 DB 데이터를 반환
+        /// </summary>
+        public BuildingData GetBuildingDataByCategoryAndSize(BuildingType category, BuildingSizeType sizeType)
+        {
+            if (buildingDatabase == null) return null;
+
+            foreach (var data in buildingDatabase)
+            {
+                if (data != null && data.category == category && data.sizeType == sizeType)
+                {
+                    return data;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -154,7 +172,6 @@ namespace InfraTown.Building
         {
             if (_selectedBuildingData == null) return;
 
-            // 해금 상태 다시 검증
             if (!IsBuildingUnlocked(_selectedBuildingData))
             {
                 Debug.LogWarning("[BuildingManager] 해금 조건 미달로 건설할 수 없습니다.");

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace InfraTown.Building
 {
@@ -23,16 +23,18 @@ namespace InfraTown.Building
         [Header("기본 정보 및 해금 조건")]
         public string buildingID;
         public string buildingName;
-        [TextArea(3, 5)] // 인스펙터에서 여러 줄을 입력할 수 있게 해줌
-        public string description; //  새로 추가된 하단 설명란
+
+        [TextArea(3, 5)]
+        [Tooltip("UI 슬롯이나 안내 창에 표시할 건물 설명 문구")]
+        public string description;
 
         [Tooltip("이 건물이 해금되기 위해 필요한 최소 '현재 인구수'")]
-        public int requiredPopulation = 0;
+        public int requiredPopulation = 0; // 예: 0명(기본), 50명(티어1), 150명(티어2)
 
         [Header("5가지 핵심 규격 데이터")]
         public BuildingSizeType sizeType;   // 소형, 중형, 대형
         public BuildingType category;       // 필수, 편의, 혐오, 주택(Housing)
-        public int requiredPower;           // 필요 전기량 (소모 전력)
+        public int requiredPower;           // 필요 전기량
         public int maintenanceCost;         // 유지비
         public int constructionCost;        // 건설 비용
 
@@ -44,12 +46,19 @@ namespace InfraTown.Building
         [Tooltip("주위 주택 만족도에 주는 영향 수치 (+: 상승, -: 하락)")]
         public float satisfactionImpact = 0f;
 
-        [Tooltip("만족도 영향을 미치는 타일 범위 반지름 (예: 3 = 주변 3타일 내 주택에 영향)")]
+        [Tooltip("영향을 미치는 타일 범위 반지름")]
         public int satisfactionRadius = 3;
 
-        [Header("전력 및 전봇대 관련 범위 (DB 설정)")]
-        [Tooltip("전봇대/발전소 등이 전기를 커버하거나 공급하는 타일 범위 반지름 (예: 4 = 주변 4타일 범위)")]
+        [Header("전력 및 전봇대 범위 (DB 설정)")]
+        [Tooltip("전봇대/발전소 등이 전기를 커버하거나 공급하는 타일 범위 반지름")]
         public int powerSupplyRadius = 4;
+
+        [Header("기획서 고정 서비스 수치 (경찰/병원/소방/편의 전용)")]
+        [Tooltip("경찰서일 경우 제공할 하루 순찰 횟수")]
+        public int policePatrolCount = 3;
+
+        [Tooltip("해당 시설 설치 시 UI에 표시할 기획서 지정 접근 시간")]
+        public float fixedAccessTimeMinutes = 5.0f;
 
         [Header("그래픽 및 프리팹")]
         public GameObject buildingPrefab;

@@ -5,6 +5,7 @@ using InfraTown.Satisfaction;
 using InfraTown.Population;
 using InfraTown.Economy;
 using InfraTown.Power;
+using InfraTown.Services;
 using InfraTown.TimeSystem;
 
 namespace InfraTown.UI
@@ -12,29 +13,29 @@ namespace InfraTown.UI
     public class OverviewUI : MonoBehaviour
     {
         [Header("전체 UI 패널 제어")]
-        [SerializeField] private GameObject overviewPanel; // 전체 UI 창 패널
-        [SerializeField] private Button closeButton;       // 닫기 버튼
+        [SerializeField] private GameObject overviewPanel;
+        [SerializeField] private Button closeButton;
 
         [Header("1. 전기 현황")]
-        [SerializeField] private TextMeshProUGUI powerText; // 예: "사용 중 전기: 120 / 사용 가능: 200 kW"
+        [SerializeField] private TextMeshProUGUI powerText;
 
         [Header("2. 인구 현황")]
-        [SerializeField] private TextMeshProUGUI populationText; // 예: "현재 인구: 85명 / 한계: 100명"
+        [SerializeField] private TextMeshProUGUI populationText;
 
         [Header("3. 재정 및 지원금 조절 (Slider)")]
-        [SerializeField] private TextMeshProUGUI subsidyText; // 예: "신청 지원금: 12,000 / 최대 지원 가능: 15,000 원"
-        [SerializeField] private Slider subsidySlider;       // 지원금 조절 슬라이더
+        [SerializeField] private TextMeshProUGUI subsidyText;
+        [SerializeField] private Slider subsidySlider;
 
         [Header("4. 만족도 및 불만 사항")]
-        [SerializeField] private TextMeshProUGUI satisfactionText; // 예: "현재 만족도: 75%"
-        [SerializeField] private Image satisfactionFaceImage;      // 만족도 표정 아이콘
-        [SerializeField] private TextMeshProUGUI complaintsText;    // 예: "• 필수 시설(병원)이 부족합니다."
+        [SerializeField] private TextMeshProUGUI satisfactionText;
+        [SerializeField] private Image satisfactionFaceImage;
+        [SerializeField] private TextMeshProUGUI complaintsText;
 
         [Header("5. 치안 및 필수/편의 시설 접근 시간")]
-        [SerializeField] private TextMeshProUGUI patrolCountText;    // 예: "경찰 하루 순찰 횟수: 3회"
-        [SerializeField] private TextMeshProUGUI hospitalTimeText;   // 예: "병원 도착 평균 시간: 4.2분"
-        [SerializeField] private TextMeshProUGUI fireStationTimeText;// 예: "소방서 도착 평균 시간: 2.1분"
-        [SerializeField] private TextMeshProUGUI convenienceTimeText;// 예: "편의시설 접근 평균 시간: 1.5분"
+        [SerializeField] private TextMeshProUGUI patrolCountText;
+        [SerializeField] private TextMeshProUGUI hospitalTimeText;
+        [SerializeField] private TextMeshProUGUI fireStationTimeText;
+        [SerializeField] private TextMeshProUGUI convenienceTimeText;
 
         private void Start()
         {
@@ -73,6 +74,11 @@ namespace InfraTown.UI
             {
                 PowerManager.Instance.OnPowerDataChanged += (used, available) => UpdatePowerUI();
             }
+
+            if (ServiceAccessibilityManager.Instance != null)
+            {
+                ServiceAccessibilityManager.Instance.OnServiceMetricsUpdated += UpdateServiceMetricsUI;
+            }
         }
 
         private void UnregisterEvents()
@@ -85,6 +91,9 @@ namespace InfraTown.UI
 
             if (EconomyManager.Instance != null)
                 EconomyManager.Instance.OnSubsidyAmountChanged -= UpdateSubsidyUI;
+
+            if (ServiceAccessibilityManager.Instance != null)
+                ServiceAccessibilityManager.Instance.OnServiceMetricsUpdated -= UpdateServiceMetricsUI;
         }
 
         public void ShowOverview()
@@ -122,7 +131,6 @@ namespace InfraTown.UI
             UpdateServiceMetricsUI();
         }
 
-        // --- 1. 전기 UI 실제 연동 ---
         private void UpdatePowerUI()
         {
             if (powerText == null) return;
@@ -135,7 +143,6 @@ namespace InfraTown.UI
             }
         }
 
-        // --- 2. 인구 UI ---
         private void UpdatePopulationUI(int current, int maxCapacity)
         {
             if (populationText != null)
@@ -144,14 +151,13 @@ namespace InfraTown.UI
             }
         }
 
-        // --- 3. 정부 지원금 조절 UI ---
         private void UpdateSubsidyUI(int requested, int maxEligible)
         {
             if (subsidySlider != null)
             {
                 subsidySlider.minValue = 0;
                 subsidySlider.maxValue = maxEligible;
-                subsidySlider.SetValueWithoutNotify(requested); // 대문자 S 수정 적용
+                subsidySlider.SetValueWithoutNotify(requested);
             }
 
             if (subsidyText != null)
@@ -166,7 +172,6 @@ namespace InfraTown.UI
             EconomyManager.Instance?.SetGovernmentSubsidyAmount(requestedAmount);
         }
 
-        // --- 4. 만족도 및 불만 사항 UI ---
         private void UpdateSatisfactionUI(float score, SatisfactionTier tier)
         {
             if (satisfactionText != null)
@@ -176,29 +181,51 @@ namespace InfraTown.UI
 
             if (complaintsText != null)
             {
-                if (score < 40f)
-                    complaintsText.text = "• 필수 시설(병원/소방서)이 매우 부족합니다!\n• 인구 과밀 또는 정전으로 환경이 악화되었습니다.";
-                else if (score < 60f)
-                    complaintsText.text = "• 주변에 편의 시설이 더 필요합니다.";
-                else
-                    complaintsText.text = "• 특별한 불만 사항이 없습니다. 주민들이 만족하고 있습니다.";
+                if (ServiceAccessibilityManager.Instance != null)
+                {
+                    complaintsText.text = ServiceAccessibilityManager.Instance.GetServiceComplaintSummary();
+                }
             }
         }
 
-        // --- 5. 필수/편의 시설 접근 시간 및 순찰 횟수 UI ---
+        // --- 5. 기획서 지정 고정 수치 / 미설치 여부 UI 표기 ---
         private void UpdateServiceMetricsUI()
         {
+            if (ServiceAccessibilityManager.Instance == null) return;
+
+            var mgr = ServiceAccessibilityManager.Instance;
+
+            // 경찰 순찰 횟수
             if (patrolCountText != null)
-                patrolCountText.text = "경찰 하루 순찰: 3 회";
+            {
+                patrolCountText.text = mgr.HasPoliceStation
+                    ? $"경찰 하루 순찰: {mgr.DailyPolicePatrolCount} 회"
+                    : "경찰 하루 순찰: 0 회 (경찰서 없음)";
+            }
 
+            // 병원 접근 시간
             if (hospitalTimeText != null)
-                hospitalTimeText.text = "병원 평균 접근 시간: 4.5 분";
+            {
+                hospitalTimeText.text = mgr.HasHospital
+                    ? $"병원 접근 시간: {mgr.HospitalAccessTime:F1} 분"
+                    : "병원 접근 시간: 미설치 (위험)";
+            }
 
+            // 소방서 접근 시간
             if (fireStationTimeText != null)
-                fireStationTimeText.text = "소방서 평균 접근 시간: 2.1 분";
+            {
+                fireStationTimeText.text = mgr.HasFireStation
+                    ? $"소방서 접근 시간: {fireStationTimeText:F1} 분"
+                    : "소방서 접근 시간: 미설치 (위험)";
+            }
 
+            // 편의시설 접근 시간
             if (convenienceTimeText != null)
-                convenienceTimeText.text = "편의시설 접근 시간: 1.2 분";
+            {
+                convenienceTimeText.text = mgr.HasConvenienceStore
+                    ? $"편의시설 접근 시간: {mgr.ConvenienceAccessTime:F1} 분"
+                    : "편의시설 접근 시간: 미설치";
+            }
         }
     }
 }
