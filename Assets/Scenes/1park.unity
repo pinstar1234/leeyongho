@@ -1801,7 +1801,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   highlightPrefab: {fileID: 1792557368348549596, guid: 2ea4494969c447949928f3ea56f10a7f, type: 3}
   yOffset: 0.02
-  smoothSpeed: 25
 --- !u!114 &1052840645
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1839,6 +1838,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 93f829d934323af48bd234f91bd90f13, type: 2}
   validPreviewMaterial: {fileID: 2100000, guid: 1c05ec9f0a3ebd54ab24217363b7cd29, type: 2}
   invalidPreviewMaterial: {fileID: 2100000, guid: c18be7f6593b2ac488d5636a9b6050fd, type: 2}
+  highlightController: {fileID: 0}
 --- !u!1 &1237248469
 GameObject:
   m_ObjectHideFlags: 0
@@ -2575,6 +2575,7 @@ GameObject:
   - component: {fileID: 1916866159}
   - component: {fileID: 1916866158}
   - component: {fileID: 1916866157}
+  - component: {fileID: 1916866160}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -2623,7 +2624,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 60
+  field of view: 70
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -2649,13 +2650,33 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1916866156}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.5, y: 0, z: 0, w: 0.8660254}
-  m_LocalPosition: {x: 60, y: 70, z: 0}
+  m_LocalRotation: {x: 0.60876137, y: 0, z: 0, w: 0.7933534}
+  m_LocalPosition: {x: 60, y: 70, z: 40}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 60, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 75, y: 0, z: 0}
+--- !u!114 &1916866160
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1916866156}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2762d4ca99f810f4d84e7c32675c2dee, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  minHeight: 15
+  maxHeight: 70
+  zoomSpeed: 10
+  zoomSmoothness: 10
+  moveSpeed: 40
+  edgeThreshold: 20
+  minBounds: {x: 0, y: 0}
+  maxBounds: {x: 120, y: 80}
 --- !u!1 &2074617514
 GameObject:
   m_ObjectHideFlags: 0

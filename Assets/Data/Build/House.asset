@@ -14,11 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   buildingID: House
   buildingName: "\uC8FC\uD0DD"
+  requiredPopulation: 0
   sizeType: 0
   category: 3
   requiredPower: 0
   maintenanceCost: 0
   constructionCost: 0
+  housingCapacity: 0
   satisfactionImpact: 0
   satisfactionRadius: 3
   buildingPrefab: {fileID: 7301714859460476872, guid: d3fab1e8bda6abb4b94547cf55e451ae, type: 3}

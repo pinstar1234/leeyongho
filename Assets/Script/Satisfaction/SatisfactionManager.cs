@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using InfraTown.Building;
 using InfraTown.Population;
+using InfraTown.Power;
 
 namespace InfraTown.Satisfaction
 {
@@ -24,7 +25,7 @@ namespace InfraTown.Satisfaction
         }
 
         /// <summary>
-        /// 주택 단위 개별 만족도 계산 및 인구 과밀 패널티(초과 % x 10)를 최종 반영하여 마을 평균 산출
+        /// 주택 단위 개별 만족도 계산 및 인구 과밀 / 정전 패널티를 최종 반영하여 마을 평균 산출
         /// </summary>
         public void RecalculateSatisfaction(List<BuildingInstance> allBuildings)
         {
@@ -46,14 +47,19 @@ namespace InfraTown.Satisfaction
                 }
             }
 
-            // 인구 초과 패널티 수치 가져오기 (초과 % x 10)
+            // 1. 인구 초과 패널티 수치 가져오기 (초과 % x 10)
             float overCapacityPenalty = PopulationManager.Instance != null
                 ? PopulationManager.Instance.GetOverCapacitySatisfactionPenalty()
                 : 0f;
 
+            // 2. 정전 패널티 수치 가져오기
+            float blackoutPenalty = PowerManager.Instance != null
+                ? PowerManager.Instance.GetPowerBlackoutSatisfactionPenalty()
+                : 0f;
+
             if (housingBuildings.Count == 0)
             {
-                CurrentAverageSatisfaction = Mathf.Clamp(DefaultSatisfaction - overCapacityPenalty, 0f, 100f);
+                CurrentAverageSatisfaction = Mathf.Clamp(DefaultSatisfaction - overCapacityPenalty - blackoutPenalty, 0f, 100f);
                 CurrentTier = CalculateTier(CurrentAverageSatisfaction);
                 OnSatisfactionChanged?.Invoke(CurrentAverageSatisfaction, CurrentTier);
                 return;
@@ -83,7 +89,6 @@ namespace InfraTown.Satisfaction
                     }
                 }
 
-                // 주택 개별 만족도 재계산
                 housingComp.RecalculateSatisfaction(satisfactionOffset);
                 totalHousingSatisfactionSum += housingComp.CurrentSatisfaction;
             }
@@ -91,8 +96,8 @@ namespace InfraTown.Satisfaction
             // 주택 평균 만족도 산출
             float rawAverage = totalHousingSatisfactionSum / housingBuildings.Count;
 
-            // 최종 만족도 = 주택 평균 만족도 - (인구 한계 초과 % x 10)
-            CurrentAverageSatisfaction = Mathf.Clamp(rawAverage - overCapacityPenalty, 0f, 100f);
+            // 최종 만족도 = 주택 평균 - 인구 초과 패널티 - 정전 패널티
+            CurrentAverageSatisfaction = Mathf.Clamp(rawAverage - overCapacityPenalty - blackoutPenalty, 0f, 100f);
             CurrentTier = CalculateTier(CurrentAverageSatisfaction);
 
             OnSatisfactionChanged?.Invoke(CurrentAverageSatisfaction, CurrentTier);
