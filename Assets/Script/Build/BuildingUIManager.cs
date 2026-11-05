@@ -1,9 +1,9 @@
+ï»¿using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using InfraTown.Building;
 using DG.Tweening;
-using System.Collections.Generic;
 
 namespace InfraTown.UI
 {
@@ -11,7 +11,7 @@ namespace InfraTown.UI
     {
         public static BuildingUIManager Instance { get; private set; }
 
-        [Header("Action UI (ÁÂ/¿ì ¹öÆ° ÆĞ³Î)")]
+        [Header("Action UI (ì •ë³´/ì² ê±° ë²„íŠ¼ íŒ¨ë„)")]
         public GameObject actionPanel;
         public Button btnInfo;
         public Button btnDemolish;
@@ -20,22 +20,23 @@ namespace InfraTown.UI
         [SerializeField] private GameObject buildSubMenuPanel;
         [SerializeField] private CanvasGroup subMenuCanvasGroup;
 
-        [Header("Info UI (ÆË¾÷ ÆĞ³Î)")]
+        [Header("Info UI (ìƒì„¸ ì •ë³´ íŒì—… íŒ¨ë„)")]
         public GameObject infoPanel;
         public CanvasGroup infoPanelCanvasGroup;
 
-        // ¡Ú 1. ±âÁ¸ buildButton ´ë½Å 3°³ ½Ã¼³ Ä«Å×°í¸® ¹öÆ° ¼±¾ğ
-        [Header("Category Main Buttons (¸ŞÀÎ ½Ã¼³ ¹öÆ°µé)")]
-        [SerializeField] private Button btnFacility;   // ÆíÀÇ½Ã¼³
-        [SerializeField] private Button btnEssential;  // ÇÊ¼ö½Ã¼³
-        [SerializeField] private Button btnNimbys;     // Çø¿À½Ã¼³
+        [Header("Category Main Buttons (ë©”ì¸ ì‹œì„¤ ì¹´í…Œê³ ë¦¬ ë²„íŠ¼)")]
+        [SerializeField] private Button btnFacility;   // í¸ì˜ì‹œì„¤
+        [SerializeField] private Button btnEssential;  // í•„ìˆ˜ì‹œì„¤
+        [SerializeField] private Button btnNimbys;     // í˜ì˜¤ì‹œì„¤
+        [SerializeField] private Button btnHousing;    // ì£¼íƒ (ì¶”ê°€ ì—°ë™)
 
-        [Header("Sub Buttons (Å©±â ¼±ÅÃ ¹öÆ°µé)")]
-        [SerializeField] private Button smallButton;   // Small
-        [SerializeField] private Button mediumButton;  // Medium
-        [SerializeField] private Button largeButton;   // Large
-        [SerializeField] private Button cancelButton;  // Cancel
+        [Header("Sub Buttons (í¬ê¸° ì„ íƒ ë²„íŠ¼)")]
+        [SerializeField] private Button smallButton;   // Small (1x1)
+        [SerializeField] private Button mediumButton;  // Medium (2x2)
+        [SerializeField] private Button largeButton;   // Large (3x3)
+        [SerializeField] private Button cancelButton;  // Cancel (ì·¨ì†Œ)
 
+        [Header("Building Info Elements")]
         public TextMeshProUGUI txtBuildingName;
         public Image imgBuildingIcon;
         public TextMeshProUGUI txtCategory;
@@ -47,9 +48,9 @@ namespace InfraTown.UI
         private BuildingInstance _selectedBuilding;
         private Camera _mainCamera;
 
-        // ¾Ö´Ï¸ŞÀÌ¼Ç ¹× ÇöÀç ¼±ÅÃ Ä«Å×°í¸® »óÅÂ °ü¸®
-        private BuildingType _currentSelectedCategory = BuildingType.Facility; // ÇöÀç ¼±ÅÃµÈ ½Ã¼³ Á¾·ù
-        private Button _lastClickedCategoryButton; // ¸¶Áö¸·À¸·Î ´©¸¥ ¹öÆ° ÃßÀû
+        // ì• ë‹ˆë©”ì´ì…˜ ë° í˜„ì¬ ì„ íƒëœ ì¹´í…Œê³ ë¦¬ ìƒíƒœ ê´€ë¦¬
+        private BuildingType _currentSelectedCategory = BuildingType.Facility;
+        private Button _lastClickedCategoryButton;
         private List<RectTransform> _subButtonRects = new List<RectTransform>();
         private List<Vector2> _subButtonOriginPositions = new List<Vector2>();
         private Sequence _buildMenuSequence;
@@ -61,7 +62,7 @@ namespace InfraTown.UI
             Instance = this;
             _mainCamera = Camera.main;
 
-            // ¼­ºê ¹öÆ° Ä³½Ì
+            // ì„œë¸Œ ë²„íŠ¼ ìºì‹±
             Button[] subBtns = { smallButton, mediumButton, largeButton, cancelButton };
             foreach (var btn in subBtns)
             {
@@ -73,7 +74,7 @@ namespace InfraTown.UI
                 }
             }
 
-            // CanvasGroup ¼¼ÆÃ
+            // CanvasGroup ê²€ì‚¬ ë° ì„¤ì •
             if (buildSubMenuPanel != null && subMenuCanvasGroup == null)
             {
                 subMenuCanvasGroup = buildSubMenuPanel.GetComponent<CanvasGroup>();
@@ -84,7 +85,7 @@ namespace InfraTown.UI
             if (buildSubMenuPanel != null)
                 buildSubMenuPanel.SetActive(false);
 
-            // ¡Ú 2. ¸ŞÀÎ Ä«Å×°í¸® ¹öÆ° 3°³ °¢°¢¿¡ Å¬¸¯ ÀÌº¥Æ® ¿¬°á
+            // ë©”ì¸ ì¹´í…Œê³ ë¦¬ ë²„íŠ¼ ì´ë²¤íŠ¸ ë°”ì¸ë”©
             if (btnFacility != null)
                 btnFacility.onClick.AddListener(() => OnClickCategoryMainButton(btnFacility, BuildingType.Facility));
 
@@ -94,39 +95,42 @@ namespace InfraTown.UI
             if (btnNimbys != null)
                 btnNimbys.onClick.AddListener(() => OnClickCategoryMainButton(btnNimbys, BuildingType.Nimbys));
 
-            // ¼­ºê ¹öÆ° ÀÌº¥Æ® ¿¬°á
+            if (btnHousing != null)
+                btnHousing.onClick.AddListener(() => OnClickCategoryMainButton(btnHousing, BuildingType.Housing));
+
+            // ì„œë¸Œ ë²„íŠ¼ ì´ë²¤íŠ¸ ë°”ì¸ë”©
             if (cancelButton != null)
                 cancelButton.onClick.AddListener(CloseBuildMenu);
 
             if (smallButton != null)
-                smallButton.onClick.AddListener(() => OnSelectBuildingSize("Small"));
+                smallButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Small));
 
             if (mediumButton != null)
-                mediumButton.onClick.AddListener(() => OnSelectBuildingSize("Medium"));
+                mediumButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Medium));
 
             if (largeButton != null)
-                largeButton.onClick.AddListener(() => OnSelectBuildingSize("Large"));
+                largeButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Large));
         }
 
         private void Start()
         {
-            btnInfo.onClick.AddListener(ShowInfoPanel);
-            btnDemolish.onClick.AddListener(DemolishSelectedBuilding);
-            btnCloseInfo.onClick.AddListener(CloseAllUI);
+            if (btnInfo != null) btnInfo.onClick.AddListener(ShowInfoPanel);
+            if (btnDemolish != null) btnDemolish.onClick.AddListener(DemolishSelectedBuilding);
+            if (btnCloseInfo != null) btnCloseInfo.onClick.AddListener(CloseAllUI);
+
             CloseAllUI();
         }
 
         // ==========================================
-        // ¡Ú 3. Ä«Å×°í¸® ¹öÆ° Å¬¸¯ ÅëÇÕ Á¦¾î ·ÎÁ÷
+        // ì¹´í…Œê³ ë¦¬ ë©”ì¸ ë²„íŠ¼ í´ë¦­ ì²˜ë¦¬
         // ==========================================
         private void OnClickCategoryMainButton(Button clickedBtn, BuildingType category)
         {
-            // Å¬¸¯µÈ ¹öÆ° ÂËµæÇÑ Punch È¿°ú
             clickedBtn.transform.DOKill();
             clickedBtn.transform.localScale = Vector3.one;
             clickedBtn.transform.DOPunchScale(Vector3.one * 0.2f, 0.25f, 10, 1f);
 
-            // ÀÌ¹Ì ¿­·Á ÀÖ´Â »óÅÂ¿¡¼­ °°Àº ¹öÆ°À» ´Ù½Ã ´©¸£¸é ¸Ş´º ´İ±â (Åä±Û)
+            // ì—´ë ¤ìˆëŠ” ìƒíƒœì—ì„œ ë™ì¼ ë²„íŠ¼ í´ë¦­ ì‹œ ì„œë¸Œë©”ë‰´ ë‹«ê¸°
             if (_isBuildMenuOpen && _lastClickedCategoryButton == clickedBtn)
             {
                 CloseBuildMenu();
@@ -134,12 +138,9 @@ namespace InfraTown.UI
                 return;
             }
 
-            // ÇöÀç Ä«Å×°í¸® °»½Å
             _currentSelectedCategory = category;
             _lastClickedCategoryButton = clickedBtn;
-            Debug.Log($"¼±ÅÃµÈ Ä«Å×°í¸®: {GetCategoryName(category)}");
 
-            // ¼­ºê¸Ş´º ¿­±â
             OpenBuildMenu();
         }
 
@@ -157,7 +158,7 @@ namespace InfraTown.UI
                 _buildMenuSequence.Join(subMenuCanvasGroup.DOFade(1f, 0.2f));
             }
 
-            // 4°³ ¼­ºê ¹öÆ°ÀÌ 0.05ÃÊ °£°İÀ¸·Î ¼øÂ÷ ÆË¾÷
+            // ì„œë¸Œ ë²„íŠ¼ ìˆœì°¨ íŒì—… ì• ë‹ˆë©”ì´ì…˜
             for (int i = 0; i < _subButtonRects.Count; i++)
             {
                 RectTransform rt = _subButtonRects[i];
@@ -201,56 +202,73 @@ namespace InfraTown.UI
         }
 
         // ==========================================
-        // ¡Ú 4. Å©±â ¼±ÅÃ ½Ã Ä«Å×°í¸®¿Í Å©±â Á¤º¸ Á¶ÇÕ
+        // í¬ê¸° ì„ íƒ ì‹œ BuildingManager ì‹¤ì œ ë°ì´í„° í˜¸ì¶œ ì—°ë™
         // ==========================================
-        private void OnSelectBuildingSize(string size)
+        private void OnSelectBuildingSize(BuildingSizeType sizeType)
         {
-            Debug.Log($"°Ç¼³ ¿äÃ» -> Ä«Å×°í¸®: {_currentSelectedCategory} | Å©±â: {size}");
             CloseBuildMenu();
 
-            // ÃßÈÄ ¿¬°á ¿¹½Ã:
-            // BuildingManager.Instance.StartPlacingBuilding(_currentSelectedCategory, size);
+            // BuildingManagerì™€ ì—°ë™í•˜ì—¬ DB ì¡°ê±´ì— ë§ëŠ” ê±´ë¬¼ ê²€ìƒ‰ í›„ ê±´ì„¤ ëª¨ë“œ ì§„ì…
+            if (BuildingManager.Instance != null)
+            {
+                BuildingData targetData = BuildingManager.Instance.GetBuildingDataByCategoryAndSize(_currentSelectedCategory, sizeType);
+
+                if (targetData != null)
+                {
+                    BuildingManager.Instance.SelectBuildingToBuild(targetData);
+                }
+                else
+                {
+                    Debug.LogWarning($"[BuildingUIManager] ì¡°ê±´ì— ë§ëŠ” ê±´ë¬¼ DBë¥¼ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤. (ì¹´í…Œê³ ë¦¬: {_currentSelectedCategory}, ê·œê²©: {sizeType})");
+                }
+            }
         }
 
         // ==========================================
-        // ±âÁ¸ °Ç¹° Å¬¸¯, Á¤º¸Ã¢, Ã¶°Å ·ÎÁ÷ À¯Áö
+        // ê±´ë¬¼ í´ë¦­, ì •ë³´ì°½, ì² ê±° ì œì–´
         // ==========================================
         public void OnBuildingClicked(BuildingInstance building)
         {
             _selectedBuilding = building;
-            infoPanel.SetActive(false);
+            if (infoPanel != null) infoPanel.SetActive(false);
 
-            actionPanel.SetActive(true);
-            actionPanel.transform.position = _mainCamera.WorldToScreenPoint(building.transform.position);
-
-            actionPanel.transform.localScale = Vector3.zero;
-            actionPanel.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
+            if (actionPanel != null)
+            {
+                actionPanel.SetActive(true);
+                actionPanel.transform.position = _mainCamera.WorldToScreenPoint(building.transform.position);
+                actionPanel.transform.localScale = Vector3.zero;
+                actionPanel.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
+            }
         }
 
         private void ShowInfoPanel()
         {
-            if (_selectedBuilding == null) return;
+            if (_selectedBuilding == null || _selectedBuilding.Data == null) return;
 
-            actionPanel.SetActive(false);
-            infoPanel.SetActive(true);
+            if (actionPanel != null) actionPanel.SetActive(false);
+            if (infoPanel != null) infoPanel.SetActive(true);
 
             BuildingData data = _selectedBuilding.Data;
-            txtBuildingName.text = data.buildingName;
 
-            if (data.buildingIcon != null)
+            if (txtBuildingName != null) txtBuildingName.text = data.buildingName;
+
+            if (imgBuildingIcon != null)
             {
-                imgBuildingIcon.sprite = data.buildingIcon;
-                imgBuildingIcon.gameObject.SetActive(true);
-            }
-            else
-            {
-                imgBuildingIcon.gameObject.SetActive(false);
+                if (data.buildingIcon != null)
+                {
+                    imgBuildingIcon.sprite = data.buildingIcon;
+                    imgBuildingIcon.gameObject.SetActive(true);
+                }
+                else
+                {
+                    imgBuildingIcon.gameObject.SetActive(false);
+                }
             }
 
-            txtCategory.text = $"<b>ºĞ·ù:</b> {GetCategoryName(data.category)}";
-            txtPower.text = $"<b>Àü·Â ¼Òºñ:</b> {data.requiredPower} kW";
-            txtCost.text = $"<b>À¯Áöºñ:</b> ${data.maintenanceCost}/¿ù\n<b>°Ç¼³ºñ:</b> ${data.constructionCost}";
-            txtDescription.text = data.description;
+            if (txtCategory != null) txtCategory.text = $"<b>ë¶„ë¥˜:</b> {GetCategoryName(data.category)}";
+            if (txtPower != null) txtPower.text = $"<b>ì „ë ¥ ì†Œë¹„:</b> {data.requiredPower} kW";
+            if (txtCost != null) txtCost.text = $"<b>ìœ ì§€ë¹„:</b> {data.maintenanceCost:N0}ì›/ì›”\n<b>ê±´ì„¤ë¹„:</b> {data.constructionCost:N0}ì›";
+            if (txtDescription != null) txtDescription.text = data.description;
 
             if (infoPanelCanvasGroup != null)
             {
@@ -258,15 +276,19 @@ namespace InfraTown.UI
                 infoPanelCanvasGroup.DOFade(1f, 0.25f);
             }
 
-            infoPanel.transform.localScale = Vector3.one * 0.8f;
-            infoPanel.transform.DOScale(Vector3.one, 0.4f).SetEase(Ease.OutBack);
+            if (infoPanel != null)
+            {
+                infoPanel.transform.localScale = Vector3.one * 0.8f;
+                infoPanel.transform.DOScale(Vector3.one, 0.4f).SetEase(Ease.OutBack);
+            }
         }
 
         private void DemolishSelectedBuilding()
         {
             if (_selectedBuilding != null)
             {
-                _selectedBuilding.DestroyBuilding();
+                // ì£¼íƒ íŒŒê´´ ì‹œ ì¸êµ¬ ë° ê±´ë¬¼ ì¸ìŠ¤í„´ìŠ¤ íŒŒê´´
+                Destroy(_selectedBuilding.gameObject);
                 _selectedBuilding = null;
             }
             CloseAllUI();
@@ -274,14 +296,14 @@ namespace InfraTown.UI
 
         public void CloseAllUI()
         {
-            if (actionPanel.activeSelf)
+            if (actionPanel != null && actionPanel.activeSelf)
             {
                 actionPanel.transform.DOKill();
                 actionPanel.transform.DOScale(Vector3.zero, 0.2f).SetEase(Ease.InBack)
                     .OnComplete(() => actionPanel.SetActive(false));
             }
 
-            if (infoPanel.activeSelf)
+            if (infoPanel != null && infoPanel.activeSelf)
             {
                 infoPanel.transform.DOKill();
                 if (infoPanelCanvasGroup != null)
@@ -298,13 +320,14 @@ namespace InfraTown.UI
 
         private string GetCategoryName(BuildingType type)
         {
-            switch (type)
+            return type switch
             {
-                case BuildingType.Essential: return "ÇÊ¼ö ½Ã¼³";
-                case BuildingType.Facility: return "ÆíÀÇ ½Ã¼³";
-                case BuildingType.Nimbys: return "Çø¿À ½Ã¼³";
-                default: return "¾Ë ¼ö ¾øÀ½";
-            }
+                BuildingType.Essential => "í•„ìˆ˜ ì‹œì„¤",
+                BuildingType.Facility => "í¸ì˜ ì‹œì„¤",
+                BuildingType.Nimbys => "ë¶ˆì¾Œ ì‹œì„¤",
+                BuildingType.Housing => "ì£¼íƒ",
+                _ => "ë¯¸ë¶„ë¥˜"
+            };
         }
     }
 }
