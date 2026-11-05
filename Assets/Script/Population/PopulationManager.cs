@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using InfraTown.Building;
+using InfraTown.Economy;
 
 namespace InfraTown.Population
 {
@@ -47,7 +48,9 @@ namespace InfraTown.Population
             }
 
             maxPopulationCapacity = newCapacity;
-            OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
+
+            // 인구수 변경 이벤트 및 정부 지원금 한계 수치 자동 갱신 연동
+            NotifyPopulationUpdated();
         }
 
         /// <summary>
@@ -59,7 +62,7 @@ namespace InfraTown.Population
             {
                 currentPopulation = 0;
                 OverCapacityRatio = 0f;
-                OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
+                NotifyPopulationUpdated();
                 return;
             }
 
@@ -88,8 +91,24 @@ namespace InfraTown.Population
                 OverCapacityRatio = 0f;
             }
 
-            OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
+            // 인구수 변경 이벤트 및 정부 지원금 한계 수치 자동 갱신 연동
+            NotifyPopulationUpdated();
+
             Debug.Log($"[1주일 인구 갱신] 현재 인구: {currentPopulation} / 한계치: {maxPopulationCapacity} (초과율: {OverCapacityRatio * 100:F1}%)");
+        }
+
+        /// <summary>
+        /// 인구수 변경 알림 및 지원금 한계 수치 갱신 함수
+        /// </summary>
+        private void NotifyPopulationUpdated()
+        {
+            OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
+
+            // 인구수가 변함에 따라 정부 지원금의 최대 한계 수치를 실시간으로 재계산
+            if (EconomyManager.Instance != null)
+            {
+                EconomyManager.Instance.UpdateGovernmentSubsidyLimit(currentPopulation);
+            }
         }
 
         /// <summary>

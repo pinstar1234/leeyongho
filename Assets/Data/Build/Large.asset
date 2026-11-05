@@ -14,12 +14,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   buildingID: 3
   buildingName: "\uB300\uD615"
+<<<<<<< HEAD
+  requiredPopulation: 0
+=======
   description: "\uD070 \uAC74\uBB3C"
+>>>>>>> 9bdc85485b2bb003134f9707aaebb5198a321a16
   sizeType: 2
   category: 0
   requiredPower: 0
   maintenanceCost: 0
   constructionCost: 0
+  housingCapacity: 0
   satisfactionImpact: 3
   satisfactionRadius: 3
   buildingPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
