@@ -1,4 +1,4 @@
-using UnityEngine;
+ï»¿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using InfraTown.Building;
@@ -11,7 +11,7 @@ namespace InfraTown.UI
     {
         public static BuildingUIManager Instance { get; private set; }
 
-        [Header("Action UI (ÁÂ/¿ì ¹öÆ° ÆĞ³Î)")]
+        [Header("Action UI (ì¢Œ/ìš° ë²„íŠ¼ íŒ¨ë„)")]
         public GameObject actionPanel;
         public Button btnInfo;
         public Button btnDemolish;
@@ -20,17 +20,17 @@ namespace InfraTown.UI
         [SerializeField] private GameObject buildSubMenuPanel;
         [SerializeField] private CanvasGroup subMenuCanvasGroup;
 
-        [Header("Info UI (ÆË¾÷ ÆĞ³Î)")]
+        [Header("Info UI (íŒì—… íŒ¨ë„)")]
         public GameObject infoPanel;
         public CanvasGroup infoPanelCanvasGroup;
 
-        // ¡Ú 1. ±âÁ¸ buildButton ´ë½Å 3°³ ½Ã¼³ Ä«Å×°í¸® ¹öÆ° ¼±¾ğ
-        [Header("Category Main Buttons (¸ŞÀÎ ½Ã¼³ ¹öÆ°µé)")]
-        [SerializeField] private Button btnFacility;   // ÆíÀÇ½Ã¼³
-        [SerializeField] private Button btnEssential;  // ÇÊ¼ö½Ã¼³
-        [SerializeField] private Button btnNimbys;     // Çø¿À½Ã¼³
+        // â˜… 1. ê¸°ì¡´ buildButton ëŒ€ì‹  3ê°œ ì‹œì„¤ ì¹´í…Œê³ ë¦¬ ë²„íŠ¼ ì„ ì–¸
+        [Header("Category Main Buttons (ë©”ì¸ ì‹œì„¤ ë²„íŠ¼ë“¤)")]
+        [SerializeField] private Button btnFacility;   // í¸ì˜ì‹œì„¤
+        [SerializeField] private Button btnEssential;  // í•„ìˆ˜ì‹œì„¤
+        [SerializeField] private Button btnNimbys;     // í˜ì˜¤ì‹œì„¤
 
-        [Header("Sub Buttons (Å©±â ¼±ÅÃ ¹öÆ°µé)")]
+        [Header("Sub Buttons (í¬ê¸° ì„ íƒ ë²„íŠ¼ë“¤)")]
         [SerializeField] private Button smallButton;   // Small
         [SerializeField] private Button mediumButton;  // Medium
         [SerializeField] private Button largeButton;   // Large
@@ -47,9 +47,9 @@ namespace InfraTown.UI
         private BuildingInstance _selectedBuilding;
         private Camera _mainCamera;
 
-        // ¾Ö´Ï¸ŞÀÌ¼Ç ¹× ÇöÀç ¼±ÅÃ Ä«Å×°í¸® »óÅÂ °ü¸®
-        private BuildingType _currentSelectedCategory = BuildingType.Facility; // ÇöÀç ¼±ÅÃµÈ ½Ã¼³ Á¾·ù
-        private Button _lastClickedCategoryButton; // ¸¶Áö¸·À¸·Î ´©¸¥ ¹öÆ° ÃßÀû
+        // ì• ë‹ˆë©”ì´ì…˜ ë° í˜„ì¬ ì„ íƒ ì¹´í…Œê³ ë¦¬ ìƒíƒœ ê´€ë¦¬
+        private BuildingType _currentSelectedCategory = BuildingType.Facility; // í˜„ì¬ ì„ íƒëœ ì‹œì„¤ ì¢…ë¥˜
+        private Button _lastClickedCategoryButton; // ë§ˆì§€ë§‰ìœ¼ë¡œ ëˆ„ë¥¸ ë²„íŠ¼ ì¶”ì 
         private List<RectTransform> _subButtonRects = new List<RectTransform>();
         private List<Vector2> _subButtonOriginPositions = new List<Vector2>();
         private Sequence _buildMenuSequence;
@@ -61,7 +61,7 @@ namespace InfraTown.UI
             Instance = this;
             _mainCamera = Camera.main;
 
-            // ¼­ºê ¹öÆ° Ä³½Ì
+            // ì„œë¸Œ ë²„íŠ¼ ìºì‹±
             Button[] subBtns = { smallButton, mediumButton, largeButton, cancelButton };
             foreach (var btn in subBtns)
             {
@@ -73,7 +73,7 @@ namespace InfraTown.UI
                 }
             }
 
-            // CanvasGroup ¼¼ÆÃ
+            // CanvasGroup ì„¸íŒ…
             if (buildSubMenuPanel != null && subMenuCanvasGroup == null)
             {
                 subMenuCanvasGroup = buildSubMenuPanel.GetComponent<CanvasGroup>();
@@ -84,7 +84,7 @@ namespace InfraTown.UI
             if (buildSubMenuPanel != null)
                 buildSubMenuPanel.SetActive(false);
 
-            // ¡Ú 2. ¸ŞÀÎ Ä«Å×°í¸® ¹öÆ° 3°³ °¢°¢¿¡ Å¬¸¯ ÀÌº¥Æ® ¿¬°á
+            // â˜… 2. ë©”ì¸ ì¹´í…Œê³ ë¦¬ ë²„íŠ¼ 3ê°œ ê°ê°ì— í´ë¦­ ì´ë²¤íŠ¸ ì—°ê²°
             if (btnFacility != null)
                 btnFacility.onClick.AddListener(() => OnClickCategoryMainButton(btnFacility, BuildingType.Facility));
 
@@ -94,7 +94,7 @@ namespace InfraTown.UI
             if (btnNimbys != null)
                 btnNimbys.onClick.AddListener(() => OnClickCategoryMainButton(btnNimbys, BuildingType.Nimbys));
 
-            // ¼­ºê ¹öÆ° ÀÌº¥Æ® ¿¬°á
+            // ì„œë¸Œ ë²„íŠ¼ ì´ë²¤íŠ¸ ì—°ê²°
             if (cancelButton != null)
                 cancelButton.onClick.AddListener(CloseBuildMenu);
 
@@ -117,16 +117,16 @@ namespace InfraTown.UI
         }
 
         // ==========================================
-        // ¡Ú 3. Ä«Å×°í¸® ¹öÆ° Å¬¸¯ ÅëÇÕ Á¦¾î ·ÎÁ÷
+        // â˜… 3. ì¹´í…Œê³ ë¦¬ ë²„íŠ¼ í´ë¦­ í†µí•© ì œì–´ ë¡œì§
         // ==========================================
         private void OnClickCategoryMainButton(Button clickedBtn, BuildingType category)
         {
-            // Å¬¸¯µÈ ¹öÆ° ÂËµæÇÑ Punch È¿°ú
+            // í´ë¦­ëœ ë²„íŠ¼ ì«€ë“í•œ Punch íš¨ê³¼
             clickedBtn.transform.DOKill();
             clickedBtn.transform.localScale = Vector3.one;
             clickedBtn.transform.DOPunchScale(Vector3.one * 0.2f, 0.25f, 10, 1f);
 
-            // ÀÌ¹Ì ¿­·Á ÀÖ´Â »óÅÂ¿¡¼­ °°Àº ¹öÆ°À» ´Ù½Ã ´©¸£¸é ¸Ş´º ´İ±â (Åä±Û)
+            // ì´ë¯¸ ì—´ë ¤ ìˆëŠ” ìƒíƒœì—ì„œ ê°™ì€ ë²„íŠ¼ì„ ë‹¤ì‹œ ëˆ„ë¥´ë©´ ë©”ë‰´ ë‹«ê¸° (í† ê¸€)
             if (_isBuildMenuOpen && _lastClickedCategoryButton == clickedBtn)
             {
                 CloseBuildMenu();
@@ -134,12 +134,12 @@ namespace InfraTown.UI
                 return;
             }
 
-            // ÇöÀç Ä«Å×°í¸® °»½Å
+            // í˜„ì¬ ì¹´í…Œê³ ë¦¬ ê°±ì‹ 
             _currentSelectedCategory = category;
             _lastClickedCategoryButton = clickedBtn;
-            Debug.Log($"¼±ÅÃµÈ Ä«Å×°í¸®: {GetCategoryName(category)}");
+            Debug.Log($"ì„ íƒëœ ì¹´í…Œê³ ë¦¬: {GetCategoryName(category)}");
 
-            // ¼­ºê¸Ş´º ¿­±â
+            // ì„œë¸Œë©”ë‰´ ì—´ê¸°
             OpenBuildMenu();
         }
 
@@ -157,7 +157,7 @@ namespace InfraTown.UI
                 _buildMenuSequence.Join(subMenuCanvasGroup.DOFade(1f, 0.2f));
             }
 
-            // 4°³ ¼­ºê ¹öÆ°ÀÌ 0.05ÃÊ °£°İÀ¸·Î ¼øÂ÷ ÆË¾÷
+            // 4ê°œ ì„œë¸Œ ë²„íŠ¼ì´ 0.05ì´ˆ ê°„ê²©ìœ¼ë¡œ ìˆœì°¨ íŒì—…
             for (int i = 0; i < _subButtonRects.Count; i++)
             {
                 RectTransform rt = _subButtonRects[i];
@@ -201,19 +201,19 @@ namespace InfraTown.UI
         }
 
         // ==========================================
-        // ¡Ú 4. Å©±â ¼±ÅÃ ½Ã Ä«Å×°í¸®¿Í Å©±â Á¤º¸ Á¶ÇÕ
+        // â˜… 4. í¬ê¸° ì„ íƒ ì‹œ ì¹´í…Œê³ ë¦¬ì™€ í¬ê¸° ì •ë³´ ì¡°í•©
         // ==========================================
         private void OnSelectBuildingSize(string size)
         {
-            Debug.Log($"°Ç¼³ ¿äÃ» -> Ä«Å×°í¸®: {_currentSelectedCategory} | Å©±â: {size}");
+            Debug.Log($"ê±´ì„¤ ìš”ì²­ -> ì¹´í…Œê³ ë¦¬: {_currentSelectedCategory} | í¬ê¸°: {size}");
             CloseBuildMenu();
 
-            // ÃßÈÄ ¿¬°á ¿¹½Ã:
+            // ì¶”í›„ ì—°ê²° ì˜ˆì‹œ:
             // BuildingManager.Instance.StartPlacingBuilding(_currentSelectedCategory, size);
         }
 
         // ==========================================
-        // ±âÁ¸ °Ç¹° Å¬¸¯, Á¤º¸Ã¢, Ã¶°Å ·ÎÁ÷ À¯Áö
+        // ê¸°ì¡´ ê±´ë¬¼ í´ë¦­, ì •ë³´ì°½, ì² ê±° ë¡œì§ ìœ ì§€
         // ==========================================
         public void OnBuildingClicked(BuildingInstance building)
         {
@@ -247,9 +247,9 @@ namespace InfraTown.UI
                 imgBuildingIcon.gameObject.SetActive(false);
             }
 
-            txtCategory.text = $"<b>ºĞ·ù:</b> {GetCategoryName(data.category)}";
-            txtPower.text = $"<b>Àü·Â ¼Òºñ:</b> {data.requiredPower} kW";
-            txtCost.text = $"<b>À¯Áöºñ:</b> ${data.maintenanceCost}/¿ù\n<b>°Ç¼³ºñ:</b> ${data.constructionCost}";
+            txtCategory.text = $"<b>ë¶„ë¥˜:</b> {GetCategoryName(data.category)}";
+            txtPower.text = $"<b>ì „ë ¥ ì†Œë¹„:</b> {data.requiredPower} kW";
+            txtCost.text = $"<b>ìœ ì§€ë¹„:</b> ${data.maintenanceCost}/ì›”\n<b>ê±´ì„¤ë¹„:</b> ${data.constructionCost}";
             txtDescription.text = data.description;
 
             if (infoPanelCanvasGroup != null)
@@ -300,10 +300,10 @@ namespace InfraTown.UI
         {
             switch (type)
             {
-                case BuildingType.Essential: return "ÇÊ¼ö ½Ã¼³";
-                case BuildingType.Facility: return "ÆíÀÇ ½Ã¼³";
-                case BuildingType.Nimbys: return "Çø¿À ½Ã¼³";
-                default: return "¾Ë ¼ö ¾øÀ½";
+                case BuildingType.Essential: return "í•„ìˆ˜ ì‹œì„¤";
+                case BuildingType.Facility: return "í¸ì˜ ì‹œì„¤";
+                case BuildingType.Nimbys: return "í˜ì˜¤ ì‹œì„¤";
+                default: return "ì•Œ ìˆ˜ ì—†ìŒ";
             }
         }
     }
