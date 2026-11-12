@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T2_ConvenienceStore
+  m_EditorClassIdentifier:
+  buildingID: convenience_store
+  buildingName: "편의점"
+  description: "생필품 공급, 만족도 증가"
+  requiredPopulation: 50
+  unlockTier: 2
+  easyDescription: "맛있는 과자와 물건을 사는 곳"
+  unlockMessage: "휴지 하나 사려해도 읍내까지 차타고 나가야 해요."
+  constructionDays: 14
+  demolitionDays: 2
+  sizeType: 1
+  category: 1
+  requiredPower: 25
+  maintenanceCost: 120
+  constructionCost: 2500
+  housingCapacity: 0
+  satisfactionImpact: 5
+  satisfactionRadius: 4
+  powerSupplyRadius: 4
+  isPowerPole: 0
+  policePatrolCount: 0
+  fixedAccessTimeMinutes: 3
+  buildingPrefab: {fileID: 160117737285177677, guid: 726f8fec96b10e7428553df93a4c522d, type: 3}
+  previewPrefab: {fileID: 160117737285177677, guid: 726f8fec96b10e7428553df93a4c522d, type: 3}
+  buildingIcon: {fileID: 0}

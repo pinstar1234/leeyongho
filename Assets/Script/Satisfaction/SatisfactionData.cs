@@ -11,6 +11,16 @@ namespace InfraTown.Satisfaction
         Prosperous  // 살기 좋은 활기찬 마을 (81~100%)
     }
 
+    /// <summary>
+    /// 기획서 6장의 만족도 '좋음/나쁨' 상태 (기준값은 SatisfactionManager 인스펙터)
+    /// </summary>
+    public enum SatisfactionState
+    {
+        Bad,    // 나쁨 (기본 30 이하)
+        Normal, // 보통
+        Good    // 좋음 (기본 71 이상)
+    }
+
     [System.Serializable]
     public class SatisfactionFactor
     {
