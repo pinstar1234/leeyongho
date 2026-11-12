@@ -33,8 +33,8 @@ namespace InfraTown.Services
         [Tooltip("시설이 없을 때 읍내까지 가는 기준 시간(분). 단축 비율 = (기준 - 현재) / 기준")]
         [SerializeField] private float townBaselineMinutes = 60f;
 
-        [Tooltip("서비스 1종을 기준 시간에서 0분으로 줄였을 때 받는 최대 보너스 (단축 비율 × 이 값)")]
-        [SerializeField] private float maxBonusPerService = 6f;
+        [Tooltip("주택 1채가 받을 수 있는 접근 보너스 합계의 최대치. 서비스 종류 수로 똑같이 나눠 서비스 1종당 최대치가 된다 (10 ÷ 5종 = 2점)")]
+        [SerializeField] private float maxTotalAccessBonus = 10f;
 
         [field: Header("시설 설치 여부")]
         public bool HasPoliceStation { get; private set; } = false;
@@ -61,7 +61,8 @@ namespace InfraTown.Services
         public float MinutesPerTile => minutesPerTile;
         public float LongAccessThresholdMinutes => longAccessThresholdMinutes;
         public float TownBaselineMinutes => townBaselineMinutes;
-        public float MaxBonusPerService => maxBonusPerService;
+        public float MaxTotalAccessBonus => maxTotalAccessBonus;
+        public float MaxBonusPerService => maxTotalAccessBonus / AllServiceTypes.Length;
 
         // 미설치 시 표기 수치
         public const float DefaultUninstalledTime = 99.9f;
@@ -204,7 +205,7 @@ namespace InfraTown.Services
 
         /// <summary>
         /// 주택 1채가 서비스 1종에서 받는 접근 시간 단축 보너스.
-        /// 단축 비율 = (읍내 기준 시간 - 현재 접근 시간) / 기준 시간 (0~1), 보너스 = 비율 × maxBonusPerService.
+        /// 단축 비율 = (읍내 기준 시간 - 현재 접근 시간) / 기준 시간 (0~1), 보너스 = 비율 × MaxBonusPerService(최대 합계 ÷ 서비스 종류 수).
         /// 시설이 없거나 기준 시간보다 멀면 0.
         /// </summary>
         public float GetAccessBonus(BuildingInstance housing, ServiceType type)
@@ -213,7 +214,7 @@ namespace InfraTown.Services
 
             float time = GetAccessTime(housing, type);
             float ratio = Mathf.Clamp01((townBaselineMinutes - time) / townBaselineMinutes);
-            return ratio * maxBonusPerService;
+            return ratio * MaxBonusPerService;
         }
 
         /// <summary>

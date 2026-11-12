@@ -27,7 +27,7 @@ MonoBehaviour:
   maintenanceCost: 300
   constructionCost: 5000
   housingCapacity: 0
-  satisfactionImpact: 5
+  satisfactionImpact: 1
   satisfactionRadius: 12
   powerSupplyRadius: 4
   isPowerPole: 0

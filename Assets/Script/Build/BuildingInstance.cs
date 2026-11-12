@@ -47,8 +47,38 @@ namespace InfraTown.Building
 
         public void DestroyBuilding()
         {
-            OnBuildingDestroyed?.Invoke(this);
+            NotifyDestroyed();
             Destroy(gameObject);
+        }
+
+        // ─── 철거 알림 보장 ───
+        // UI 등에서 Destroy(gameObject)를 직접 불러도 점유 칸·인구·접근성·유지비가 갱신되도록
+        // OnDestroy에서도 한 번만 알린다. 씬 전환/게임 종료로 사라지는 경우는 알리지 않는다.
+
+        private bool _destroyNotified;
+        private static bool _applicationQuitting;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetQuitFlag()
+        {
+            _applicationQuitting = false;
+            Application.quitting -= OnApplicationQuitting;
+            Application.quitting += OnApplicationQuitting;
+        }
+
+        private static void OnApplicationQuitting() => _applicationQuitting = true;
+
+        private void OnDestroy()
+        {
+            if (_applicationQuitting || !gameObject.scene.isLoaded) return;
+            NotifyDestroyed();
+        }
+
+        private void NotifyDestroyed()
+        {
+            if (_destroyNotified || Data == null) return;
+            _destroyNotified = true;
+            OnBuildingDestroyed?.Invoke(this);
         }
     }
 }

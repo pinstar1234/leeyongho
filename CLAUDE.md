@@ -37,7 +37,8 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 - `[Ignore("미연결: ...")]` 테스트는 아직 연결되지 않은 기능의 목표 동작이다. 해당 기능을 연결하면 `[Ignore]`를 지워 통과시킨다.
 - 실행 결과가 `error CS2011 ... .rsp 지시 파일을 여는 동안 오류`(코드와 무관, 바뀌지 않은 firstpass까지 실패)면, 이전 배치 실행이 남긴 C# 컴파일러 서버(`VBCSCompiler.dll`, 부모 프로세스가 이미 종료된 것) 때문이다. `run-tests.ps1`이 실행 전에 이런 서버를 자동 종료하므로 보통은 다시 실행하면 된다.
 - `dotnet build`는 이 PC에 .NET SDK가 없어 사용할 수 없다.
-- 동작 확인은 플레이 모드에서 `SystemTestManager` 단축키(1: 종합 현황 UI, 3: 강제 정전, 4: 전력 복구, 5: 월 정산 강제 실행)로 한다. 플레이 테스트는 사용자가 해야 하므로 무엇을 확인할지 구체적으로 안내한다.
+- **자동 플레이 테스트**: `powershell -ExecutionPolicy Bypass -File Tools/run-playtest.ps1 [-Scene "Assets/Scenes/2Park 1.unity"]` — 기본 `1park2.unity`를 배치 모드 플레이로 열어 `Assets/Tests/Editor/PlaytestRunner.cs` 시나리오(부팅 → 중간 단계 마을(평균 만족도 84±1.5% 검사) → 완성된 마을 → 종합 현황 UI 값·지원금 슬라이더·건물 정보 UI → 월 정산 → 전신주 → 철거(코드·UI 버튼) → 배드엔딩 → 엔딩 판정 재시작 후 10년 해피엔딩)를 돌린다. 씬에 없는 매니저·건물 목록은 플레이 직전 메모리에서만 채우고 보고서 맨 위에 적는다(씬 저장 안 함). 결과 `Logs/Playtest/report.md` + 스크린샷 PNG(종합 현황 UI 포함), 콘솔 에러는 실패, 폰트 누락 글자는 UI 경고로 집계. 기능을 바꾸면 단위 테스트와 함께 이것도 돌린다(약 3~5분, 대부분 임포트).
+- 사람이 하는 동작 확인은 플레이 모드에서 `SystemTestManager` 단축키(1: 종합 현황 UI, 3: 강제 정전, 4: 전력 복구, 5: 월 정산 강제 실행)로 한다. 플레이 테스트는 사용자가 해야 하므로 무엇을 확인할지 구체적으로 안내한다.
 - 빌드 씬 순서: `Title` → `2park` (`ProjectSettings/EditorBuildSettings.asset`). 나머지 씬(`1park`, `1park2`, `1Park 2`, `2Park 1`, `SampleScene`)은 팀원별 작업/테스트 씬.
 
 ## 아키텍처
@@ -48,6 +49,7 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 
 **데이터.** 건물 정의는 `BuildingData` ScriptableObject(`Assets/Data/Build/*.asset`, 메뉴 `InfraTown/Building Data`). 크기(1x1/2x2/4x4 — 대형은 기획서 3x3에서 사용자 결정으로 4x4로 변경, 2026-11-12), 카테고리(Essential/Facility/Nimbys/Housing/Infrastructure), 전력, 유지비, 건설비, 수용 인구, 만족도 영향·반경, 전력 공급 반경, 해금 인구, 서비스 고정값을 담는다. 수치는 코드가 아니라 이 에셋에서 조정한다. 건물 목록은 `BuildingManager`의 `buildingDatabase`에 등록(씬 인스펙터).
 - 기획서 4장 건물 13종은 `Assets/Data/Build/Spec/T{티어}_{이름}.asset`. 기획서에 있는 값(크기, 분류, 티어, 건설/철거 일수, 설명 3종, 필수 시설 반경 12/15)은 기획서 그대로이고, 비용·유지비·전력·수용 인구·만족도 수치·해금 인구(T2 50 / T3 150 / T4 300)는 임시값이다. `BuildingSpecTests`가 기획서 값과의 일치를 검사한다. 프리팹은 기본 도형(Cube/Capsule/Cylinder/Sphere) 임시 연결, 아이콘 없음.
+- **만족도 밸런스 기준(사용자 결정 2026-11-12)**: 중간 단계 마을(주택 30채 y=0 줄 + 마을회관·편의점·버스·경로당을 y=2 줄에 7칸 간격) 평균 ≈ 84%. 이를 위해 필수 시설 영향치 +1(반경은 기획서 12/15), 마을회관·편의점·버스 +6/반경 7, 경로당 +9/반경 6. 완성된 마을(+필수 4종 y=5 줄)은 약 95%. 영향치를 바꾸면 자동 플레이 테스트의 84% 검사로 확인한다.
 - `Assets/Data/Build/House|Small|Medium.asset`은 초기 테스트용 데이터.
 - `1park2.unity`에는 `BuildingManager`가 두 개(GridManager 오브젝트, BuildingManager 오브젝트) 있고 둘 다 13종이 등록되어 있다. 싱글톤 중복 처리가 `Destroy(gameObject)`라서 GridManager 쪽이 중복으로 판정되면 그리드까지 사라질 수 있다(팀원 2와 정리 필요).
 - 분류 `Infrastructure`(도로·전신주)는 기획서 4장 '인프라'. `isPowerPole` 데이터는 배치 시 `UtilityPoleInstance`가 자동으로 붙는다.
@@ -60,16 +62,22 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 4. `SatisfactionManager` — 주택별 만족도 = 70 + 반경(체비셰프) 안 `satisfactionImpact` 합 + 접근 시간 단축 보너스 − 주택별 정전 감점 − 마을 전체 감점(인구 초과, 정전). 주택별 `SatisfactionState`(좋음 ≥71 / 나쁨 ≤30)와 `GoodHousingRatio`를 내고, 마을 수치는 주택 평균 → 5단계 `SatisfactionTier`와 마을 `CurrentState`.
 5. `PopulationManager` — 만족도 50% 이상이면 주간 유입. 주택 철거로 수용량이 줄어도 주민은 '초과 인구'로 남아 감점(초과 1%당 0.5, 최대 50)을 주고 매주 초과분의 절반이 떠난다.
 6. `EconomyManager` — 월 지원금(15,000 + 인구×50) 수령 후 유지비 지출. 잔액이 모자라면 잔액 0까지만 내고 `LastUnpaidMaintenance`에 기록.
-7. `PowerManager` — 시작 시와 매월 목표량 구매. 전봇대(`UtilityPoleInstance`)가 없으면 부족 비율만큼 마을 전체 감점, 있으면 정상 전봇대 반경 밖 주택만 개별 감점. 전력 0이면 전면 정전 감점 30. (현재 전봇대가 붙은 프리팹은 없음)
-8. `ServiceAccessibilityManager` — 주택별로 가장 빠른 시설까지 접근 시간 = 시설 `fixedAccessTimeMinutes`(기본 시간) + 두 건물 영역 사이 빈 칸 수(맨해튼) × `minutesPerTile`(0.5분). 마을 수치는 주택 평균, 기준(15분) 넘는 주택 수는 불만 문구로. 시설 종류는 ID/이름(police·경찰, hospital·병원, fire·소방, school·학교, convenience·store·편의점)으로 판별하고 나머지(마을회관, 버스 정류장 등)는 접근성 계산에서 빠진다. 만족도 보너스 = 서비스마다 (읍내 기준 60분 − 접근 시간)/60 × 6점 (기획서 6장 '단축 비율 보너스').
+7. `PowerManager` — 시작 시와 매월 목표량(`TargetPurchasedPower`, 기본 200kW) 구매. 플레이어는 종합 현황의 전력 슬라이더(`OverviewUI.powerSlider`, 1park2에만 있음)로 다음 달 구매량을 0~2,000kW, 10kW 단위로 정하고 **다음 월간 정산부터** 적용된다(사용자 결정, 지원금 슬라이더와 같은 방식). `MonthlyPurchaseCost`, `NextMonthShortage`, `OnTargetPowerChanged` 제공. 전봇대(`UtilityPoleInstance`)가 없으면 부족 비율만큼 마을 전체 감점, 있으면 정상 전봇대 반경 밖 주택만 개별 감점. 전력 0이면 전면 정전 감점 30. (현재 전봇대가 붙은 프리팹은 없음)
+8. `ServiceAccessibilityManager` — 주택별로 가장 빠른 시설까지 접근 시간 = 시설 `fixedAccessTimeMinutes`(기본 시간) + 두 건물 영역 사이 빈 칸 수(맨해튼) × `minutesPerTile`(0.5분). 마을 수치는 주택 평균, 기준(15분) 넘는 주택 수는 불만 문구로. 시설 종류는 ID/이름(police·경찰, hospital·병원, fire·소방, school·학교, convenience·store·편의점)으로 판별하고 나머지(마을회관, 버스 정류장 등)는 접근성 계산에서 빠진다. 만족도 보너스 = 서비스마다 (읍내 기준 60분 − 접근 시간)/60 × 2점, 주택당 합계 최대 `maxTotalAccessBonus` 10점(5종 균등 분배, 사용자 결정 2026-11-12) (기획서 6장 '단축 비율 보너스').
 10. `GameOutcomeManager` — 엔딩 판정(하루마다 `TimeManager.OnDateChanged`). 패배: 마을 평균 '나쁨' 30일 연속(`RequestDefeatGrace/ReleaseDefeatGrace`로 공사 중 유예). 승리: 10년(360일×10) 경과 + 필수 시설(병원·학교·소방·경찰) 설치 + '좋음' 주택 70% 이상 30일 연속 + 인구 기준(기획 미정, 0). 10년에 미달이면 계속 플레이. 씬에 없으면 `GameLoopManager.Start`가 자기 오브젝트에 추가한다(씬 수정 회피). 종료 시 시간 정지 + `OnGameEnded`.
 9. `TimeManager` — 하루 90초, 0~3배속(`Time.timeScale`). 팝업/대화는 `RequestEventPause(source)`/`ReleaseEventPause(source)`로 일시정지 잠금을 건다.
 
-건물 철거는 `BuildingInstance.DestroyBuilding()` → 정적 이벤트 `OnBuildingDestroyed`를 `BuildingManager`(점유 해제)와 `GameLoopManager`(재계산)가 구독.
+건물 철거는 `BuildingInstance.DestroyBuilding()` → 정적 이벤트 `OnBuildingDestroyed`를 `BuildingManager`(점유 해제)와 `GameLoopManager`(재계산)가 구독. UI 등이 `Destroy(gameObject)`를 직접 불러도 `BuildingInstance.OnDestroy`가 한 번만 알린다(씬 전환·게임 종료 시는 알리지 않음).
 
 **남은 과제 (2026-11-12 기준).**
+- `2Park 1.unity`(종합 현황 UI가 있는 씬)에 `EconomyManager`·`PopulationManager`·`PowerManager`·`ServiceAccessibilityManager`·`TimeManager`가 없고 건물 목록도 초기 테스트용(House/Small/Medium)이다 → 이대로 플레이하면 시간·정산·전력·접근성이 동작하지 않는다(자동 플레이 테스트는 메모리에서만 임시로 채워 진행). 팀원 2와 씬에 추가 필요.
+- 신청 지원금은 자동으로 오르지 않는다(종합 현황 슬라이더로만 변경, 기본 15,000원).
+- 종합 현황 불만 문구의 '•'가 `Maplestory Bold SDF` 폰트에 없어 빈칸으로 나온다(폰트 fallback 또는 문구 기호 변경 필요).
+- 기본 전력 구매량 200kW는 주택 30채 + 시설 13종 규모(약 500kW)에 부족하다(밸런스, 보류).
+- 중간 단계 평균 84%면 주택 거의 전부가 '좋음'(≥71)이라, 필수 시설 4종만 갖추면 승리 조건의 '좋음 70%'는 쉽게 채워진다. 승리를 어렵게 하려면 '좋음' 기준값이나 비율을 조정해야 한다(밸런스, 보류).
+- `1park2.unity`에 `2Park 1`의 `OverViewCanvas`(종합 현황판 + 여는 버튼)를 복제해 두었고, 그 안에 `PowerPurchaseText`/`PowerSlider`(지원금 슬라이더 복제본, PowerText 아래 임시 위치)를 추가했다(2026-11-12, 사용자 승인). `2Park 1`의 종합 현황판에는 전력 슬라이더가 없다.
+- 임시 프리팹 크기가 점유 칸과 맞지 않는다(Cube 8m → 2x2 소방·경찰이 4칸 크기로 겹쳐 보임, 4x4 매립지가 Sphere 4m, 2x2 편의시설이 Capsule 2m, 피벗이 중앙이라 절반이 땅에 묻힘).
 - 엔딩·경고를 보여줄 UI(팀원 1)가 없다: `GameOutcomeManager.OnGameEnded`, `OnBadStreakChanged`를 구독하면 된다.
-- `OverviewUI`(팀원 1 담당)의 소방서 접근 시간 표시가 `{fireStationTimeText:F1}`로 되어 있어 값이 아닌 텍스트 오브젝트를 출력한다 → `mgr.FireStationAccessTime`이어야 함.
 - `Assets/Data/Build/House.asset`(테스트용)의 `housingCapacity`가 0이다. 기획서 데이터는 `Spec/T1_House.asset`(수용 10).
 - 건설·철거 기간(`constructionDays`/`demolitionDays`)은 데이터만 있고 로직 없음(즉시 완공). 주민세, 풍력 발전소, 인구 구간별 지원금, 모드 선택도 미구현.
 

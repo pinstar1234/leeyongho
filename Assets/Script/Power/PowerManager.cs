@@ -16,6 +16,12 @@ namespace InfraTown.Power
         [SerializeField] private int pricePerPowerUnit = 10;     // 1kW당 10원
         [SerializeField] private int targetPurchasedPower = 200; // 매달 자동 구매할 전력량
 
+        [Tooltip("플레이어가 종합 현황에서 정할 수 있는 월 구매량 최대치 (슬라이더 최대값)")]
+        [SerializeField] private int maxPurchasablePower = 2000;
+
+        [Tooltip("월 구매량 조절 단위 (kW)")]
+        [SerializeField] private int purchaseStep = 10;
+
         [Tooltip("게임 시작 시 첫 달 전력을 바로 구매 (끄면 첫 월간 정산 전까지 전력 0)")]
         [SerializeField] private bool purchaseOnStart = true;
 
@@ -34,6 +40,14 @@ namespace InfraTown.Power
         public int CurrentUsedPower => currentUsedPower;
         public int TargetPurchasedPower => targetPurchasedPower;
         public int PricePerPowerUnit => pricePerPowerUnit;
+        public int MaxPurchasablePower => maxPurchasablePower;
+        public int PurchaseStep => purchaseStep;
+
+        /// <summary>다음 월간 정산에 드는 전력 구매 비용 (목표량 × 단가)</summary>
+        public int MonthlyPurchaseCost => targetPurchasedPower * pricePerPowerUnit;
+
+        /// <summary>다음 달 목표량으로 지금 사용량을 감당하지 못하는 양 (0이면 충분)</summary>
+        public int NextMonthShortage => Mathf.Max(0, currentUsedPower - targetPurchasedPower);
 
         /// <summary>필요 전력이 보유 전력보다 많은 상태</summary>
         public bool IsPowerShortage => currentUsedPower > currentAvailablePower;
@@ -48,6 +62,7 @@ namespace InfraTown.Power
         public IReadOnlyList<UtilityPoleInstance> BlackedOutPoles => _blackedOutPoles;
 
         public event Action<int, int> OnPowerDataChanged; // (사용 전력, 보유 전력)
+        public event Action<int, int> OnTargetPowerChanged; // (다음 달 구매량, 월 구매 비용)
 
         private bool _subscribedToMonthlyTick;
 
@@ -80,9 +95,18 @@ namespace InfraTown.Power
             }
         }
 
+        /// <summary>
+        /// 다음 월간 정산부터 매달 구매할 전력량 설정 (종합 현황 슬라이더).
+        /// 0 ~ maxPurchasablePower, purchaseStep 단위로 맞춘다. 이번 달 보유 전력은 바뀌지 않는다.
+        /// </summary>
         public void SetTargetPurchasedPower(int amount)
         {
-            targetPurchasedPower = Mathf.Max(0, amount);
+            int step = Mathf.Max(1, purchaseStep);
+            int clamped = Mathf.Clamp(amount, 0, Mathf.Max(0, maxPurchasablePower));
+            targetPurchasedPower = Mathf.RoundToInt((float)clamped / step) * step;
+            if (targetPurchasedPower > maxPurchasablePower) targetPurchasedPower -= step;
+
+            OnTargetPowerChanged?.Invoke(targetPurchasedPower, MonthlyPurchaseCost);
             OnPowerDataChanged?.Invoke(currentUsedPower, currentAvailablePower);
         }
 
