@@ -8,15 +8,19 @@ namespace InfraTown.Building
         public BuildingData Data { get; private set; }
         public Vector2Int OriginGridPos { get; private set; }
 
+        /// <summary>설치 시 플레이어가 돌린 Y축 회전 (0/90/180/270, 프리팹 원래 회전 제외)</summary>
+        public float RotationY { get; private set; }
+
         private float _lastRightClickTime = 0f;
         private const float DoubleClickThreshold = 0.3f; // 더블클릭 인정 시간 (0.3초)
 
         public static event Action<BuildingInstance> OnBuildingDestroyed;
 
-        public void Init(BuildingData data, Vector2Int gridPos)
+        public void Init(BuildingData data, Vector2Int gridPos, float rotationY = 0f)
         {
             Data = data;
             OriginGridPos = gridPos;
+            RotationY = rotationY;
         }
 
 
