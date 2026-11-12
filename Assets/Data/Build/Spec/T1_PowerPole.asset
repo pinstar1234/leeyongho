@@ -11,14 +11,16 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T1_PowerPole
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: power_pole
-  buildingName: "전신주"
-  description: "전력 전달 (반경 4타일 주택에 전기 연결)"
+  buildingName: "\uC804\uC2E0\uC8FC"
+  description: "\uC804\uB825 \uC804\uB2EC (\uBC18\uACBD 4\uD0C0\uC77C \uC8FC\uD0DD\uC5D0
+    \uC804\uAE30 \uC5F0\uACB0)"
   requiredPopulation: 0
   unlockTier: 1
-  easyDescription: "전깃줄 (모든 건물 연결 필요)"
-  unlockMessage: "비만 오면 길이 진흙밭이 되어 통행이 불가능합니다."
+  easyDescription: "\uC804\uAE43\uC904 (\uBAA8\uB4E0 \uAC74\uBB3C \uC5F0\uACB0 \uD544\uC694)"
+  unlockMessage: "\uBE44\uB9CC \uC624\uBA74 \uAE38\uC774 \uC9C4\uD759\uBC2D\uC774
+    \uB418\uC5B4 \uD1B5\uD589\uC774 \uBD88\uAC00\uB2A5\uD569\uB2C8\uB2E4."
   constructionDays: 0
   demolitionDays: 0
   sizeType: 0
@@ -33,6 +35,6 @@ MonoBehaviour:
   isPowerPole: 1
   policePatrolCount: 0
   fixedAccessTimeMinutes: 5
-  buildingPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
-  previewPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  buildingPrefab: {fileID: 6926923808065784373, guid: bb4ec1904e4190c408399cb517b11551, type: 3}
+  previewPrefab: {fileID: 6926923808065784373, guid: bb4ec1904e4190c408399cb517b11551, type: 3}
   buildingIcon: {fileID: 0}

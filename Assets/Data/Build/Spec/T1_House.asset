@@ -11,14 +11,15 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T1_House
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: house
-  buildingName: "주택"
-  description: "인구 제공, 매월 주민세 창출"
+  buildingName: "\uC8FC\uD0DD"
+  description: "\uC778\uAD6C \uC81C\uACF5, \uB9E4\uC6D4 \uC8FC\uBBFC\uC138 \uCC3D\uCD9C"
   requiredPopulation: 0
   unlockTier: 1
-  easyDescription: "사람이 사는 집 (주민 늘어남)"
-  unlockMessage: "살 곳이 부족해 젊은이들이 마을을 떠나고 있어요."
+  easyDescription: "\uC0AC\uB78C\uC774 \uC0AC\uB294 \uC9D1 (\uC8FC\uBBFC \uB298\uC5B4\uB0A8)"
+  unlockMessage: "\uC0B4 \uACF3\uC774 \uBD80\uC871\uD574 \uC80A\uC740\uC774\uB4E4\uC774
+    \uB9C8\uC744\uC744 \uB5A0\uB098\uACE0 \uC788\uC5B4\uC694."
   constructionDays: 7
   demolitionDays: 1
   sizeType: 0
@@ -33,6 +34,6 @@ MonoBehaviour:
   isPowerPole: 0
   policePatrolCount: 0
   fixedAccessTimeMinutes: 5
-  buildingPrefab: {fileID: 7301714859460476872, guid: d3fab1e8bda6abb4b94547cf55e451ae, type: 3}
-  previewPrefab: {fileID: 7301714859460476872, guid: d3fab1e8bda6abb4b94547cf55e451ae, type: 3}
+  buildingPrefab: {fileID: 895415692000207866, guid: 41c3986d79f1b3d468e59963ab48c86e, type: 3}
+  previewPrefab: {fileID: 895415692000207866, guid: 41c3986d79f1b3d468e59963ab48c86e, type: 3}
   buildingIcon: {fileID: 0}

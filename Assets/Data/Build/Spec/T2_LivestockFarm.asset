@@ -11,14 +11,16 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T2_LivestockFarm
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: livestock_farm
-  buildingName: "축사 · 돈사"
-  description: "소/돼지 사육 (악취 감점 발생)"
+  buildingName: "\uCD95\uC0AC \xB7 \uB3C8\uC0AC"
+  description: "\uC18C/\uB3FC\uC9C0 \uC0AC\uC721 (\uC545\uCDE8 \uAC10\uC810 \uBC1C\uC0DD)"
   requiredPopulation: 50
   unlockTier: 2
-  easyDescription: "냄새가 나는 소/돼지 농장 냄새 주의!"
-  unlockMessage: "농가 소득은 늘었지만 축사 악취 때문에 민원이 거세집니다."
+  easyDescription: "\uB0C4\uC0C8\uAC00 \uB098\uB294 \uC18C/\uB3FC\uC9C0 \uB18D\uC7A5
+    \uB0C4\uC0C8 \uC8FC\uC758!"
+  unlockMessage: "\uB18D\uAC00 \uC18C\uB4DD\uC740 \uB298\uC5C8\uC9C0\uB9CC \uCD95\uC0AC
+    \uC545\uCDE8 \uB54C\uBB38\uC5D0 \uBBFC\uC6D0\uC774 \uAC70\uC138\uC9D1\uB2C8\uB2E4."
   constructionDays: 14
   demolitionDays: 2
   sizeType: 1
@@ -33,6 +35,6 @@ MonoBehaviour:
   isPowerPole: 0
   policePatrolCount: 0
   fixedAccessTimeMinutes: 5
-  buildingPrefab: {fileID: 6929862600562403293, guid: cd8d54ae1cff93f4d862a8966825adab, type: 3}
-  previewPrefab: {fileID: 6929862600562403293, guid: cd8d54ae1cff93f4d862a8966825adab, type: 3}
+  buildingPrefab: {fileID: 4379147635796491995, guid: 728c33eee82379748957887a53d565c3, type: 3}
+  previewPrefab: {fileID: 4379147635796491995, guid: 728c33eee82379748957887a53d565c3, type: 3}
   buildingIcon: {fileID: 0}
