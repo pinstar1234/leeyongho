@@ -34,6 +34,7 @@ namespace InfraTown.Tests.Playtest
         private const string OutKey = "InfraTown.Playtest.Out";
         private const string SceneKey = "InfraTown.Playtest.Scene";
         private const string InjectedKey = "InfraTown.Playtest.Injected";
+        private const string ModeKey = "InfraTown.Playtest.Mode";
         private const string DefaultScene = "Assets/Scenes/1park2.unity";
 
         // 밸런스 기준: 중간 단계 마을(주택 30채 + Tier 1~2 시설) 평균 만족도 목표 (사용자 결정 2026-11-12)
@@ -68,6 +69,7 @@ namespace InfraTown.Tests.Playtest
             SessionState.SetBool(ActiveKey, true);
             SessionState.SetString(OutKey, GetArg("-playtestOut") ?? Path.GetFullPath("Logs/Playtest"));
             SessionState.SetString(SceneKey, scene);
+            SessionState.SetString(ModeKey, GetArg("-playtestMode") ?? "full");
 
             EditorSceneManager.OpenScene(scene, OpenSceneMode.Single);
             SessionState.SetString(InjectedKey, string.Join("\n", PrepareScene()));
@@ -169,6 +171,12 @@ namespace InfraTown.Tests.Playtest
             else foreach (var line in injected.Split('\n')) Note("⚠ " + line);
             yield return Frames(3);
             yield return BootChecks();
+
+            if (SessionState.GetString(ModeKey, "full") == "rotation")
+            {
+                yield return RotationScenario();
+                yield break;
+            }
 
             Section("1-1. 중간 단계 마을 — 주택 30채 + Tier 1~2 시설 (실제 배치 경로)");
             yield return PlaceHouses();
@@ -607,6 +615,130 @@ namespace InfraTown.Tests.Playtest
             Shot("04_victory_town", null);
         }
 
+        // ───────────────────────── 회전 모드 (-playtestMode rotation) ─────────────────────────
+
+        private const int RotationTestCount = 100;
+        private const int RotationTestCycles = 3;
+
+        /// <summary>
+        /// 건물 100개를 Q/E로 무작위 회전해 설치 → 미리보기와 설치 모습 일치 확인 → 전부 철거, 를 반복
+        /// </summary>
+        private static IEnumerator RotationScenario()
+        {
+            var manager = BuildingManager.Instance;
+            var loop = GameLoopManager.Instance;
+            EconomyManager.Instance.AddMoney(100_000_000);
+
+            // 원래 회전이 들어간 길쭉한 테스트 프리팹 (에셋에서 X -90° 등으로 들여오는 경우를 흉내)
+            var template = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            template.name = "[Playtest] 회전 테스트 프리팹";
+            template.transform.position = new Vector3(0f, -500f, 0f);
+            template.transform.rotation = Quaternion.Euler(-90f, 30f, 0f);
+            template.transform.localScale = new Vector3(1.2f, 3.2f, 0.6f);
+            UnityEngine.Object.Destroy(template.GetComponent<Collider>());
+
+            var testData = new List<BuildingData>();
+            foreach (var size in new[] { BuildingSizeType.Small, BuildingSizeType.Medium, BuildingSizeType.Large })
+            {
+                var d = ScriptableObject.CreateInstance<BuildingData>();
+                d.buildingID = $"rotation_test_{size}";
+                d.buildingName = $"회전 테스트 {size}";
+                d.category = BuildingType.Facility;
+                d.sizeType = size;
+                d.buildingPrefab = template;
+                testData.Add(d);
+            }
+            var database = TestWorld.GetField<List<BuildingData>>(manager, "buildingDatabase");
+            database.AddRange(testData);
+            // 인구 0명에서 지을 수 있는 기획서 Tier 1 건물(원래 회전 0)도 섞는다
+            var mixed = testData.Concat(new[] { Data("village_hall"), Data("road"), Data("house") }).ToList();
+
+            Note($"테스트 프리팹 원래 회전 {template.transform.rotation.eulerAngles} (X -90°, Y 30°), 배치 {RotationTestCount}개 × {RotationTestCycles}회 반복");
+            var rng = new System.Random(20261112);
+
+            for (int cycle = 1; cycle <= RotationTestCycles; cycle++)
+            {
+                Section($"회전 테스트 {cycle}회차 — {RotationTestCount}개 설치");
+                int placedCount = 0, previewMismatch = 0, expectedMismatch = 0, positionMismatch = 0, rotationValueMismatch = 0, cellMismatch = 0;
+                var placed = new List<BuildingInstance>();
+                var rotationsUsed = new HashSet<float>();
+
+                for (int i = 0; i < RotationTestCount; i++)
+                {
+                    var data = mixed[i % mixed.Count];
+                    var cell = new Vector2Int((i % 15) * 4, (i / 15) * 4);
+
+                    manager.SelectBuildingToBuild(data);
+                    // Q(+90) / E(-90)를 무작위 횟수만큼 누른 것과 같은 호출
+                    int presses = rng.Next(0, 6);
+                    bool useQ = rng.Next(2) == 0;
+                    for (int p = 0; p < presses; p++) manager.RotatePreview(useQ ? 90f : -90f);
+                    float expectedY = Mathf.Repeat((useQ ? 90f : -90f) * presses, 360f);
+                    if (!Mathf.Approximately(manager.CurrentRotationY, expectedY)) rotationValueMismatch++;
+
+                    TestWorld.Invoke(manager, "UpdateBuildingPreview", cell); // 마우스가 그 칸 위에 있는 상태
+                    var preview = TestWorld.GetField<GameObject>(manager, "_previewInstance");
+                    Quaternion previewRot = preview.transform.rotation;
+                    Vector3 previewPos = preview.transform.position;
+
+                    TestWorld.Invoke(manager, "TryPlaceBuilding", cell);
+                    var b = GetGrid()[cell.x, cell.y];
+                    if (b == null || b.Data != data) { Fail($"{i}번 설치", $"{data.buildingID} @ {cell}"); continue; }
+                    placedCount++;
+                    placed.Add(b);
+                    rotationsUsed.Add(b.RotationY);
+
+                    Quaternion expected = Quaternion.Euler(0f, b.RotationY, 0f) * data.buildingPrefab.transform.rotation;
+                    if (Quaternion.Angle(previewRot, b.transform.rotation) > 0.01f) previewMismatch++;
+                    if (Quaternion.Angle(expected, b.transform.rotation) > 0.01f) expectedMismatch++;
+                    if (Vector3.Distance(previewPos, b.transform.position) > 0.001f) positionMismatch++;
+                    if (!Mathf.Approximately(b.RotationY, manager.CurrentRotationY)) rotationValueMismatch++;
+
+                    var size = data.GridSize;
+                    var grid = GetGrid();
+                    for (int x = cell.x; x < cell.x + size.x; x++)
+                        for (int y = cell.y; y < cell.y + size.y; y++)
+                            if (grid[x, y] != b) cellMismatch++;
+                }
+                manager.CancelBuildingMode();
+                yield return Frames(2);
+
+                Check($"{RotationTestCount}개 모두 설치", placedCount == RotationTestCount, $"{placedCount}개");
+                Check("설치된 회전 = 설치 직전 미리보기 회전 (전부)", previewMismatch == 0, $"불일치 {previewMismatch}개");
+                Check("설치된 회전 = 플레이어 Y 회전 × 프리팹 원래 회전", expectedMismatch == 0, $"불일치 {expectedMismatch}개");
+                Check("설치 위치 = 미리보기 위치", positionMismatch == 0, $"불일치 {positionMismatch}개");
+                Check("Q/E 누른 만큼 회전 + 건물에 기록된 RotationY = 설치 당시 회전", rotationValueMismatch == 0, $"불일치 {rotationValueMismatch}개");
+                Check("회전해도 점유 칸(1x1/2x2/4x4)이 정확", cellMismatch == 0, $"어긋난 칸 {cellMismatch}개");
+                Check("0/90/180/270 네 방향이 모두 쓰임", rotationsUsed.SetEquals(new[] { 0f, 90f, 180f, 270f }),
+                    string.Join(", ", rotationsUsed.OrderBy(r => r)));
+                Check("게임 루프에 100개 등록", loop.PlacedBuildings.Count == RotationTestCount, $"{loop.PlacedBuildings.Count}개");
+                if (cycle == 1) Shot("rotation_placed", null, new Vector3(20f, 0f, 14f));
+
+                Section($"회전 테스트 {cycle}회차 — 전부 철거");
+                for (int i = 0; i < placed.Count; i++)
+                {
+                    // 절반은 코드 경로(DestroyBuilding), 절반은 UI [철거] 버튼과 같은 Destroy(gameObject)
+                    if (i % 2 == 0) placed[i].DestroyBuilding();
+                    else UnityEngine.Object.Destroy(placed[i].gameObject);
+                }
+                yield return Frames(3);
+
+                var gridAfter = GetGrid();
+                int occupied = 0;
+                foreach (var c in gridAfter) if (c != null) occupied++;
+                int alive = UnityEngine.Object.FindObjectsOfType<BuildingInstance>().Length;
+                Check("철거 후 남은 건물 오브젝트 0개", alive == 0, $"{alive}개");
+                Check("철거 후 점유 칸 0개", occupied == 0, $"{occupied}칸");
+                Check("철거 후 게임 루프 목록 비어 있음 (삭제된 참조 없음)", loop.PlacedBuildings.Count == 0,
+                    $"{loop.PlacedBuildings.Count}개");
+                Check("철거 후 유지비 합계 0", loop.GetTotalMaintenanceCost() == 0, $"{loop.GetTotalMaintenanceCost():N0}");
+                Check("미리보기 오브젝트가 남지 않음", TestWorld.GetField<GameObject>(manager, "_previewInstance") == null);
+            }
+
+            database.RemoveAll(d => testData.Contains(d));
+            UnityEngine.Object.Destroy(template);
+        }
+
         // ───────────────────────── 도우미 ─────────────────────────
 
         private static BuildingData Data(string id) =>
@@ -692,12 +824,12 @@ namespace InfraTown.Tests.Playtest
         }
 
         /// <summary>3D 화면 촬영. overlayCanvas를 주면 그 UI도 함께 찍는다 (잠시 카메라 렌더 모드로 바꿨다 되돌림)</summary>
-        private static void Shot(string name, Canvas overlayCanvas)
+        private static void Shot(string name, Canvas overlayCanvas, Vector3? center = null)
         {
             var cam = Camera.main;
             if (cam == null) { Note($"스크린샷 {name}: Main Camera 없음"); return; }
 
-            Vector3 lookAt = new Vector3(32f, 0f, 10f);
+            Vector3 lookAt = center ?? new Vector3(32f, 0f, 10f);
             var savedPos = cam.transform.position;
             var savedRot = cam.transform.rotation;
             cam.transform.position = lookAt + new Vector3(0f, 56f, -42f);

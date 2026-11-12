@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 - `[Ignore("미연결: ...")]` 테스트는 아직 연결되지 않은 기능의 목표 동작이다. 해당 기능을 연결하면 `[Ignore]`를 지워 통과시킨다.
 - 실행 결과가 `error CS2011 ... .rsp 지시 파일을 여는 동안 오류`(코드와 무관, 바뀌지 않은 firstpass까지 실패)면, 이전 배치 실행이 남긴 C# 컴파일러 서버(`VBCSCompiler.dll`, 부모 프로세스가 이미 종료된 것) 때문이다. `run-tests.ps1`이 실행 전에 이런 서버를 자동 종료하므로 보통은 다시 실행하면 된다.
 - `dotnet build`는 이 PC에 .NET SDK가 없어 사용할 수 없다.
-- **자동 플레이 테스트**: `powershell -ExecutionPolicy Bypass -File Tools/run-playtest.ps1 [-Scene "Assets/Scenes/2Park 1.unity"]` — 기본 `1park2.unity`를 배치 모드 플레이로 열어 `Assets/Tests/Editor/PlaytestRunner.cs` 시나리오(부팅 → 중간 단계 마을(평균 만족도 84±1.5% 검사) → 완성된 마을 → 종합 현황 UI 값·지원금 슬라이더·건물 정보 UI → 월 정산 → 전신주 → 철거(코드·UI 버튼) → 배드엔딩 → 엔딩 판정 재시작 후 10년 해피엔딩)를 돌린다. 씬에 없는 매니저·건물 목록은 플레이 직전 메모리에서만 채우고 보고서 맨 위에 적는다(씬 저장 안 함). 결과 `Logs/Playtest/report.md` + 스크린샷 PNG(종합 현황 UI 포함), 콘솔 에러는 실패, 폰트 누락 글자는 UI 경고로 집계. 기능을 바꾸면 단위 테스트와 함께 이것도 돌린다(약 3~5분, 대부분 임포트).
+- **자동 플레이 테스트**: `powershell -ExecutionPolicy Bypass -File Tools/run-playtest.ps1 [-Scene "Assets/Scenes/2Park 1.unity"]` — 기본 `1park2.unity`를 배치 모드 플레이로 열어 `Assets/Tests/Editor/PlaytestRunner.cs` 시나리오(부팅 → 중간 단계 마을(평균 만족도 84±1.5% 검사) → 완성된 마을 → 종합 현황 UI 값·지원금 슬라이더·건물 정보 UI → 월 정산 → 전신주 → 철거(코드·UI 버튼) → 배드엔딩 → 엔딩 판정 재시작 후 10년 해피엔딩)를 돌린다. 씬에 없는 매니저·건물 목록은 플레이 직전 메모리에서만 채우고 보고서 맨 위에 적는다(씬 저장 안 함). 결과 `Logs/Playtest/report.md` + 스크린샷 PNG(종합 현황 UI 포함), 콘솔 에러는 실패, 폰트 누락 글자는 UI 경고로 집계. 기능을 바꾸면 단위 테스트와 함께 이것도 돌린다(약 3~5분, 대부분 임포트). `-Mode rotation`은 10년 진행 없이 건물 100개를 Q/E 무작위 회전으로 설치 → 미리보기·설치 회전/위치/점유 칸 일치 확인 → 전부 철거(코드·Destroy 절반씩)를 3회 반복한다(원래 회전이 들어간 테스트 프리팹을 플레이 중에만 만들어 사용).
 - 사람이 하는 동작 확인은 플레이 모드에서 `SystemTestManager` 단축키(1: 종합 현황 UI, 3: 강제 정전, 4: 전력 복구, 5: 월 정산 강제 실행)로 한다. 플레이 테스트는 사용자가 해야 하므로 무엇을 확인할지 구체적으로 안내한다.
 - 빌드 씬 순서: `Title` → `2park` (`ProjectSettings/EditorBuildSettings.asset`). 나머지 씬(`1park`, `1park2`, `1Park 2`, `2Park 1`, `SampleScene`)은 팀원별 작업/테스트 씬.
 
@@ -57,7 +57,7 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 
 **흐름.**
 1. `LightweightGridManager` — 60x40, 타일 2m. 오브젝트 없이 Y=0 평면 레이캐스트로 마우스 좌표를 계산해 `OnGridHoverChanged`/`OnGridClicked` 발생. (`GridManager`는 타일 오브젝트를 생성하는 이전 방식)
-2. `BuildingManager` — UI가 `SelectBuildingToBuild`로 건물을 고르면 프리뷰·하이라이트 표시, 클릭 시 해금(인구)·점유·자금 검사 후 생성하고 `BuildingInstance`를 붙여 `_occupiedGrid[60,40]`에 등록.
+2. `BuildingManager` — UI가 `SelectBuildingToBuild`로 건물을 고르면 프리뷰·하이라이트 표시, 클릭 시 해금(인구)·점유·자금 검사 후 생성하고 `BuildingInstance`를 붙여 `_occupiedGrid[60,40]`에 등록. 건설 모드에서 Q = +90°, E = −90° Y축 회전(`RotatePreview`, `CurrentRotationY`, `OnPreviewRotationChanged`). 미리보기와 설치 모두 `GetPlacementRotation` = Y 회전 × **설치 프리팹(`buildingPrefab`)에 설정된 원래 회전**을 써서 보이는 모습 그대로 설치된다(예전에는 설치 시 `Quaternion.identity`로 덮어써져 프리팹 회전이 사라졌음). 같은 건물을 연속 설치하면 회전 유지, 다른 건물을 고르면 0. 크기가 정사각형이라 회전해도 점유 칸은 그대로. `BuildingInstance.RotationY`에 기록, 설치 시 `OnBuildingPlaced`.
 3. `GameLoopManager` — 배치된 건물 리스트의 소유자. 건설/철거 시 `RecalculateAll()`로 인구 수용량 → 전력 → 접근성 → 만족도 순서로 재계산(순서 중요). 주간 틱(인구), 월간 틱(지원금 → 유지비 → 다음 달 전력 구매 순서 보장)을 처리한다. `PowerManager.OnPowerDataChanged`를 구독해 전력 변화 시 만족도도 다시 계산.
 4. `SatisfactionManager` — 주택별 만족도 = 70 + 반경(체비셰프) 안 `satisfactionImpact` 합 + 접근 시간 단축 보너스 − 주택별 정전 감점 − 마을 전체 감점(인구 초과, 정전). 주택별 `SatisfactionState`(좋음 ≥71 / 나쁨 ≤30)와 `GoodHousingRatio`를 내고, 마을 수치는 주택 평균 → 5단계 `SatisfactionTier`와 마을 `CurrentState`.
 5. `PopulationManager` — 만족도 50% 이상이면 주간 유입. 주택 철거로 수용량이 줄어도 주민은 '초과 인구'로 남아 감점(초과 1%당 0.5, 최대 50)을 주고 매주 초과분의 절반이 떠난다.

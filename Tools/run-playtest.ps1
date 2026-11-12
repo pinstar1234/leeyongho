@@ -10,6 +10,7 @@
 
 param(
     [string]$Scene = "Assets/Scenes/1park2.unity",
+    [string]$Mode = "full",   # full = 전체 시나리오, rotation = 건물 100개 회전 설치·철거 반복
     [string]$UnityPath = $env:UNITY_EDITOR,
     [int]$TimeoutMinutes = 20,
     [switch]$ForceCopy
@@ -53,6 +54,7 @@ $unityArgs = @(
     "-executeMethod", "InfraTown.Tests.Playtest.PlaytestRunner.Run",
     "-playtestOut", "`"$outDir`"",
     "-playtestScene", "`"$Scene`"",
+    "-playtestMode", $Mode,
     "-logFile", "`"$logPath`""
 )
 
