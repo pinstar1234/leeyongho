@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using InfraTown.Building;
@@ -92,7 +92,8 @@ namespace InfraTown.UI
         {
             if (buildingData != null)
             {
-                BuildingManager.Instance?.SelectBuildingToBuild(buildingData);
+                BuildingManager.Instance?.SelectBuildingToBuild(buildingData); //
+                BuildingUIManager.Instance?.CloseBuildMenu(); // ★ 건설 시작 시 메뉴 닫기 추가
             }
         }
     }

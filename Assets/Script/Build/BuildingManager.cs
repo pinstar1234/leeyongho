@@ -103,6 +103,20 @@ namespace InfraTown.Building
             }
             return result;
         }
+        public List<BuildingData> GetBuildingsByCategoryAndSize(BuildingType category, BuildingSizeType sizeType)
+        {
+            var result = new List<BuildingData>();
+            if (buildingDatabase == null) return result; //[cite: 20]
+
+            foreach (var data in buildingDatabase) //[cite: 20]
+            {
+                if (data != null && data.category == category && data.sizeType == sizeType) //[cite: 20]
+                {
+                    result.Add(data);
+                }
+            }
+            return result;
+        }
 
         /// <summary>
         /// 지금 인구로 해금된 건물 데이터 전체
