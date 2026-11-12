@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 using InfraTown.Building;
+using InfraTown.Core;
 using InfraTown.Economy;
 using InfraTown.TimeSystem;
 
@@ -13,24 +14,57 @@ namespace InfraTown.Power
 
         [Header("전력 구매 설정 (1kW당 가격)")]
         [SerializeField] private int pricePerPowerUnit = 10;     // 1kW당 10원
-        [SerializeField] private int targetPurchasedPower = 200; // 매달 자동 구매할 전력량 (플레이어 설정값)
+        [SerializeField] private int targetPurchasedPower = 200; // 매달 자동 구매할 전력량
+
+        [Tooltip("플레이어가 종합 현황에서 정할 수 있는 월 구매량 최대치 (슬라이더 최대값)")]
+        [SerializeField] private int maxPurchasablePower = 2000;
+
+        [Tooltip("월 구매량 조절 단위 (kW)")]
+        [SerializeField] private int purchaseStep = 10;
+
+        [Tooltip("게임 시작 시 첫 달 전력을 바로 구매 (끄면 첫 월간 정산 전까지 전력 0)")]
+        [SerializeField] private bool purchaseOnStart = true;
+
+        [Header("정전 만족도 패널티")]
+        [Tooltip("전력이 전혀 없을 때(전면 정전) 마을 전체 만족도 감점")]
+        [SerializeField] private float totalBlackoutPenalty = 30f;
+
+        [Tooltip("전봇대 망이 있을 때, 전기가 들어오지 않는 주택 1채의 만족도 감점")]
+        [SerializeField] private float unpoweredHousingPenalty = 15f;
 
         [Header("현재 전력 현황")]
-        [SerializeField] private int currentAvailablePower = 0; // 현재 보유/소유 중인 전력
-        [SerializeField] private int currentUsedPower = 0;      // 현재 사용 중인 총 필요 전력량
+        [SerializeField] private int currentAvailablePower = 0; // 현재 보유 전력
+        [SerializeField] private int currentUsedPower = 0;      // 현재 필요 전력
 
         public int CurrentAvailablePower => currentAvailablePower;
         public int CurrentUsedPower => currentUsedPower;
         public int TargetPurchasedPower => targetPurchasedPower;
+        public int PricePerPowerUnit => pricePerPowerUnit;
+        public int MaxPurchasablePower => maxPurchasablePower;
+        public int PurchaseStep => purchaseStep;
 
-        // 설치된 전체 전봇대 리스트
+        /// <summary>다음 월간 정산에 드는 전력 구매 비용 (목표량 × 단가)</summary>
+        public int MonthlyPurchaseCost => targetPurchasedPower * pricePerPowerUnit;
+
+        /// <summary>다음 달 목표량으로 지금 사용량을 감당하지 못하는 양 (0이면 충분)</summary>
+        public int NextMonthShortage => Mathf.Max(0, currentUsedPower - targetPurchasedPower);
+
+        /// <summary>필요 전력이 보유 전력보다 많은 상태</summary>
+        public bool IsPowerShortage => currentUsedPower > currentAvailablePower;
+
+        /// <summary>전봇대가 하나 이상 있어 위치 기반 전력 공급 판정을 하는지 여부</summary>
+        public bool HasPowerGrid => _allPoles.Count > 0;
+
         private List<UtilityPoleInstance> _allPoles = new List<UtilityPoleInstance>();
-
-        // 정전으로 지정된 전봇대 리스트
         private List<UtilityPoleInstance> _blackedOutPoles = new List<UtilityPoleInstance>();
 
-        // 전력 데이터 변동 이벤트 (사용 중 전력, 소유 전력)
-        public event Action<int, int> OnPowerDataChanged;
+        /// <summary>현재 정전된 전봇대 목록 (연출용)</summary>
+        public IReadOnlyList<UtilityPoleInstance> BlackedOutPoles => _blackedOutPoles;
+
+        public event Action<int, int> OnPowerDataChanged; // (사용 전력, 보유 전력)
+        public event Action<int, int> OnTargetPowerChanged; // (다음 달 구매량, 월 구매 비용)
+
+        private bool _subscribedToMonthlyTick;
 
         private void Awake()
         {
@@ -40,60 +74,58 @@ namespace InfraTown.Power
 
         private void Start()
         {
-            if (TimeManager.Instance != null)
+            // GameLoopManager가 있으면 월 정산 순서(지원금 → 유지비 → 전력 구매)를 그쪽에서 관리
+            if (GameLoopManager.Instance == null && TimeManager.Instance != null)
             {
                 TimeManager.Instance.OnMonthlyTick += ProcessMonthlyPowerPurchase;
+                _subscribedToMonthlyTick = true;
+            }
+
+            if (purchaseOnStart)
+            {
+                ProcessMonthlyPowerPurchase();
             }
         }
 
         private void OnDestroy()
         {
-            if (TimeManager.Instance != null)
+            if (_subscribedToMonthlyTick && TimeManager.Instance != null)
             {
                 TimeManager.Instance.OnMonthlyTick -= ProcessMonthlyPowerPurchase;
             }
         }
 
         /// <summary>
-        /// 플레이어가 UI를 통해 매달 구매할 전력 목표량을 설정
+        /// 다음 월간 정산부터 매달 구매할 전력량 설정 (종합 현황 슬라이더).
+        /// 0 ~ maxPurchasablePower, purchaseStep 단위로 맞춘다. 이번 달 보유 전력은 바뀌지 않는다.
         /// </summary>
         public void SetTargetPurchasedPower(int amount)
         {
-            targetPurchasedPower = Mathf.Max(0, amount);
+            int step = Mathf.Max(1, purchaseStep);
+            int clamped = Mathf.Clamp(amount, 0, Mathf.Max(0, maxPurchasablePower));
+            targetPurchasedPower = Mathf.RoundToInt((float)clamped / step) * step;
+            if (targetPurchasedPower > maxPurchasablePower) targetPurchasedPower -= step;
+
+            OnTargetPowerChanged?.Invoke(targetPurchasedPower, MonthlyPurchaseCost);
             OnPowerDataChanged?.Invoke(currentUsedPower, currentAvailablePower);
         }
 
         /// <summary>
-        /// 1달 초일마다 자동 호출: 지정한 수량만큼 외부에서 전기를 구매 (지출 발생)
+        /// 이번 달 전력 구매 (목표량 × 단가). 자금이 부족하면 구매 실패 → 보유 전력 0
         /// </summary>
-        private void ProcessMonthlyPowerPurchase()
+        public void ProcessMonthlyPowerPurchase()
         {
             int totalCost = targetPurchasedPower * pricePerPowerUnit;
 
-            // 자금 확인 및 차감
             if (EconomyManager.Instance != null)
             {
-                if (EconomyManager.Instance.TrySpendMoney(totalCost))
-                {
-                    currentAvailablePower = targetPurchasedPower;
-                    Debug.Log($"[PowerManager] 월초 전력 구매 완료: {targetPurchasedPower}kW (비용: -{totalCost}원)");
-                }
-                else
-                {
-                    // 자금 부족 시 전력 구매 실패 (소유 전력 0)
-                    currentAvailablePower = 0;
-                    Debug.LogWarning("[PowerManager] 자금 부족으로 월초 전력 구매에 실패했습니다!");
-                }
+                currentAvailablePower = EconomyManager.Instance.TrySpendMoney(totalCost) ? targetPurchasedPower : 0;
             }
 
-            // 전력 수급 상태 평가 및 정전 여부 판단
             EvaluatePowerSupply();
         }
 
-        /// <summary>
-        /// 건물이 건설/파괴되거나 전력 구매 후 전체 건물 필요 전력량을 재계산하고 정전 여부를 검사
-        /// </summary>
-        public void RecalculatePowerUsage(List<BuildingInstance> allBuildings)
+        public void RecalculatePowerUsage(IReadOnlyList<BuildingInstance> allBuildings)
         {
             int totalRequired = 0;
             _allPoles.Clear();
@@ -104,7 +136,6 @@ namespace InfraTown.Power
 
                 totalRequired += building.Data.requiredPower;
 
-                // 전봇대 컴포넌트 수집
                 if (building.TryGetComponent<UtilityPoleInstance>(out var pole))
                 {
                     _allPoles.Add(pole);
@@ -115,37 +146,24 @@ namespace InfraTown.Power
             EvaluatePowerSupply();
         }
 
-        /// <summary>
-        /// 필요 전력이 소유 전력보다 많을 경우 전봇대 1~2개를 차단(정전)시킴
-        /// </summary>
         private void EvaluatePowerSupply()
         {
-            // 기존 정전 해제
             RestoreAllPoles();
 
-            // 필요 전력 > 소유 전력 상태인 경우
-            if (currentUsedPower > currentAvailablePower)
+            if (IsPowerShortage && _allPoles.Count > 0)
             {
-                if (_allPoles.Count > 0)
+                int blackoutCount = UnityEngine.Random.Range(1, Mathf.Min(3, _allPoles.Count + 1));
+                List<UtilityPoleInstance> tempPool = new List<UtilityPoleInstance>(_allPoles);
+
+                for (int i = 0; i < blackoutCount; i++)
                 {
-                    // 1~2개의 전봇대를 무작위로 선택하여 정전 발생
-                    int blackoutCount = UnityEngine.Random.Range(1, Mathf.Min(3, _allPoles.Count + 1));
+                    if (tempPool.Count == 0) break;
+                    int randomIndex = UnityEngine.Random.Range(0, tempPool.Count);
+                    UtilityPoleInstance targetPole = tempPool[randomIndex];
 
-                    List<UtilityPoleInstance> tempPool = new List<UtilityPoleInstance>(_allPoles);
-
-                    for (int i = 0; i < blackoutCount; i++)
-                    {
-                        if (tempPool.Count == 0) break;
-
-                        int randomIndex = UnityEngine.Random.Range(0, tempPool.Count);
-                        UtilityPoleInstance targetPole = tempPool[randomIndex];
-
-                        targetPole.SetPowerState(false); // 정전 발생
-                        _blackedOutPoles.Add(targetPole);
-                        tempPool.RemoveAt(randomIndex);
-                    }
-
-                    Debug.LogWarning($"[PowerManager] 전력 부족! 필요: {currentUsedPower}kW / 소유: {currentAvailablePower}kW -> 전봇대 {blackoutCount}개 정전 발생!");
+                    targetPole.SetPowerState(false);
+                    _blackedOutPoles.Add(targetPole);
+                    tempPool.RemoveAt(randomIndex);
                 }
             }
 
@@ -156,28 +174,70 @@ namespace InfraTown.Power
         {
             foreach (var pole in _blackedOutPoles)
             {
-                if (pole != null)
-                {
-                    pole.SetPowerState(true);
-                }
+                if (pole != null) pole.SetPowerState(true);
             }
             _blackedOutPoles.Clear();
         }
 
         /// <summary>
-        /// 정전으로 인한 만족도 감점 총합 반환
+        /// 주택에 전기가 들어오는지 여부.
+        /// 전봇대 망이 없으면 보유 전력이 필요 전력을 감당하는지로 판단하고,
+        /// 망이 있으면 정상 전봇대의 공급 반경 안에 있어야 한다.
+        /// </summary>
+        public bool IsHousingPowered(BuildingInstance housing)
+        {
+            if (housing == null || housing.Data == null || housing.Data.category != BuildingType.Housing) return true;
+
+            if (!HasPowerGrid)
+            {
+                return !IsPowerShortage;
+            }
+
+            foreach (var pole in _allPoles)
+            {
+                if (pole == null || !pole.IsPowered) continue;
+
+                if (GetTileDistance(housing.OriginGridPos, pole.GridPos) <= pole.SupplyRadius)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 마을 전체에 적용되는 정전 감점.
+        /// 전력 0 → 전면 정전 감점, 전봇대 망이 없을 때 부족분 비율만큼 감점.
+        /// (전봇대 망이 있으면 주택별 감점 GetHousingPowerPenalty로 처리)
         /// </summary>
         public float GetPowerBlackoutSatisfactionPenalty()
         {
-            float totalPenalty = 0f;
-            foreach (var pole in _blackedOutPoles)
+            if (!IsPowerShortage) return 0f;
+
+            if (currentAvailablePower <= 0) return totalBlackoutPenalty;
+
+            if (!HasPowerGrid)
             {
-                if (pole != null)
-                {
-                    totalPenalty += pole.GetPenalty();
-                }
+                float shortageRatio = 1f - (float)currentAvailablePower / currentUsedPower;
+                return totalBlackoutPenalty * shortageRatio;
             }
-            return totalPenalty;
+
+            return 0f;
+        }
+
+        /// <summary>
+        /// 주택 1채에 적용되는 정전 감점 (전봇대 망이 있고 일부 전력이라도 있을 때만)
+        /// </summary>
+        public float GetHousingPowerPenalty(BuildingInstance housing)
+        {
+            if (!HasPowerGrid || currentAvailablePower <= 0) return 0f;
+            return IsHousingPowered(housing) ? 0f : unpoweredHousingPenalty;
+        }
+
+        private int GetTileDistance(Vector2Int posA, Vector2Int posB)
+        {
+            return Mathf.Max(Mathf.Abs(posA.x - posB.x), Mathf.Abs(posA.y - posB.y));
         }
     }
 }

@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T3_PoliceStation
+  m_EditorClassIdentifier:
+  buildingID: police_station
+  buildingName: "경찰서"
+  description: "치안 유지, 반경 12타일 만족도 증가"
+  requiredPopulation: 150
+  unlockTier: 3
+  easyDescription: "동네를 지키는 경찰서"
+  unlockMessage: "수확철만 되면 농산물 절도범 때문에 밤 잠을 설칩니다."
+  constructionDays: 14
+  demolitionDays: 2
+  sizeType: 1
+  category: 0
+  requiredPower: 40
+  maintenanceCost: 300
+  constructionCost: 5000
+  housingCapacity: 0
+  satisfactionImpact: 1
+  satisfactionRadius: 12
+  powerSupplyRadius: 4
+  isPowerPole: 0
+  policePatrolCount: 3
+  fixedAccessTimeMinutes: 5
+  buildingPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  previewPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  buildingIcon: {fileID: 0}

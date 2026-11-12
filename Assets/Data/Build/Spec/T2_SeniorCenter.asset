@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T2_SeniorCenter
+  m_EditorClassIdentifier:
+  buildingID: senior_center
+  buildingName: "경로당"
+  description: "노인 만족도 대폭 증가"
+  requiredPopulation: 50
+  unlockTier: 2
+  easyDescription: "할머니, 할아버지가 쉬는 경로당"
+  unlockMessage: "겨울철 난방도 안 되는 외딴집에 어르신들이 외로이 계십니다."
+  constructionDays: 14
+  demolitionDays: 2
+  sizeType: 1
+  category: 1
+  requiredPower: 20
+  maintenanceCost: 120
+  constructionCost: 2500
+  housingCapacity: 0
+  satisfactionImpact: 9
+  satisfactionRadius: 6
+  powerSupplyRadius: 4
+  isPowerPole: 0
+  policePatrolCount: 0
+  fixedAccessTimeMinutes: 5
+  buildingPrefab: {fileID: 160117737285177677, guid: 726f8fec96b10e7428553df93a4c522d, type: 3}
+  previewPrefab: {fileID: 160117737285177677, guid: 726f8fec96b10e7428553df93a4c522d, type: 3}
+  buildingIcon: {fileID: 0}

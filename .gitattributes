@@ -1,0 +1,2 @@
+# 셸 스크립트(git 훅)는 Windows에서도 LF 유지
+Tools/hooks/* text eol=lf

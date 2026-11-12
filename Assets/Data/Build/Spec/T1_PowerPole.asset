@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T1_PowerPole
+  m_EditorClassIdentifier:
+  buildingID: power_pole
+  buildingName: "전신주"
+  description: "전력 전달 (반경 4타일 주택에 전기 연결)"
+  requiredPopulation: 0
+  unlockTier: 1
+  easyDescription: "전깃줄 (모든 건물 연결 필요)"
+  unlockMessage: "비만 오면 길이 진흙밭이 되어 통행이 불가능합니다."
+  constructionDays: 0
+  demolitionDays: 0
+  sizeType: 0
+  category: 4
+  requiredPower: 0
+  maintenanceCost: 2
+  constructionCost: 100
+  housingCapacity: 0
+  satisfactionImpact: 0
+  satisfactionRadius: 3
+  powerSupplyRadius: 4
+  isPowerPole: 1
+  policePatrolCount: 0
+  fixedAccessTimeMinutes: 5
+  buildingPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  previewPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  buildingIcon: {fileID: 0}

@@ -1,7 +1,7 @@
-using System;
-using System.Collections.Generic;
+﻿using System;
 using UnityEngine;
-using InfraTown.Satisfaction;
+using InfraTown.Core;
+using InfraTown.Population;
 
 namespace InfraTown.Economy
 {
@@ -9,123 +9,154 @@ namespace InfraTown.Economy
     {
         public static EconomyManager Instance { get; private set; }
 
-        [Header("기본 자금 설정")]
-        [SerializeField] private int currentMoney = 10000; // 시작 자금 10,000원
+        [Header("재정 기본 설정")]
+        [SerializeField] private int initialMoney = 10000; // 초기 자금 10,000원
 
-        public int CurrentMoney => currentMoney;
+        public int CurrentMoney { get; private set; }
 
-        // 정부 지원금 전용 수입원 참조
-        private GovernmentSubsidySource _subsidySource;
-        private List<IFinancialSource> _incomeSources = new List<IFinancialSource>();
+        private int _requestedSubsidyAmount = 15000; // 기본 신청 지원금 (기본 15,000원)
 
-        // 잔액 변동 이벤트 (현재 잔액, 변동액)
-        public event Action<int, int> OnMoneyChanged;
+        public event Action<int, int> OnMoneyChanged; // (현재 잔액, 변동액)
+        public event Action<int, int> OnSubsidyAmountChanged; // (신청 지원금, 최대 지원 가능액)
+        public event Action<int, int, int> OnMonthlySettled; // (지원금 수입, 유지비 실제 지출, 미납 유지비)
 
-        // 월별 정산 이벤트 (총 수입, 총 유지비)
-        public event Action<int, int> OnMonthlySettlement;
+        /// <summary>최근 월 정산의 지원금 수입</summary>
+        public int LastMonthlyIncome { get; private set; }
 
-        // 지원금 설정 변경 이벤트 (현재 설정 지원금, 최대 지원 가능 지원금)
-        public event Action<int, int> OnSubsidyAmountChanged;
+        /// <summary>최근 월 정산에서 실제로 지출된 유지비</summary>
+        public int LastMaintenancePaid { get; private set; }
+
+        /// <summary>최근 월 정산에서 잔액 부족으로 내지 못한 유지비 (0이면 정상)</summary>
+        public int LastUnpaidMaintenance { get; private set; }
 
         private void Awake()
         {
             if (Instance != null && Instance != this) { Destroy(gameObject); return; }
             Instance = this;
 
-            // 정부 지원금 수입원 기본 등록
-            _subsidySource = new GovernmentSubsidySource();
-            RegisterIncomeSource(_subsidySource);
+            CurrentMoney = initialMoney;
         }
 
-        /// <summary>
-        /// 추가 수입원(세금, 인프라 이용료 등) 등록
-        /// </summary>
-        public void RegisterIncomeSource(IFinancialSource source)
+        private void Start()
         {
-            if (!_incomeSources.Contains(source))
-            {
-                _incomeSources.Add(source);
-            }
+            OnMoneyChanged?.Invoke(CurrentMoney, 0);
+            UpdateGovernmentSubsidyLimit();
         }
 
         /// <summary>
-        /// 인구수 변동 시 호출하여 최대 지원금 한계 수치를 재계산
+        /// 인수가 없는 경우: PopulationManager의 현재 인구수를 가져와 한도 갱신
         /// </summary>
-        public void UpdateGovernmentSubsidyLimit(int population)
+        public void UpdateGovernmentSubsidyLimit()
         {
-            if (_subsidySource != null)
-            {
-                _subsidySource.RecalculateMaxSubsidy(population);
-                OnSubsidyAmountChanged?.Invoke(_subsidySource.RequestedSubsidy, _subsidySource.MaxEligibleSubsidy);
-            }
+            int currentPop = PopulationManager.Instance != null ? PopulationManager.Instance.CurrentPopulation : 0;
+            UpdateGovernmentSubsidyLimit(currentPop);
         }
 
         /// <summary>
-        /// UI 등에서 플레이어가 직접 지원 수령액을 변경할 때 호출하는 함수
+        /// 인수가 1개인 경우: 전달받은 인구수를 기준으로 한도 갱신 (오버로딩)
+        /// </summary>
+        public void UpdateGovernmentSubsidyLimit(int currentPopulation)
+        {
+            int maxEligible = 15000 + (currentPopulation * 50);
+
+            // 현재 신청 지원금이 최대 한도를 넘지 않도록 조정
+            _requestedSubsidyAmount = Mathf.Clamp(_requestedSubsidyAmount, 0, maxEligible);
+
+            OnSubsidyAmountChanged?.Invoke(_requestedSubsidyAmount, maxEligible);
+        }
+
+        /// <summary>
+        /// 플레이어가 UI Slider를 통해 직접 설정한 수령 지원금 지정
         /// </summary>
         public void SetGovernmentSubsidyAmount(int amount)
         {
-            if (_subsidySource != null)
-            {
-                _subsidySource.SetRequestedSubsidy(amount);
-                OnSubsidyAmountChanged?.Invoke(_subsidySource.RequestedSubsidy, _subsidySource.MaxEligibleSubsidy);
-                Debug.Log($"[EconomyManager] 정부 지원금 수령액 조정됨: {GetRequestedSubsidy()}원 / 최대 한계: {GetMaxEligibleSubsidy()}원");
-            }
+            int maxEligible = GetMaxEligibleSubsidy();
+            _requestedSubsidyAmount = Mathf.Clamp(amount, 0, maxEligible);
+
+            OnSubsidyAmountChanged?.Invoke(_requestedSubsidyAmount, maxEligible);
         }
 
-        public int GetRequestedSubsidy() => _subsidySource != null ? _subsidySource.RequestedSubsidy : 0;
-        public int GetMaxEligibleSubsidy() => _subsidySource != null ? _subsidySource.MaxEligibleSubsidy : 0;
+        public int GetRequestedSubsidy() => _requestedSubsidyAmount;
 
         /// <summary>
-        /// 자금 차감 (건설 등)
+        /// 인구수에 따라 자동으로 계산되는 최대 수령 가능 지원금 (기본 15,000원 + 인구당 50원)
+        /// </summary>
+        public int GetMaxEligibleSubsidy()
+        {
+            int currentPop = PopulationManager.Instance != null ? PopulationManager.Instance.CurrentPopulation : 0;
+            return 15000 + (currentPop * 50);
+        }
+
+        /// <summary>
+        /// 자금 차감 시도 (건설, 전기 구매 등)
         /// </summary>
         public bool TrySpendMoney(int amount)
         {
-            if (currentMoney >= amount)
+            if (amount <= 0) return true;
+
+            if (CurrentMoney >= amount)
             {
-                currentMoney -= amount;
-                OnMoneyChanged?.Invoke(currentMoney, -amount);
+                CurrentMoney -= amount;
+                OnMoneyChanged?.Invoke(CurrentMoney, -amount);
                 return true;
             }
+
             return false;
         }
 
         /// <summary>
-        /// 자금 추가
+        /// 자금 추가 (수입)
         /// </summary>
         public void AddMoney(int amount)
         {
             if (amount <= 0) return;
-            currentMoney += amount;
-            OnMoneyChanged?.Invoke(currentMoney, amount);
+            CurrentMoney += amount;
+            OnMoneyChanged?.Invoke(CurrentMoney, amount);
         }
 
         /// <summary>
-        /// 매월(30일) 호출되는 재정 정산 함수
+        /// 매월 초일 정산 처리 (매개변수 없이 내부 자동 연산 처리)
+        /// </summary>
+        public void ProcessMonthlySettlement()
+        {
+            int currentPop = PopulationManager.Instance != null ? PopulationManager.Instance.CurrentPopulation : 0;
+            int maintenance = GameLoopManager.Instance != null ? GameLoopManager.Instance.GetTotalMaintenanceCost() : 0;
+
+            ProcessMonthlySettlement(currentPop, maintenance);
+        }
+
+        /// <summary>
+        /// 매월 초일 정산 처리: 지원금 수령 후 건물 유지비 지출.
+        /// 잔액이 모자라면 가진 만큼만 내고(잔액 0) 나머지는 LastUnpaidMaintenance로 기록.
         /// </summary>
         public void ProcessMonthlySettlement(int population, int totalMaintenanceCost)
         {
-            float avgSatisfaction = SatisfactionManager.Instance != null
-                ? SatisfactionManager.Instance.CurrentAverageSatisfaction
-                : 70f;
+            int maxEligible = GetMaxEligibleSubsidy();
+            int actualSubsidy = Mathf.Min(_requestedSubsidyAmount, maxEligible);
 
-            // 한계치 재계산
-            UpdateGovernmentSubsidyLimit(population);
+            AddMoney(actualSubsidy);
 
-            int totalIncome = 0;
+            int maintenance = Mathf.Max(0, totalMaintenanceCost);
+            int paid = Mathf.Min(maintenance, CurrentMoney);
+            int unpaid = maintenance - paid;
 
-            foreach (var source in _incomeSources)
+            if (paid > 0)
             {
-                totalIncome += source.CalculateMonthlyIncome(population, avgSatisfaction);
+                CurrentMoney -= paid;
+                OnMoneyChanged?.Invoke(CurrentMoney, -paid);
             }
 
-            int netChange = totalIncome - totalMaintenanceCost;
-            currentMoney += netChange;
+            LastMonthlyIncome = actualSubsidy;
+            LastMaintenancePaid = paid;
+            LastUnpaidMaintenance = unpaid;
+            OnMonthlySettled?.Invoke(actualSubsidy, paid, unpaid);
 
-            OnMoneyChanged?.Invoke(currentMoney, netChange);
-            OnMonthlySettlement?.Invoke(totalIncome, totalMaintenanceCost);
+            Debug.Log($"[EconomyManager] 월초 정산: 지원금 +{actualSubsidy:N0} 원, 유지비 -{paid:N0} 원 (현재 잔액: {CurrentMoney:N0} 원)");
 
-            Debug.Log($"[월별 정산 완료] 수입: +{totalIncome}원 | 유지비: -{totalMaintenanceCost}원 | 최종 잔액: {currentMoney}원");
+            if (unpaid > 0)
+            {
+                Debug.LogWarning($"[EconomyManager] 잔액 부족으로 유지비 {unpaid:N0} 원을 내지 못했습니다.");
+            }
         }
     }
 }

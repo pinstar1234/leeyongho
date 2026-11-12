@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T4_Hospital
+  m_EditorClassIdentifier:
+  buildingID: hospital
+  buildingName: "병원"
+  description: "의료 제공, 반경 15타일 만족도 증가"
+  requiredPopulation: 300
+  unlockTier: 4
+  easyDescription: "아플 때 찾아가는 병원"
+  unlockMessage: "응급 환자가 생겼는데 골든타임 내 갈 수 있는 응급실이 없습니다."
+  constructionDays: 28
+  demolitionDays: 3
+  sizeType: 2
+  category: 0
+  requiredPower: 100
+  maintenanceCost: 700
+  constructionCost: 12000
+  housingCapacity: 0
+  satisfactionImpact: 1
+  satisfactionRadius: 15
+  powerSupplyRadius: 4
+  isPowerPole: 0
+  policePatrolCount: 0
+  fixedAccessTimeMinutes: 5
+  buildingPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  previewPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  buildingIcon: {fileID: 0}

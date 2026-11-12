@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T1_VillageHall
+  m_EditorClassIdentifier:
+  buildingID: village_hall
+  buildingName: "마을 회관"
+  description: "주민 모임, 마을 만족도 상승"
+  requiredPopulation: 0
+  unlockTier: 1
+  easyDescription: "마을 주민들이 모여 회의하는 곳"
+  unlockMessage: "이장님 방송을 들으려 모일 장소가 필요해요."
+  constructionDays: 14
+  demolitionDays: 2
+  sizeType: 1
+  category: 1
+  requiredPower: 20
+  maintenanceCost: 100
+  constructionCost: 2000
+  housingCapacity: 0
+  satisfactionImpact: 6
+  satisfactionRadius: 7
+  powerSupplyRadius: 4
+  isPowerPole: 0
+  policePatrolCount: 0
+  fixedAccessTimeMinutes: 5
+  buildingPrefab: {fileID: 160117737285177677, guid: 726f8fec96b10e7428553df93a4c522d, type: 3}
+  previewPrefab: {fileID: 160117737285177677, guid: 726f8fec96b10e7428553df93a4c522d, type: 3}
+  buildingIcon: {fileID: 0}

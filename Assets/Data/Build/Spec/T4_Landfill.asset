@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T4_Landfill
+  m_EditorClassIdentifier:
+  buildingID: landfill
+  buildingName: "쓰레기 매립지"
+  description: "쓰레기 처리 (악취/감점 발생)"
+  requiredPopulation: 300
+  unlockTier: 4
+  easyDescription: "쓰레기를 모아두는 곳 냄새 주의!"
+  unlockMessage: "방치된 불법 쓰레기 더미로 인해 마을 환경이 크게 오염되고 있습니다."
+  constructionDays: 28
+  demolitionDays: 3
+  sizeType: 2
+  category: 2
+  requiredPower: 10
+  maintenanceCost: 150
+  constructionCost: 3000
+  housingCapacity: 0
+  satisfactionImpact: -15
+  satisfactionRadius: 6
+  powerSupplyRadius: 4
+  isPowerPole: 0
+  policePatrolCount: 0
+  fixedAccessTimeMinutes: 5
+  buildingPrefab: {fileID: 6929862600562403293, guid: cd8d54ae1cff93f4d862a8966825adab, type: 3}
+  previewPrefab: {fileID: 6929862600562403293, guid: cd8d54ae1cff93f4d862a8966825adab, type: 3}
+  buildingIcon: {fileID: 0}
