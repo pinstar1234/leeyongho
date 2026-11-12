@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T1_House
+  m_EditorClassIdentifier:
+  buildingID: house
+  buildingName: "주택"
+  description: "인구 제공, 매월 주민세 창출"
+  requiredPopulation: 0
+  unlockTier: 1
+  easyDescription: "사람이 사는 집 (주민 늘어남)"
+  unlockMessage: "살 곳이 부족해 젊은이들이 마을을 떠나고 있어요."
+  constructionDays: 7
+  demolitionDays: 1
+  sizeType: 0
+  category: 3
+  requiredPower: 5
+  maintenanceCost: 0
+  constructionCost: 500
+  housingCapacity: 10
+  satisfactionImpact: 0
+  satisfactionRadius: 3
+  powerSupplyRadius: 4
+  isPowerPole: 0
+  policePatrolCount: 0
+  fixedAccessTimeMinutes: 5
+  buildingPrefab: {fileID: 7301714859460476872, guid: d3fab1e8bda6abb4b94547cf55e451ae, type: 3}
+  previewPrefab: {fileID: 7301714859460476872, guid: d3fab1e8bda6abb4b94547cf55e451ae, type: 3}
+  buildingIcon: {fileID: 0}

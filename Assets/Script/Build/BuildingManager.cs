@@ -85,6 +85,41 @@ namespace InfraTown.Building
         }
 
         /// <summary>
+        /// 등록된 전체 건물 데이터 (읽기 전용)
+        /// </summary>
+        public IReadOnlyList<BuildingData> AllBuildingData => buildingDatabase ?? (IReadOnlyList<BuildingData>)new List<BuildingData>();
+
+        /// <summary>
+        /// 카테고리에 속한 건물 데이터 전체 (같은 분류·크기 건물이 여러 개일 때 UI 목록용)
+        /// </summary>
+        public List<BuildingData> GetBuildingsByCategory(BuildingType category)
+        {
+            var result = new List<BuildingData>();
+            if (buildingDatabase == null) return result;
+
+            foreach (var data in buildingDatabase)
+            {
+                if (data != null && data.category == category) result.Add(data);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// 지금 인구로 해금된 건물 데이터 전체
+        /// </summary>
+        public List<BuildingData> GetUnlockedBuildings()
+        {
+            var result = new List<BuildingData>();
+            if (buildingDatabase == null) return result;
+
+            foreach (var data in buildingDatabase)
+            {
+                if (data != null && IsBuildingUnlocked(data)) result.Add(data);
+            }
+            return result;
+        }
+
+        /// <summary>
         /// 특정 건물이 현재 인구수 기준으로 해금되었는지 여부 확인
         /// </summary>
         public bool IsBuildingUnlocked(BuildingData data)
@@ -196,6 +231,12 @@ namespace InfraTown.Building
 
                 BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
                 instance.Init(_selectedBuildingData, gridPos);
+
+                // 전신주 데이터면 전력 연결 컴포넌트 부착 (프리팹 수정 없이 동작)
+                if (_selectedBuildingData.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
+                {
+                    buildingObj.AddComponent<InfraTown.Power.UtilityPoleInstance>();
+                }
 
                 for (int x = gridPos.x; x < gridPos.x + size.x; x++)
                 {

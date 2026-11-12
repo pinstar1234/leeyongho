@@ -15,8 +15,23 @@ namespace InfraTown.Population
         [SerializeField] private int currentPopulation = 0;
         [SerializeField] private int maxPopulationCapacity = 0;
 
+        [Header("인구 초과 (주택 철거 등으로 수용 인구가 줄었을 때)")]
+        [Tooltip("초과 비율 1%당 만족도 감점 (0.5 → 초과 20%면 10점 감점)")]
+        [SerializeField] private float overCapacityPenaltyPerPercent = 0.5f;
+
+        [Tooltip("인구 초과 만족도 감점 최대치")]
+        [SerializeField] private float maxOverCapacityPenalty = 50f;
+
+        [Tooltip("매주 초과 인구 중 마을을 떠나는 비율 (최소 1명)")]
+        [Range(0f, 1f)]
+        [SerializeField] private float overCapacityLeaveRate = 0.5f;
+
         public int CurrentPopulation => currentPopulation;
         public int MaxPopulationCapacity => maxPopulationCapacity;
+
+        /// <summary>수용 인구를 넘은 인구 수 (0이면 정상)</summary>
+        public int OverCapacityPopulation => Mathf.Max(0, currentPopulation - maxPopulationCapacity);
+        public bool IsOverCapacity => currentPopulation > maxPopulationCapacity;
 
         // 인구 변동 이벤트 (현재 인구, 한계 인구)
         public event Action<int, int> OnPopulationChanged;
@@ -41,7 +56,9 @@ namespace InfraTown.Population
         }
 
         /// <summary>
-        /// 건물이 건설되거나 파괴되었을 때 한계 인구수를 재계산하고 인구 유입을 갱신
+        /// 건물이 건설되거나 파괴되었을 때 한계 인구수를 재계산.
+        /// 수용 인구가 줄어도 주민은 바로 사라지지 않고 '초과 인구'로 남아 만족도 감점을 주며,
+        /// 주간 갱신 때 조금씩 떠난다.
         /// </summary>
         public void RecalculatePopulationCapacity(List<BuildingInstance> allBuildings)
         {
@@ -58,11 +75,6 @@ namespace InfraTown.Population
             }
 
             maxPopulationCapacity = totalCapacity;
-
-            if (currentPopulation > maxPopulationCapacity)
-            {
-                currentPopulation = maxPopulationCapacity;
-            }
 
             OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
             EconomyManager.Instance?.UpdateGovernmentSubsidyLimit(currentPopulation);
@@ -89,6 +101,15 @@ namespace InfraTown.Population
         /// </summary>
         public void ProcessWeeklyPopulationUpdate(int weekIndex)
         {
+            // 초과 인구가 있으면 유입 없이 일부가 떠남
+            if (IsOverCapacity)
+            {
+                int leaving = Mathf.Max(1, Mathf.CeilToInt(OverCapacityPopulation * overCapacityLeaveRate));
+                AddPopulation(-leaving);
+                Debug.Log($"[PopulationManager] 주간 인구 유출(수용 초과): -{leaving}명 (현재: {currentPopulation}/{maxPopulationCapacity})");
+                return;
+            }
+
             // 수용 공간이 남아있고 만족도가 높을 때 인구 유입
             if (currentPopulation < maxPopulationCapacity)
             {
@@ -119,11 +140,21 @@ namespace InfraTown.Population
         }
 
         /// <summary>
-        /// 인구 수동 추가/변경 (테스트 및 이벤트용)
+        /// 인구 수동 추가/변경 (테스트 및 이벤트용).
+        /// 늘릴 때는 수용 인구를 넘지 않고, 줄일 때는 0 아래로 내려가지 않는다.
         /// </summary>
         public void AddPopulation(int amount)
         {
-            currentPopulation = Mathf.Clamp(currentPopulation + amount, 0, maxPopulationCapacity);
+            if (amount > 0)
+            {
+                // 이미 초과 상태라면 더 늘지 않음
+                currentPopulation = Mathf.Max(currentPopulation, Mathf.Min(currentPopulation + amount, maxPopulationCapacity));
+            }
+            else
+            {
+                currentPopulation = Mathf.Max(0, currentPopulation + amount);
+            }
+
             OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
 
             EconomyManager.Instance?.UpdateGovernmentSubsidyLimit(currentPopulation);
@@ -134,15 +165,13 @@ namespace InfraTown.Population
         /// </summary>
         public float GetOverCapacitySatisfactionPenalty()
         {
-            if (maxPopulationCapacity <= 0) return 0f;
+            if (!IsOverCapacity) return 0f;
 
-            if (currentPopulation > maxPopulationCapacity)
-            {
-                float overRatio = (float)(currentPopulation - maxPopulationCapacity) / maxPopulationCapacity;
-                return overRatio * 100f * 0.5f;
-            }
+            // 주택이 모두 사라졌는데 주민이 남은 경우
+            if (maxPopulationCapacity <= 0) return maxOverCapacityPenalty;
 
-            return 0f;
+            float overPercent = (float)OverCapacityPopulation / maxPopulationCapacity * 100f;
+            return Mathf.Min(overPercent * overCapacityPenaltyPerPercent, maxOverCapacityPenalty);
         }
     }
 }

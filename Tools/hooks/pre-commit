@@ -1,0 +1,16 @@
+#!/bin/sh
+# Runs the Unity EditMode tests before a commit that touches C# code.
+# Enable once per clone:   git config core.hooksPath Tools/hooks
+# Skip in an emergency:    git commit --no-verify
+
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -q '\.cs$'; then
+    exit 0
+fi
+
+echo "[pre-commit] C# changes staged -> running Unity EditMode tests..."
+powershell -NoProfile -ExecutionPolicy Bypass -File "$(git rev-parse --show-toplevel)/Tools/run-tests.ps1"
+status=$?
+if [ $status -ne 0 ]; then
+    echo "[pre-commit] Tests failed or could not run (exit $status). Commit aborted."
+    exit 1
+fi

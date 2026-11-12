@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
+  m_Name: T3_FireStation
+  m_EditorClassIdentifier:
+  buildingID: fire_station
+  buildingName: "소방서"
+  description: "화재 예방, 반경 12타일 만족도 증가"
+  requiredPopulation: 150
+  unlockTier: 3
+  easyDescription: "불을 꺼주는 소방서"
+  unlockMessage: "작은 불씨가 번졌는데 소방차가 1시간 뒤에나 도착했어요."
+  constructionDays: 14
+  demolitionDays: 2
+  sizeType: 1
+  category: 0
+  requiredPower: 40
+  maintenanceCost: 300
+  constructionCost: 5000
+  housingCapacity: 0
+  satisfactionImpact: 5
+  satisfactionRadius: 12
+  powerSupplyRadius: 4
+  isPowerPole: 0
+  policePatrolCount: 0
+  fixedAccessTimeMinutes: 5
+  buildingPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  previewPrefab: {fileID: 1859081566058687617, guid: 09d9a55f889b0af44b17464f167785aa, type: 3}
+  buildingIcon: {fileID: 0}

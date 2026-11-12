@@ -1,7 +1,7 @@
 ﻿using System;
 using UnityEngine;
+using InfraTown.Core;
 using InfraTown.Population;
-using InfraTown.Satisfaction;
 
 namespace InfraTown.Economy
 {
@@ -18,6 +18,16 @@ namespace InfraTown.Economy
 
         public event Action<int, int> OnMoneyChanged; // (현재 잔액, 변동액)
         public event Action<int, int> OnSubsidyAmountChanged; // (신청 지원금, 최대 지원 가능액)
+        public event Action<int, int, int> OnMonthlySettled; // (지원금 수입, 유지비 실제 지출, 미납 유지비)
+
+        /// <summary>최근 월 정산의 지원금 수입</summary>
+        public int LastMonthlyIncome { get; private set; }
+
+        /// <summary>최근 월 정산에서 실제로 지출된 유지비</summary>
+        public int LastMaintenancePaid { get; private set; }
+
+        /// <summary>최근 월 정산에서 잔액 부족으로 내지 못한 유지비 (0이면 정상)</summary>
+        public int LastUnpaidMaintenance { get; private set; }
 
         private void Awake()
         {
@@ -110,22 +120,43 @@ namespace InfraTown.Economy
         public void ProcessMonthlySettlement()
         {
             int currentPop = PopulationManager.Instance != null ? PopulationManager.Instance.CurrentPopulation : 0;
-            float currentSatisfaction = SatisfactionManager.Instance != null ? SatisfactionManager.Instance.CurrentAverageSatisfaction : 70f;
+            int maintenance = GameLoopManager.Instance != null ? GameLoopManager.Instance.GetTotalMaintenanceCost() : 0;
 
-            ProcessMonthlySettlement(currentPop, Mathf.RoundToInt(currentSatisfaction));
+            ProcessMonthlySettlement(currentPop, maintenance);
         }
 
         /// <summary>
-        /// 매월 초일 정산 처리 (인자 수신 버전)
+        /// 매월 초일 정산 처리: 지원금 수령 후 건물 유지비 지출.
+        /// 잔액이 모자라면 가진 만큼만 내고(잔액 0) 나머지는 LastUnpaidMaintenance로 기록.
         /// </summary>
-        public void ProcessMonthlySettlement(int population, int satisfaction)
+        public void ProcessMonthlySettlement(int population, int totalMaintenanceCost)
         {
             int maxEligible = GetMaxEligibleSubsidy();
             int actualSubsidy = Mathf.Min(_requestedSubsidyAmount, maxEligible);
 
             AddMoney(actualSubsidy);
 
-            Debug.Log($"[EconomyManager] 월초 지원금 정산 완료: +{actualSubsidy:N0} 원 (현재 잔액: {CurrentMoney:N0} 원)");
+            int maintenance = Mathf.Max(0, totalMaintenanceCost);
+            int paid = Mathf.Min(maintenance, CurrentMoney);
+            int unpaid = maintenance - paid;
+
+            if (paid > 0)
+            {
+                CurrentMoney -= paid;
+                OnMoneyChanged?.Invoke(CurrentMoney, -paid);
+            }
+
+            LastMonthlyIncome = actualSubsidy;
+            LastMaintenancePaid = paid;
+            LastUnpaidMaintenance = unpaid;
+            OnMonthlySettled?.Invoke(actualSubsidy, paid, unpaid);
+
+            Debug.Log($"[EconomyManager] 월초 정산: 지원금 +{actualSubsidy:N0} 원, 유지비 -{paid:N0} 원 (현재 잔액: {CurrentMoney:N0} 원)");
+
+            if (unpaid > 0)
+            {
+                Debug.LogWarning($"[EconomyManager] 잔액 부족으로 유지비 {unpaid:N0} 원을 내지 못했습니다.");
+            }
         }
     }
 }
