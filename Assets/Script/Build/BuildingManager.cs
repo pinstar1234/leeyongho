@@ -4,6 +4,7 @@ using InfraTown.Grid;
 using InfraTown.Core;
 using InfraTown.Economy;
 using InfraTown.Population;
+using InfraTown.UI;
 
 namespace InfraTown.Building
 {
@@ -157,7 +158,7 @@ namespace InfraTown.Building
             // 1. 현재 인구수 기반 해금 검증
             if (!IsBuildingUnlocked(data))
             {
-                Debug.LogWarning($"[BuildingManager] '{data.buildingName}'은(는) 해금되지 않았습니다. (필요 인구수: {data.requiredPopulation}명)");
+                ToastUIManager.Instance?.ShowToast($"🔒 '{data.buildingName}' 해금에는 인구 {data.requiredPopulation}명이 필요합니다!");
                 return;
             }
 
@@ -223,45 +224,65 @@ namespace InfraTown.Building
 
             if (!IsBuildingUnlocked(_selectedBuildingData))
             {
-                Debug.LogWarning("[BuildingManager] 해금 조건 미달로 건설할 수 없습니다.");
+                ToastUIManager.Instance?.ShowToast($"🔒 해금 조건(인구 {_selectedBuildingData.requiredPopulation}명)이 부족합니다!");
                 CancelBuildingMode();
                 return;
             }
 
             Vector2Int size = _selectedBuildingData.GridSize;
 
-            if (CanPlaceBuilding(gridPos.x, gridPos.y, size.x, size.y))
+            // 1. 맵 범위 체크
+            if (gridPos.x < 0 || gridPos.y < 0 || gridPos.x + size.x > 60 || gridPos.y + size.y > 40)
             {
-                int cost = _selectedBuildingData.constructionCost;
+                ToastUIManager.Instance?.ShowToast("⚠️ 맵 경계를 벗어난 곳에는 건설할 수 없습니다!");
+                return;
+            }
 
-                if (EconomyManager.Instance != null && !EconomyManager.Instance.TrySpendMoney(cost))
+            // 2. 다른 건물과 겹치는지 체크
+            for (int x = gridPos.x; x < gridPos.x + size.x; x++)
+            {
+                for (int z = gridPos.y; z < gridPos.y + size.y; z++)
                 {
-                    Debug.LogWarning("[BuildingManager] 건설 자금이 부족합니다!");
-                    return;
-                }
-
-                Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
-                GameObject buildingObj = Instantiate(_selectedBuildingData.buildingPrefab, spawnPos, Quaternion.identity);
-
-                BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
-                instance.Init(_selectedBuildingData, gridPos);
-
-                // 전신주 데이터면 전력 연결 컴포넌트 부착 (프리팹 수정 없이 동작)
-                if (_selectedBuildingData.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
-                {
-                    buildingObj.AddComponent<InfraTown.Power.UtilityPoleInstance>();
-                }
-
-                for (int x = gridPos.x; x < gridPos.x + size.x; x++)
-                {
-                    for (int z = gridPos.y; z < gridPos.y + size.y; z++)
+                    if (_occupiedGrid[x, z] != null)
                     {
-                        _occupiedGrid[x, z] = instance;
+                        ToastUIManager.Instance?.ShowToast("⚠️ 이미 다른 건물이 설치된 구역입니다!");
+                        return;
                     }
                 }
-
-                GameLoopManager.Instance?.RegisterBuilding(instance);
             }
+
+            // 3. 건설 자금 체크 및 차감
+            int cost = _selectedBuildingData.constructionCost;
+            if (EconomyManager.Instance != null && !EconomyManager.Instance.TrySpendMoney(cost))
+            {
+                ToastUIManager.Instance?.ShowToast($"💰 건설 자금이 부족합니다! (필요 자금: {cost:N0}원)");
+                return;
+            }
+
+            // 4. 정상 건설 진행
+            Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
+            GameObject buildingObj = Instantiate(_selectedBuildingData.buildingPrefab, spawnPos, Quaternion.identity);
+
+            BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
+            instance.Init(_selectedBuildingData, gridPos);
+
+            if (_selectedBuildingData.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
+            {
+                buildingObj.AddComponent<InfraTown.Power.UtilityPoleInstance>();
+            }
+
+            for (int x = gridPos.x; x < gridPos.x + size.x; x++)
+            {
+                for (int z = gridPos.y; z < gridPos.y + size.y; z++)
+                {
+                    _occupiedGrid[x, z] = instance;
+                }
+            }
+
+            GameLoopManager.Instance?.RegisterBuilding(instance);
+
+            // 건설 완료 안내 토스트 (남색 배경, 흔들림 없음)
+            ToastUIManager.Instance?.ShowToast($"✅ '{_selectedBuildingData.buildingName}' 건설 완료!", false);
         }
 
         private bool CanPlaceBuilding(int startX, int startZ, int sizeX, int sizeZ)
