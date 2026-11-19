@@ -25,6 +25,12 @@ namespace InfraTown.EventSystem
         [Tooltip("처음 설치했을 때 (비우면 기본 문장)")]
         public DialogueData installedDialogue;
 
+        [Tooltip("미설치 불만 대화 전에 보여줄 카툰 컷씬 (비우면 대화 에셋의 cutsceneBefore, 그것도 없으면 바로 대화)")]
+        public CutsceneData missingCutscene;
+
+        [Tooltip("설치 대화 전에 보여줄 카툰 컷씬 (비우면 대화 에셋의 cutsceneBefore, 그것도 없으면 바로 대화)")]
+        public CutsceneData installedCutscene;
+
         public EssentialFacilityDialogue() { }
         public EssentialFacilityDialogue(ServiceType service) { this.service = service; }
     }
@@ -39,8 +45,11 @@ namespace InfraTown.EventSystem
     [RequireComponent(typeof(DialogueEventManager))]
     public class DialogueTriggers : MonoBehaviour
     {
-        [Header("1. 게임 시작")]
-        [Tooltip("게임 시작 시 재생할 기본 스토리 (비워도 됨)")]
+        [Header("1. 게임 시작 (오프닝 컷씬 → 마을 도착 후 주민 대화)")]
+        [Tooltip("처음에 보여줄 오프닝 컷씬 — 게임 화면 연출(Scene) 방식 권장, 마지막 장면을 마을 도착 위치로 (비워도 됨)")]
+        [SerializeField] private CutsceneData openingCutscene;
+
+        [Tooltip("오프닝 컷씬이 끝나고 마을에 도착해서 나누는 주민 대화 (비워도 됨)")]
         [SerializeField] private DialogueData introDialogue;
 
         [Tooltip("시작할 때부터 해금된 건물(Tier 1)의 해금 메시지도 시작 직후 보여줌")]
@@ -129,6 +138,11 @@ namespace InfraTown.EventSystem
 
         private void Start()
         {
+            // 컷씬 매니저가 씬에 없으면 이 오브젝트에 추가 (씬 수정 없이 동작하도록)
+            if (CutsceneManager.Instance == null && Application.isPlaying)
+            {
+                gameObject.AddComponent<CutsceneManager>();
+            }
             TrySubscribe();
         }
 
@@ -155,7 +169,7 @@ namespace InfraTown.EventSystem
             if (!_initialized && BuildingManager.Instance != null)
             {
                 _initialized = true;
-                if (introDialogue != null) Dialogue?.Play(introDialogue);
+                PlayOpening();
 
                 var unlockedNow = BuildingManager.Instance.GetUnlockedBuildings();
                 if (showInitialUnlockStories) PlayUnlockStories(unlockedNow, "unlock_initial");
@@ -186,6 +200,21 @@ namespace InfraTown.EventSystem
                 _outcome = GameOutcomeManager.Instance;
                 _outcome.OnBadStreakChanged += HandleBadStreakChanged;
                 _outcome.OnGameEnded += HandleGameEnded;
+            }
+        }
+
+        // ───────────────── 1) 오프닝 ─────────────────
+
+        /// <summary>오프닝 컷씬 → 마을 도착 대화. 대화가 없으면 컷씬만</summary>
+        private void PlayOpening()
+        {
+            if (introDialogue != null && Dialogue != null)
+            {
+                Dialogue.Play(introDialogue, openingCutscene);
+            }
+            else if (openingCutscene != null)
+            {
+                CutsceneManager.Instance?.Play(openingCutscene);
             }
         }
 
@@ -251,13 +280,13 @@ namespace InfraTown.EventSystem
 
             if (entry.missingDialogue != null)
             {
-                Dialogue.Play(entry.missingDialogue);
+                Dialogue.Play(entry.missingDialogue, entry.missingCutscene);
                 return;
             }
 
             var (text, easy) = DefaultComplaint(entry.service);
             Dialogue.Play(DialogueData.Create($"missing_{entry.service}_{_lastDate.y}_{_lastDate.m}_{_lastDate.d}", true, false,
-                new DialogueLine(residentSpeaker, text, easy, residentPortrait)));
+                new DialogueLine(residentSpeaker, text, easy, residentPortrait)), entry.missingCutscene);
         }
 
         // ───────────────── 3) 필수 시설 설치 ─────────────────
@@ -282,13 +311,13 @@ namespace InfraTown.EventSystem
 
             if (entry.installedDialogue != null)
             {
-                Dialogue.Play(entry.installedDialogue);
+                Dialogue.Play(entry.installedDialogue, entry.installedCutscene);
                 return;
             }
 
             var (text, easy) = DefaultInstalled(entry.service);
             Dialogue.Play(DialogueData.Create($"installed_{entry.service}", true, true,
-                new DialogueLine(unlockSpeaker, text, easy, unlockSpeakerPortrait)));
+                new DialogueLine(unlockSpeaker, text, easy, unlockSpeakerPortrait)), entry.installedCutscene);
         }
 
         private EssentialState GetState(ServiceType type)

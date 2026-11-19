@@ -27,7 +27,7 @@ namespace InfraTown.Tests
             typeof(GameLoopManager), typeof(EconomyManager), typeof(PopulationManager),
             typeof(PowerManager), typeof(SatisfactionManager), typeof(ServiceAccessibilityManager),
             typeof(TimeManager), typeof(BuildingManager), typeof(GameOutcomeManager),
-            typeof(InfraTown.EventSystem.DialogueEventManager)
+            typeof(InfraTown.EventSystem.DialogueEventManager), typeof(InfraTown.EventSystem.CutsceneManager)
         };
 
         private readonly List<GameObject> _objects = new List<GameObject>();
