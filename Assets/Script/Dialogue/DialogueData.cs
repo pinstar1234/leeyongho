@@ -43,7 +43,7 @@ namespace InfraTown.EventSystem
         [Tooltip("말하는 사람 이름 (예: 주인공, 주민, 비서, 이장님). 비우면 해설")]
         public string speaker;
 
-        [Tooltip("이 줄에서만 쓸 초상화 (비우면 등록된 인물의 기본 초상화)")]
+        [Tooltip("이 줄에서만 쓸 초상화 (비우면 등록된 인물의 기본 초상화). 주인공 줄은 이미지가 없어 쓰지 않음")]
         public Sprite portrait;
 
         [Tooltip("서는 자리 (자동이면 주인공은 왼쪽, 나머지는 오른쪽)")]

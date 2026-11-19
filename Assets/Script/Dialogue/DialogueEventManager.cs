@@ -13,9 +13,11 @@ namespace InfraTown.EventSystem
     /// UI 연결 방법:
     ///   OnDialogueStarted  → 대화창 열기
     ///   OnLineShown        → 이름 GetCurrentSpeakerName(), 문장 GetCurrentText() (모드에 맞는 문장, {player}는 주인공 이름으로)
-    ///                        화자 배치: 왼쪽 = 주인공(LeftSpeakerName/LeftPortrait, 항상),
-    ///                                  오른쪽 = 지금(또는 마지막으로) 말한 다른 인물(RightSpeakerName/RightPortrait),
-    ///                                  CurrentSide = 지금 말하는 쪽(밝게 표시, 반대쪽은 어둡게)
+    ///                        화자 배치 (사용자 기획 2026-11-19 수정):
+    ///                          주인공은 이미지 없음 — 이름(LeftSpeakerName)만, 말할 때 CurrentSide == Left
+    ///                          오른쪽 = 지금(또는 마지막으로) 말한 다른 인물(RightSpeakerName/RightPortrait)
+    ///                          주인공·나레이션이 말하는 동안에도 오른쪽 인물은 그대로 두고 회색으로 가라앉힘
+    ///                          → 초상화 Image.color = RightPortraitColor (IsRightDimmed면 dimmedPortraitColor, 아니면 흰색)
     ///   클릭/버튼          → Next() (끝까지 넘기기 Skip())
     ///   OnDialogueEnded    → 대화창 닫기
     /// 대화에 컷씬(cutsceneBefore)이 있으면 CutsceneManager로 컷씬을 먼저 보여준 뒤 대화를 시작한다.
@@ -28,11 +30,12 @@ namespace InfraTown.EventSystem
         [Tooltip("어르신·어린이 모드: 쉬운 문장(easyText)이 있으면 그것을 표시")]
         [SerializeField] private bool useEasyText = false;
 
-        [Header("인물 (주인공은 항상 왼쪽, 나머지는 오른쪽)")]
-        [Tooltip("대화 에셋에서 주인공을 가리키는 화자 이름 — 이 이름(또는 {player})이면 왼쪽에 서고, 화면에는 플레이어가 정한 이름이 나온다")]
+        [Header("인물 (주인공은 이미지 없음, 다른 인물은 오른쪽)")]
+        [Tooltip("대화 에셋에서 주인공을 가리키는 화자 이름 — 이 이름(또는 {player})이면 주인공 대사, 화면에는 플레이어가 정한 이름이 나온다")]
         [SerializeField] private string protagonistName = "주인공";
 
-        [SerializeField] private Sprite protagonistPortrait;
+        [Tooltip("주인공·나레이션이 말하는 동안 오른쪽 인물 초상화에 곱할 색 (회색으로 가라앉힘)")]
+        [SerializeField] private Color dimmedPortraitColor = new Color(0.5f, 0.5f, 0.5f, 1f);
 
         [Tooltip("주민·비서·이장님 등 다른 인물의 기본 초상화")]
         [SerializeField] private List<DialogueCharacter> characters = new List<DialogueCharacter>
@@ -46,7 +49,7 @@ namespace InfraTown.EventSystem
         public bool UseEasyText { get => useEasyText; set => useEasyText = value; }
 
         public string ProtagonistName { get => protagonistName; set => protagonistName = value; }
-        public Sprite ProtagonistPortrait { get => protagonistPortrait; set => protagonistPortrait = value; }
+        public Color DimmedPortraitColor { get => dimmedPortraitColor; set => dimmedPortraitColor = value; }
         public IReadOnlyList<DialogueCharacter> Characters => characters;
 
         public bool IsPlaying => CurrentDialogue != null;
@@ -69,13 +72,20 @@ namespace InfraTown.EventSystem
         /// <summary>지금 말하는 쪽 (Left = 주인공, Right = 다른 인물, Narration = 해설)</summary>
         public DialogueSide CurrentSide { get; private set; } = DialogueSide.Narration;
 
-        /// <summary>왼쪽 = 항상 주인공</summary>
-        public string LeftSpeakerName => PlayerProfile.PlayerName; // 플레이어가 정한 이름
-        public Sprite LeftPortrait { get; private set; }
+        /// <summary>주인공 이름 (플레이어가 정한 이름). 주인공은 초상화가 없다</summary>
+        public string LeftSpeakerName => PlayerProfile.PlayerName;
 
-        /// <summary>오른쪽 = 지금 말하는 다른 인물. 주인공이 말할 때는 마지막(아직 없으면 다음)에 말하는 다른 인물. 없으면 null</summary>
+        /// <summary>
+        /// 오른쪽 = 지금 말하는 다른 인물. 주인공·나레이션이 말할 때는 마지막(아직 없으면 다음)에 말하는 다른 인물이 그대로 남는다. 없으면 null
+        /// </summary>
         public string RightSpeakerName { get; private set; }
         public Sprite RightPortrait { get; private set; }
+
+        /// <summary>오른쪽 인물이 지금 말하고 있지 않음 (주인공·나레이션 차례) → 회색으로 가라앉혀 표시</summary>
+        public bool IsRightDimmed => RightSpeakerName != null && CurrentSide != DialogueSide.Right;
+
+        /// <summary>오른쪽 초상화 Image.color에 그대로 넣을 색 (말하는 중 흰색, 가라앉힘 dimmedPortraitColor)</summary>
+        public Color RightPortraitColor => IsRightDimmed ? dimmedPortraitColor : Color.white;
 
         /// <summary>대기 중인 대화 수</summary>
         public int QueueCount => _queue.Count;
@@ -225,19 +235,18 @@ namespace InfraTown.EventSystem
             return IsProtagonist(line.speaker) ? DialogueSide.Left : DialogueSide.Right;
         }
 
-        /// <summary>줄의 초상화: 줄에 지정한 것 → 주인공/등록 인물의 기본 초상화</summary>
+        /// <summary>줄의 초상화: 줄에 지정한 것 → 등록 인물의 기본 초상화. 주인공은 이미지가 없으므로 항상 null</summary>
         public Sprite GetPortrait(DialogueLine line)
         {
-            if (line == null) return null;
+            if (line == null || IsProtagonist(line.speaker)) return null;
             if (line.portrait != null) return line.portrait;
             return GetCharacterPortrait(line.speaker);
         }
 
-        /// <summary>이름으로 기본 초상화 찾기 (없으면 null)</summary>
+        /// <summary>이름으로 기본 초상화 찾기 (없거나 주인공이면 null)</summary>
         public Sprite GetCharacterPortrait(string speaker)
         {
-            if (string.IsNullOrEmpty(speaker)) return null;
-            if (IsProtagonist(speaker)) return protagonistPortrait;
+            if (string.IsNullOrEmpty(speaker) || IsProtagonist(speaker)) return null;
             foreach (var c in characters)
             {
                 if (c != null && c.name == speaker) return c.portrait;
@@ -295,7 +304,6 @@ namespace InfraTown.EventSystem
             var dialogue = request.dialogue;
             CurrentDialogue = dialogue;
             CurrentLineIndex = 0;
-            LeftPortrait = protagonistPortrait;
             RightSpeakerName = null;
             RightPortrait = null;
             _currentOnFinished = request.onFinished;
@@ -327,14 +335,13 @@ namespace InfraTown.EventSystem
             var line = CurrentLine;
             CurrentSide = GetSide(line);
 
-            if (CurrentSide == DialogueSide.Left)
+            if (CurrentSide != DialogueSide.Right)
             {
-                // 주인공 표정이 줄마다 바뀔 수 있음
-                LeftPortrait = GetPortrait(line) ?? protagonistPortrait;
-                // 오른쪽이 아직 비어 있으면 앞으로 말할 상대를 미리 세워 둠
+                // 주인공·나레이션 차례: 오른쪽 인물은 그대로 두고(IsRightDimmed로 회색),
+                // 아직 아무도 없으면 앞으로 말할 상대를 미리 세워 둠
                 if (RightSpeakerName == null) SetRightFromUpcoming();
             }
-            else if (CurrentSide == DialogueSide.Right)
+            else
             {
                 RightSpeakerName = GetSpeakerDisplayName(line.speaker);
                 RightPortrait = GetPortrait(line);

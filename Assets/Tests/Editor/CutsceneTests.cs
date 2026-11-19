@@ -11,13 +11,13 @@ using InfraTown.TimeSystem;
 namespace InfraTown.Tests
 {
     /// <summary>
-    /// 대화 화자 배치: 주인공은 항상 왼쪽, 말하는 다른 인물은 오른쪽
+    /// 대화 화자 배치: 주인공은 이미지 없음, 오른쪽 인물은 주인공·나레이션 차례에 회색으로 남음
     /// </summary>
     public class DialogueSpeakerLayoutTests
     {
         private TestWorld _world;
         private DialogueEventManager _dialogue;
-        private Sprite _hero, _resident, _secretary, _heroAngry;
+        private Sprite _resident, _secretary, _residentAngry, _heroAngry;
 
         [SetUp]
         public void SetUp()
@@ -25,9 +25,9 @@ namespace InfraTown.Tests
             _world = new TestWorld();
             _dialogue = _world.CreateManager<DialogueEventManager>();
             _dialogue.OnLineShown += (l, i, n) => { };
-            _hero = MakeSprite("hero"); _resident = MakeSprite("resident"); _secretary = MakeSprite("secretary"); _heroAngry = MakeSprite("heroAngry");
+            _resident = MakeSprite("resident"); _secretary = MakeSprite("secretary");
+            _residentAngry = MakeSprite("residentAngry"); _heroAngry = MakeSprite("heroAngry");
             _dialogue.ProtagonistName = "주인공";
-            _dialogue.ProtagonistPortrait = _hero;
             TestWorld.SetField(_dialogue, "characters", new List<DialogueCharacter>
             {
                 new DialogueCharacter("주민", _resident), new DialogueCharacter("비서", _secretary)
@@ -45,7 +45,7 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 주인공은_왼쪽_다른_인물은_오른쪽에_말하는_사람이_보인다()
+        public void 주인공_차례에는_오른쪽_인물이_회색으로_남는다()
         {
             _dialogue.Play(DialogueData.Create("talk", true, false,
                 new DialogueLine("주인공", "안녕하세요"),
@@ -53,15 +53,19 @@ namespace InfraTown.Tests
                 new DialogueLine("비서", "일정이 있어요"),
                 new DialogueLine("주인공", "알겠어요")));
 
-            // 1줄: 주인공이 말함 → 왼쪽 강조, 오른쪽에는 다음에 말할 주민을 미리 세워 둠
+            // 1줄: 주인공이 말함 → 오른쪽에는 다음에 말할 주민을 회색으로 미리 세워 둠
             Assert.AreEqual(DialogueSide.Left, _dialogue.CurrentSide);
             Assert.AreEqual("주인공", _dialogue.LeftSpeakerName);
-            Assert.AreEqual(_hero, _dialogue.LeftPortrait);
+            Assert.IsNull(_dialogue.GetCurrentPortrait(), "주인공은 이미지 없음");
             Assert.AreEqual("주민", _dialogue.RightSpeakerName);
+            Assert.AreEqual(_resident, _dialogue.RightPortrait);
+            Assert.IsTrue(_dialogue.IsRightDimmed);
+            Assert.AreEqual(_dialogue.DimmedPortraitColor, _dialogue.RightPortraitColor);
 
             _dialogue.Next();
             Assert.AreEqual(DialogueSide.Right, _dialogue.CurrentSide);
-            Assert.AreEqual(_resident, _dialogue.RightPortrait);
+            Assert.IsFalse(_dialogue.IsRightDimmed, "말하는 중이면 밝게");
+            Assert.AreEqual(Color.white, _dialogue.RightPortraitColor);
 
             _dialogue.Next();
             Assert.AreEqual("비서", _dialogue.RightSpeakerName, "오른쪽은 지금 말하는 인물로 바뀜");
@@ -70,19 +74,59 @@ namespace InfraTown.Tests
             _dialogue.Next();
             Assert.AreEqual(DialogueSide.Left, _dialogue.CurrentSide);
             Assert.AreEqual("비서", _dialogue.RightSpeakerName, "주인공이 말할 때 오른쪽은 마지막 상대 유지");
+            Assert.AreEqual(_secretary, _dialogue.RightPortrait);
+            Assert.IsTrue(_dialogue.IsRightDimmed);
         }
 
         [Test]
-        public void 줄에_넣은_초상화가_우선이고_이름없으면_해설이다()
+        public void 나레이션_차례에도_오른쪽_인물이_회색으로_남는다()
+        {
+            _dialogue.Play(DialogueData.Create("talk", true, false,
+                new DialogueLine("주민", "큰일 났어요!"),
+                new DialogueLine("", "그때 멀리서 사이렌 소리가 들렸다...")));
+            _dialogue.Next();
+
+            Assert.AreEqual(DialogueSide.Narration, _dialogue.CurrentSide);
+            Assert.AreEqual("주민", _dialogue.RightSpeakerName);
+            Assert.AreEqual(_resident, _dialogue.RightPortrait);
+            Assert.IsTrue(_dialogue.IsRightDimmed);
+        }
+
+        [Test]
+        public void 나레이션으로_시작하면_다음에_말할_인물을_회색으로_세워_둔다()
+        {
+            _dialogue.Play(DialogueData.Create("talk", true, false,
+                new DialogueLine("", "다음 날 아침..."),
+                new DialogueLine("비서", "좋은 아침이에요")));
+
+            Assert.AreEqual("비서", _dialogue.RightSpeakerName);
+            Assert.IsTrue(_dialogue.IsRightDimmed);
+        }
+
+        [Test]
+        public void 상대가_없는_대화는_오른쪽이_비어_있다()
         {
             _dialogue.Play(DialogueData.Create("talk2", true, false,
-                new DialogueLine("주인공", "화났어", null, _heroAngry),
+                new DialogueLine("주인공", "혼잣말"),
                 new DialogueLine("", "다음 날 아침...")));
 
-            Assert.AreEqual(_heroAngry, _dialogue.LeftPortrait);
-            Assert.IsNull(_dialogue.RightSpeakerName, "말할 상대가 없으면 오른쪽 비움");
+            Assert.IsNull(_dialogue.RightSpeakerName);
+            Assert.IsNull(_dialogue.RightPortrait);
+            Assert.IsFalse(_dialogue.IsRightDimmed);
+            Assert.AreEqual(Color.white, _dialogue.RightPortraitColor);
+        }
+
+        [Test]
+        public void 주인공_줄에_초상화를_넣어도_쓰지_않고_다른_인물은_줄_초상화가_우선이다()
+        {
+            _dialogue.Play(DialogueData.Create("talk3", true, false,
+                new DialogueLine("주인공", "화났어", null, _heroAngry),
+                new DialogueLine("주민", "죄송해요", null, _residentAngry)));
+
+            Assert.IsNull(_dialogue.GetCurrentPortrait());
+            Assert.AreEqual(_residentAngry, _dialogue.RightPortrait, "미리 세워 둔 인물도 그 줄의 표정");
             _dialogue.Next();
-            Assert.AreEqual(DialogueSide.Narration, _dialogue.CurrentSide);
+            Assert.AreEqual(_residentAngry, _dialogue.RightPortrait);
         }
 
         [Test]
