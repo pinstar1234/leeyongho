@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 using InfraTown.Building;
 using DG.Tweening;
+using InfraTown.UI;
 
 namespace InfraTown.UI
 {
