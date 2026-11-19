@@ -217,6 +217,9 @@ namespace InfraTown.Tests.Playtest
             Section("3. 월간 정산");
             yield return MonthlySettlementCheck();
 
+            Section("3-1. 일주일 스킵 버튼 (하루씩 빠르게, 이벤트가 나면 멈춤)");
+            yield return WeekSkipCheck();
+
             Section("4. 전신주(전력망) 설치");
             yield return PowerPoleCheck();
 
@@ -500,6 +503,57 @@ namespace InfraTown.Tests.Playtest
                 $"{power.CurrentAvailablePower} kW");
         }
 
+        private static IEnumerator WeekSkipCheck()
+        {
+            var time = TimeManager.Instance;
+            var pop = PopulationManager.Instance;
+            int daysBefore = DayIndex(time);
+            int popBefore = pop.CurrentPopulation;
+            var progressFrames = new HashSet<int>();
+            bool? interrupted = null;
+            Action<int, int> onProgress = (done, total) => progressFrames.Add(Time.frameCount);
+            Action<bool> onEnd = i => interrupted = i;
+            time.OnSkipProgress += onProgress;
+            time.OnSkipEnded += onEnd;
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            Check("스킵 시작", time.StartWeekSkip());
+            double deadline = EditorApplication.timeSinceStartup + 15; // 실제 시간으로 대기 (배치 모드는 프레임이 매우 빠름)
+            while (time.IsSkipping && EditorApplication.timeSinceStartup < deadline) yield return null;
+            stopwatch.Stop();
+            if (time.IsSkipping) time.CancelSkip(); // 시간 초과 시 다음 단계가 막히지 않도록
+
+            int passed = DayIndex(time) - daysBefore;
+            Check("스킵 한 번에 7일이 지나감", passed == 7 && interrupted == false, $"{passed}일, 중단={interrupted}");
+            Check("하루씩 여러 프레임에 걸쳐 진행 (값이 바뀌는 모습이 보임)", progressFrames.Count >= 7, $"{progressFrames.Count}프레임");
+            Note($"스킵 소요 실제 시간 {stopwatch.Elapsed.TotalSeconds:F1}초 (하루 {time.SkipSecondsPerDay}초), 인구 {popBefore} → {pop.CurrentPopulation}");
+
+            // 스킵 도중 이벤트(대화·컷씬 등의 일시정지)가 일어나면 그 시점에서 멈춤
+            var source = new object();
+            int stopAt = -1;
+            Action<int, int, int> onDate = null;
+            int dayCount = 0;
+            onDate = (y, m, d) => { if (++dayCount == 3) { time.RequestEventPause(source); stopAt = DayIndex(time); } };
+            interrupted = null;
+            daysBefore = DayIndex(time);
+            time.OnDateChanged += onDate;
+            time.StartWeekSkip();
+            deadline = EditorApplication.timeSinceStartup + 15;
+            while (time.IsSkipping && EditorApplication.timeSinceStartup < deadline) yield return null;
+            if (time.IsSkipping) time.CancelSkip();
+            yield return Frames(5);
+            time.OnDateChanged -= onDate;
+
+            Check("스킵 도중 이벤트가 나면 그날에서 멈춤", interrupted == true && DayIndex(time) == stopAt && DayIndex(time) - daysBefore == 3,
+                $"{DayIndex(time) - daysBefore}일 진행 후 멈춤");
+            time.ReleaseEventPause(source);
+
+            time.OnSkipProgress -= onProgress;
+            time.OnSkipEnded -= onEnd;
+        }
+
+        private static int DayIndex(TimeManager t) => ((t.CurrentYear - 1) * 12 + (t.CurrentMonth - 1)) * 30 + t.CurrentDay;
+
         private static IEnumerator PowerPoleCheck()
         {
             var power = PowerManager.Instance;
@@ -562,6 +616,9 @@ namespace InfraTown.Tests.Playtest
             outcome.OnGameEnded += r => ended = r;
             int lastBad = 0;
             outcome.OnBadStreakChanged += (d, limit) => lastBad = d;
+            int weeks = 0;
+            Action countWeek = () => weeks++;
+            TimeManager.Instance.OnWeeklyTick += countWeek;
 
             // 시설 전부 철거 + 전력 0 + 매립지로 주택을 '나쁨'으로
             foreach (var key in Placed.Keys.Where(k => !k.StartsWith("house")).ToList())
@@ -582,9 +639,13 @@ namespace InfraTown.Tests.Playtest
             yield return WaitUntil(() => ended != GameResult.None, 40, "배드엔딩");
             Check("나쁨 30일 연속 → 배드엔딩", ended == GameResult.Defeat, $"{ended}, 나쁨 {lastBad}일");
             Check("엔딩 후 시간 정지", TimeManager.Instance.IsEventPaused);
-            Check("필수 시설이 없던 4주 동안 미설치 감점이 시설마다 주 2%씩 쌓임",
-                Mathf.Approximately(sat.GetMissingFacilityPenalty(ServiceType.Hospital), 8f) && Mathf.Approximately(sat.TotalMissingFacilityPenalty, 32f),
-                $"병원 {sat.GetMissingFacilityPenalty(ServiceType.Hospital):F0}%, 합계 {sat.TotalMissingFacilityPenalty:F0}%");
+            TimeManager.Instance.OnWeeklyTick -= countWeek;
+            // 30일 동안 주간 틱은 시작 날짜에 따라 4~5번 → 지나간 주 수만큼 2%씩, 시설당 최대 10%
+            float expectedPerFacility = Mathf.Min(weeks * 2f, 10f);
+            Check($"필수 시설이 없던 {weeks}주 동안 미설치 감점이 시설마다 주 2%씩 쌓임 (최대 10%)",
+                Mathf.Approximately(sat.GetMissingFacilityPenalty(ServiceType.Hospital), expectedPerFacility) &&
+                Mathf.Approximately(sat.TotalMissingFacilityPenalty, expectedPerFacility * 4f),
+                $"병원 {sat.GetMissingFacilityPenalty(ServiceType.Hospital):F0}%, 합계 {sat.TotalMissingFacilityPenalty:F0}% (예상 {expectedPerFacility:F0}% × 4)");
         }
 
         private static IEnumerator VictoryCheck()

@@ -20,6 +20,13 @@ namespace InfraTown.TimeSystem
         [Tooltip("게임 내 하루에 해당하는 현실 시간(초)")]
         [SerializeField] private float secondsPerDay = 90f; // 1분 30초 = 90초
 
+        [Header("일주일 스킵 (사용자 기획 2026-11-19)")]
+        [Tooltip("스킵 버튼 한 번에 지나가는 일수")]
+        [SerializeField] private int skipDays = 7;
+
+        [Tooltip("스킵 중 하루가 지나가는 현실 시간(초) — 날짜와 인구·전력·돈·만족도가 하루씩 빠르게 바뀌는 모습을 보여줌. 0이면 한 번에")]
+        [SerializeField] private float skipSecondsPerDay = 0.3f;
+
         [Header("Current Date Info")]
         [SerializeField] private int currentYear = 1;
         [SerializeField] private int currentMonth = 1;
@@ -47,6 +54,41 @@ namespace InfraTown.TimeSystem
         public event Action OnWeeklyTick;
         public event Action OnMonthlyTick;
 
+        // ─── 일주일 스킵 ───
+        // UI: 스킵 버튼 → StartWeekSkip(), 버튼 활성 여부 → CanSkip, 진행 표시 → IsSkipping / SkipProgress / SkipDaysRemaining
+        // 날짜·인구·전력·돈·만족도는 스킵 중에도 평소처럼 하루씩 이벤트로 바뀌므로 기존 UI가 그대로 빠르게 갱신된다.
+        // 대화·컷씬·엔딩 등으로 일시정지 잠금이 걸리면 그 자리에서 스킵이 멈춘다 (OnSkipEnded(true)).
+
+        public int SkipDays { get => skipDays; set => skipDays = Mathf.Max(1, value); }
+        public float SkipSecondsPerDay { get => skipSecondsPerDay; set => skipSecondsPerDay = Mathf.Max(0f, value); }
+
+        /// <summary>스킵 진행 중</summary>
+        public bool IsSkipping { get; private set; }
+
+        /// <summary>이번 스킵에서 남은 일수</summary>
+        public int SkipDaysRemaining { get; private set; }
+
+        /// <summary>이번 스킵에서 지나간 일수</summary>
+        public int SkipDaysDone => IsSkipping ? _skipTotalDays - SkipDaysRemaining : 0;
+
+        /// <summary>스킵 진행률 0~1 (스킵 중이 아니면 0)</summary>
+        public float SkipProgress => IsSkipping && _skipTotalDays > 0 ? (float)SkipDaysDone / _skipTotalDays : 0f;
+
+        /// <summary>지금 스킵을 시작할 수 있는지 (대화·컷씬·엔딩 등으로 멈춰 있거나 이미 스킵 중이면 false)</summary>
+        public bool CanSkip => !IsSkipping && !IsEventPaused;
+
+        /// <summary>스킵 시작 (지나갈 일수)</summary>
+        public event Action<int> OnSkipStarted;
+
+        /// <summary>스킵 하루 진행 (지나간 일수, 전체 일수)</summary>
+        public event Action<int, int> OnSkipProgress;
+
+        /// <summary>스킵 끝 (true = 이벤트 등으로 도중에 멈춤)</summary>
+        public event Action<bool> OnSkipEnded;
+
+        private int _skipTotalDays;
+        private float _skipTimer;
+
         private void Awake()
         {
             if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
@@ -65,6 +107,13 @@ namespace InfraTown.TimeSystem
             if (_pauseLockSources.Count > 0 && InfraTown.Core.LockSourceUtil.RemoveDestroyed(_pauseLockSources) > 0)
             {
                 ApplyTimeScale();
+            }
+
+            if (IsSkipping)
+            {
+                // 스킵은 배속·timeScale과 상관없이 실제 시간으로 진행
+                TickSkip(Time.unscaledDeltaTime);
+                return;
             }
 
             if (IsEventPaused || currentSpeed == GameSpeed.Pause) return;
@@ -111,6 +160,65 @@ namespace InfraTown.TimeSystem
         }
 
         /// <summary>
+        /// 일주일 스킵 시작 (skipDays일). 일시정지(배속 0) 중에도 가능. 시작하지 못하면 false
+        /// </summary>
+        public bool StartWeekSkip() => StartSkip(skipDays);
+
+        /// <summary>
+        /// days일 스킵 시작. 하루씩 skipSecondsPerDay 간격으로 빠르게 진행하며, 일시정지 잠금이 걸리면 멈춘다
+        /// </summary>
+        public bool StartSkip(int days)
+        {
+            if (days <= 0 || !CanSkip) return false;
+
+            IsSkipping = true;
+            _skipTotalDays = days;
+            SkipDaysRemaining = days;
+            _skipTimer = 0f;
+            OnSkipStarted?.Invoke(days);
+
+            if (skipSecondsPerDay <= 0f) TickSkip(0f); // 한 번에
+            return true;
+        }
+
+        /// <summary>스킵을 지금 멈춤 (남은 날은 지나가지 않음)</summary>
+        public void CancelSkip() => EndSkip(true);
+
+        /// <summary>
+        /// 스킵 시간 경과 처리 (Update에서 실제 시간으로 호출, 테스트에서 직접 호출 가능)
+        /// </summary>
+        public void TickSkip(float deltaSeconds)
+        {
+            if (!IsSkipping) return;
+            if (IsEventPaused) { EndSkip(true); return; }
+
+            _skipTimer += Mathf.Max(0f, deltaSeconds);
+            while (IsSkipping && SkipDaysRemaining > 0 && (skipSecondsPerDay <= 0f || _skipTimer >= skipSecondsPerDay))
+            {
+                if (skipSecondsPerDay > 0f) _skipTimer -= skipSecondsPerDay;
+
+                SkipDaysRemaining--;
+                AdvanceOneDay();
+                if (!IsSkipping) return; // 이 날에 일어난 이벤트로 이미 멈춤
+                OnSkipProgress?.Invoke(SkipDaysDone, _skipTotalDays);
+
+                // 그날 대화·컷씬·엔딩이 일시정지를 걸었으면 그 시점에서 멈춤
+                if (IsEventPaused) { EndSkip(true); return; }
+            }
+
+            if (IsSkipping && SkipDaysRemaining <= 0) EndSkip(false);
+        }
+
+        private void EndSkip(bool interrupted)
+        {
+            if (!IsSkipping) return;
+            IsSkipping = false;
+            SkipDaysRemaining = 0;
+            _skipTimer = 0f;
+            OnSkipEnded?.Invoke(interrupted);
+        }
+
+        /// <summary>
         /// 배속 설정 (Pause, Normal=1, Fast=2, SuperFast=3)
         /// </summary>
         public void SetGameSpeed(GameSpeed speed)
@@ -141,6 +249,8 @@ namespace InfraTown.TimeSystem
             if (_pauseLockSources.Add(source))
             {
                 ApplyTimeScale();
+                // 스킵 도중 대화·컷씬·엔딩이 시작되면 그 시점에서 바로 멈춤
+                if (IsSkipping) EndSkip(true);
             }
         }
 
