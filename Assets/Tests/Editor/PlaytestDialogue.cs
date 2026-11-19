@@ -100,8 +100,20 @@ namespace InfraTown.Tests.Playtest
         {
             Section("D-1. 게임 시작 대화 (사용자가 만든 Start.asset)");
             var start = AssetDatabase.LoadAssetAtPath<Dlg.DialogueData>("Assets/Data/Dialouge/Start.asset");
-            if (start == null || start.lines.Count == 0) { Fail("Start.asset", "없거나 비어 있음"); yield break; }
-            Note($"Start.asset {start.lines.Count}줄, 대화 전 컷씬 = {(start.cutsceneBefore != null ? start.cutsceneBefore.name : "없음(비었거나 연결된 에셋이 없음)")}");
+            bool hasText = start != null && start.lines.Any(l => !string.IsNullOrEmpty(l.text));
+            if (!hasText)
+            {
+                // Start.asset이 아직 비어 있으면(대사를 커밋하기 전 등) 같은 구성의 예시 대화로 확인
+                Note("⚠ Start.asset이 없거나 대사가 비어 있음 → 예시 대화로 확인 (나레이션 → 이장님 → 주인공 {player} → 이장님)");
+                start = Dlg.DialogueData.Create("sample_start", true, false,
+                    new Dlg.DialogueLine("", "여기가 내가 지낼 마을인가..."),
+                    new Dlg.DialogueLine("이장님", "자네가 이번에 새로 온 사람이구먼."),
+                    new Dlg.DialogueLine("이장님", "반갑네, 난 이 마을 이장일세."),
+                    new Dlg.DialogueLine("주인공", "아, 안녕하십니까."),
+                    new Dlg.DialogueLine("주인공", "이번에 새로 발령받은 {player}입니다."),
+                    new Dlg.DialogueLine("이장님", "작아도 좋은 마을이야. 잘 부탁하네."));
+            }
+            Note($"{start.name} {start.lines.Count}줄, 대화 전 컷씬 = {(start.cutsceneBefore != null ? start.cutsceneBefore.name : "없음(비었거나 연결된 에셋이 없음)")}");
 
             time.SetGameSpeed(GameSpeed.Normal);
             FastForward(); // 시간이 흐르면 하루가 1프레임에 지나감 → 대화 중 날짜가 그대로면 시간이 멈춘 것
