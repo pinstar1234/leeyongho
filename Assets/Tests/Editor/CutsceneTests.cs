@@ -355,7 +355,7 @@ namespace InfraTown.Tests
         {
             TestWorld.SetField(_triggers, "openingCutscene", CutsceneData.Create("opening", CutsceneStyle.Scene, new CutsceneShot { caption = "버스" }));
             TestWorld.SetField(_triggers, "introDialogue", DialogueData.Create("arrive", true, true, new DialogueLine("주민", "어서 와요")));
-            TestWorld.Invoke(_triggers, "Start");
+            TestWorld.Invoke(_triggers, "Start"); TestWorld.Invoke(_triggers, "Update");
 
             CollectionAssert.AreEqual(new[] { "컷씬:opening" }, _log);
             _cutscene.Next();
@@ -365,7 +365,7 @@ namespace InfraTown.Tests
         [Test]
         public void 필수_시설을_처음_지으면_카툰_컷씬_후_대화가_나온다()
         {
-            TestWorld.Invoke(_triggers, "Start");
+            TestWorld.Invoke(_triggers, "Start"); TestWorld.Invoke(_triggers, "Update");
             var entries = TestWorld.GetField<List<EssentialFacilityDialogue>>(_triggers, "essentialDialogues");
             entries.Find(e => e.service == ServiceType.Hospital).installedCutscene =
                 CutsceneData.Create("hospital_comic", CutsceneStyle.Comic, new CutsceneShot(null, "구급차"));

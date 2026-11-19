@@ -45,7 +45,12 @@ namespace InfraTown.EventSystem
     [RequireComponent(typeof(DialogueEventManager))]
     public class DialogueTriggers : MonoBehaviour
     {
-        [Header("1. 게임 시작 (오프닝 컷씬 → 마을 도착 후 주민 대화)")]
+        [Header("0. 주인공 이름")]
+        [Tooltip("게임 시작 때 이름을 아직 정하지 않았으면 이름 입력을 요청하고, 정할 때까지 오프닝을 기다림 " +
+                 "(OnPlayerNameRequested를 구독한 입력창이 없으면 기본 이름으로 바로 진행)")]
+        [SerializeField] private bool askPlayerNameAtStart = true;
+
+        [Header("1. 게임 시작 (오프닝 컷씬 → 마을 도착 후 주민 대화 → 튜토리얼)")]
         [Tooltip("처음에 보여줄 오프닝 컷씬 — 게임 화면 연출(Scene) 방식 권장, 마지막 장면을 마을 도착 위치로 (비워도 됨)")]
         [SerializeField] private CutsceneData openingCutscene;
 
@@ -97,6 +102,18 @@ namespace InfraTown.EventSystem
         [SerializeField] private DialogueData victoryDialogue;
         [SerializeField] private DialogueData defeatDialogue;
 
+        /// <summary>
+        /// 이름 입력창을 띄울 때 (게임 시작 첫 프레임). 입력창은 SubmitPlayerName(이름)을 부르고, true면 닫는다.
+        /// 기다리는 동안 게임 시간은 멈춘다.
+        /// </summary>
+        public event Action OnPlayerNameRequested;
+
+        /// <summary>이름 입력을 기다리는 중 (오프닝 전)</summary>
+        public bool IsWaitingForPlayerName { get; private set; }
+
+        /// <summary>오프닝·튜토리얼이 시작됐는지 (이름 입력 대기 중이면 false)</summary>
+        public bool StoryStarted { get; private set; }
+
         /// <summary>필수 시설 미설치 불만이 나왔을 때 (시설 종류)</summary>
         public event Action<ServiceType> OnFacilityComplaint;
 
@@ -113,6 +130,8 @@ namespace InfraTown.EventSystem
         private readonly Dictionary<ServiceType, EssentialState> _essential = new Dictionary<ServiceType, EssentialState>();
         private readonly HashSet<BuildingData> _knownUnlocked = new HashSet<BuildingData>();
         private bool _initialized;
+        private bool _firstUpdateDone;
+        private List<BuildingData> _initialUnlocked = new List<BuildingData>();
         private GameOutcomeManager _outcome;
         private PopulationManager _population;
         private TimeManager _time;
@@ -143,17 +162,43 @@ namespace InfraTown.EventSystem
             {
                 gameObject.AddComponent<CutsceneManager>();
             }
+            // 튜토리얼도 없으면 추가
+            if (TutorialDialogues.Instance == null && Application.isPlaying)
+            {
+                gameObject.AddComponent<TutorialDialogues>();
+            }
             TrySubscribe();
         }
 
         private void Update()
         {
+            // 이야기 시작(이름 요청·오프닝)은 첫 Update에서 — 모든 UI가 Start에서 이벤트를 구독한 뒤라 이름 입력창이 요청을 받을 수 있음
+            _firstUpdateDone = true;
             // GameOutcomeManager 등은 다른 매니저의 Start에서 늦게 붙을 수 있어서 나타날 때까지 구독 시도
-            if (_outcome == null || _population == null || _time == null || _buildings == null) TrySubscribe();
+            if (!_initialized || _outcome == null || _population == null || _time == null || _buildings == null) TrySubscribe();
         }
+
+        /// <summary>
+        /// 이름 입력창에서 부름. 이름이 올바르면 저장하고 오프닝을 시작한 뒤 true,
+        /// 비었거나 너무 길면 false와 오류 문구(입력창에 보여주면 됨)
+        /// </summary>
+        public bool SubmitPlayerName(string name, out string error)
+        {
+            if (!PlayerProfile.TrySetPlayerName(name, out error)) return false;
+            if (IsWaitingForPlayerName)
+            {
+                IsWaitingForPlayerName = false;
+                TimeManager.Instance?.ReleaseEventPause(this);
+                StartStory();
+            }
+            return true;
+        }
+
+        public bool SubmitPlayerName(string name) => SubmitPlayerName(name, out _);
 
         private void OnDestroy()
         {
+            if (IsWaitingForPlayerName) TimeManager.Instance?.ReleaseEventPause(this);
             if (_population != null) _population.OnPopulationChanged -= HandlePopulationChanged;
             if (_outcome != null)
             {
@@ -166,14 +211,23 @@ namespace InfraTown.EventSystem
 
         private void TrySubscribe()
         {
-            if (!_initialized && BuildingManager.Instance != null)
+            if (!_initialized && _firstUpdateDone && BuildingManager.Instance != null)
             {
                 _initialized = true;
-                PlayOpening();
+                _initialUnlocked = BuildingManager.Instance.GetUnlockedBuildings();
+                foreach (var d in _initialUnlocked) _knownUnlocked.Add(d);
 
-                var unlockedNow = BuildingManager.Instance.GetUnlockedBuildings();
-                if (showInitialUnlockStories) PlayUnlockStories(unlockedNow, "unlock_initial");
-                foreach (var d in unlockedNow) _knownUnlocked.Add(d);
+                if (askPlayerNameAtStart && !PlayerProfile.HasName && OnPlayerNameRequested != null)
+                {
+                    // 이름을 정할 때까지 시간 정지 후 대기 → SubmitPlayerName에서 StartStory
+                    IsWaitingForPlayerName = true;
+                    TimeManager.Instance?.RequestEventPause(this);
+                    OnPlayerNameRequested.Invoke();
+                }
+                else
+                {
+                    StartStory();
+                }
             }
 
             if (_buildings == null && BuildingManager.Instance != null)
@@ -204,6 +258,19 @@ namespace InfraTown.EventSystem
         }
 
         // ───────────────── 1) 오프닝 ─────────────────
+
+        /// <summary>오프닝 컷씬 → 마을 도착 대화 → 처음 해금 메시지 → 튜토리얼 1일차 (대화 대기열 순서대로)</summary>
+        private void StartStory()
+        {
+            if (StoryStarted) return;
+            StoryStarted = true;
+
+            PlayOpening();
+            if (showInitialUnlockStories) PlayUnlockStories(_initialUnlocked, "unlock_initial");
+
+            var tutorial = TutorialDialogues.Instance != null ? TutorialDialogues.Instance : GetComponent<TutorialDialogues>();
+            if (tutorial != null) tutorial.BeginTutorial();
+        }
 
         /// <summary>오프닝 컷씬 → 마을 도착 대화. 대화가 없으면 컷씬만</summary>
         private void PlayOpening()

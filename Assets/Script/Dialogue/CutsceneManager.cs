@@ -141,7 +141,16 @@ namespace InfraTown.EventSystem
         }
 
         /// <summary>현재 장면 자막 (쉬운 모드는 DialogueEventManager.UseEasyText를 따름)</summary>
-        public string GetCurrentCaption() => CurrentShot?.GetCaption(UseEasyText) ?? string.Empty;
+        public string GetCurrentCaption() => InfraTown.Core.PlayerProfile.ApplyTokens(CurrentShot?.GetCaption(UseEasyText));
+
+        /// <summary>현재 장면 자막의 화자 이름 (주인공이면 플레이어가 정한 이름, 해설이면 빈 문자열)</summary>
+        public string GetCurrentSpeakerName()
+        {
+            string speaker = CurrentShot?.speaker;
+            if (string.IsNullOrEmpty(speaker)) return string.Empty;
+            var dialogue = DialogueEventManager.Instance;
+            return dialogue != null ? dialogue.GetSpeakerDisplayName(speaker) : InfraTown.Core.PlayerProfile.ApplyTokens(speaker);
+        }
 
         public bool HasPlayed(string cutsceneId) => !string.IsNullOrEmpty(cutsceneId) && _played.Contains(cutsceneId);
         public IReadOnlyCollection<string> PlayedCutsceneIds => _played;
@@ -191,7 +200,7 @@ namespace InfraTown.EventSystem
             {
                 foreach (var s in cutscene.shots)
                 {
-                    string caption = s.GetCaption(UseEasyText);
+                    string caption = InfraTown.Core.PlayerProfile.ApplyTokens(s.GetCaption(UseEasyText));
                     if (!string.IsNullOrEmpty(caption))
                         Debug.Log($"[컷씬] {(string.IsNullOrEmpty(s.speaker) ? "" : s.speaker + ": ")}{caption}");
                 }

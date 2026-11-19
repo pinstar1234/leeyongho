@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using InfraTown.Core;
 using InfraTown.TimeSystem;
 
 namespace InfraTown.EventSystem
@@ -11,7 +12,7 @@ namespace InfraTown.EventSystem
     ///
     /// UI 연결 방법:
     ///   OnDialogueStarted  → 대화창 열기
-    ///   OnLineShown        → 문장 표시 (GetCurrentText()로 모드에 맞는 문장)
+    ///   OnLineShown        → 이름 GetCurrentSpeakerName(), 문장 GetCurrentText() (모드에 맞는 문장, {player}는 주인공 이름으로)
     ///                        화자 배치: 왼쪽 = 주인공(LeftSpeakerName/LeftPortrait, 항상),
     ///                                  오른쪽 = 지금(또는 마지막으로) 말한 다른 인물(RightSpeakerName/RightPortrait),
     ///                                  CurrentSide = 지금 말하는 쪽(밝게 표시, 반대쪽은 어둡게)
@@ -28,7 +29,7 @@ namespace InfraTown.EventSystem
         [SerializeField] private bool useEasyText = false;
 
         [Header("인물 (주인공은 항상 왼쪽, 나머지는 오른쪽)")]
-        [Tooltip("주인공 이름 — 대화 줄의 speaker가 이 이름이면 왼쪽에 선다")]
+        [Tooltip("대화 에셋에서 주인공을 가리키는 화자 이름 — 이 이름(또는 {player})이면 왼쪽에 서고, 화면에는 플레이어가 정한 이름이 나온다")]
         [SerializeField] private string protagonistName = "주인공";
 
         [SerializeField] private Sprite protagonistPortrait;
@@ -69,7 +70,7 @@ namespace InfraTown.EventSystem
         public DialogueSide CurrentSide { get; private set; } = DialogueSide.Narration;
 
         /// <summary>왼쪽 = 항상 주인공</summary>
-        public string LeftSpeakerName => protagonistName;
+        public string LeftSpeakerName => PlayerProfile.PlayerName; // 플레이어가 정한 이름
         public Sprite LeftPortrait { get; private set; }
 
         /// <summary>오른쪽 = 지금 말하는 다른 인물. 주인공이 말할 때는 마지막(아직 없으면 다음)에 말하는 다른 인물. 없으면 null</summary>
@@ -87,7 +88,11 @@ namespace InfraTown.EventSystem
         {
             public DialogueData dialogue;
             public CutsceneData cutscene;
+            public Action onStarted;
+            public Action onFinished;
         }
+
+        private Action _currentOnFinished;
 
         private readonly Queue<Request> _queue = new Queue<Request>();
         private readonly HashSet<string> _played = new HashSet<string>();
@@ -117,14 +122,27 @@ namespace InfraTown.EventSystem
         /// <summary>
         /// 컷씬을 지정해서 대화 재생 (cutsceneOverride가 있으면 대화 에셋의 cutsceneBefore 대신 이것을 먼저 보여줌)
         /// </summary>
-        public bool Play(DialogueData dialogue, CutsceneData cutsceneOverride)
+        public bool Play(DialogueData dialogue, CutsceneData cutsceneOverride) => Play(dialogue, cutsceneOverride, null, null);
+
+        /// <summary>
+        /// 대화 재생 + 시작/끝 알림 (튜토리얼 연출처럼 이 대화에 맞춰 무언가 할 때).
+        /// onStarted는 컷씬이 끝나고 첫 줄이 나오기 직전, onFinished는 마지막 줄을 넘기거나 Skip했을 때 호출된다.
+        /// 재생하지 않으면(false) 둘 다 호출되지 않는다.
+        /// </summary>
+        public bool Play(DialogueData dialogue, CutsceneData cutsceneOverride, Action onStarted, Action onFinished)
         {
             if (dialogue == null || dialogue.lines == null || dialogue.lines.Count == 0) return false;
             if (dialogue.playOnce && HasPlayed(dialogue.dialogueId)) return false;
             if (dialogue == CurrentDialogue || dialogue == _waitingDialogue) return false;
             foreach (var r in _queue) if (r.dialogue == dialogue) return false;
 
-            var request = new Request { dialogue = dialogue, cutscene = cutsceneOverride != null ? cutsceneOverride : dialogue.cutsceneBefore };
+            var request = new Request
+            {
+                dialogue = dialogue,
+                cutscene = cutsceneOverride != null ? cutsceneOverride : dialogue.cutsceneBefore,
+                onStarted = onStarted,
+                onFinished = onFinished
+            };
             if (IsBusy) { _queue.Enqueue(request); return true; }
 
             Begin(request);
@@ -164,7 +182,7 @@ namespace InfraTown.EventSystem
         }
 
         /// <summary>현재 줄을 모드(일반/쉬운)에 맞게</summary>
-        public string GetCurrentText() => CurrentLine?.GetText(useEasyText) ?? string.Empty;
+        public string GetCurrentText() => PlayerProfile.ApplyTokens(CurrentLine?.GetText(useEasyText));
 
         /// <summary>현재 줄의 초상화 (줄에 지정된 것 → 등록된 인물 기본 초상화)</summary>
         public Sprite GetCurrentPortrait() => GetPortrait(CurrentLine);
@@ -183,8 +201,20 @@ namespace InfraTown.EventSystem
 
         // ─── 화자 정보 ───
 
+        /// <summary>
+        /// 주인공인지: 대화 에셋의 주인공 이름(protagonistName), {player}/{이름}, 또는 플레이어가 정한 이름
+        /// </summary>
         public bool IsProtagonist(string speaker) =>
-            !string.IsNullOrEmpty(speaker) && speaker == protagonistName;
+            !string.IsNullOrEmpty(speaker) &&
+            (speaker == protagonistName || PlayerProfile.IsNameToken(speaker) ||
+             (PlayerProfile.HasName && speaker == PlayerProfile.PlayerName));
+
+        /// <summary>화면에 보일 이름: 주인공이면 플레이어가 정한 이름, 아니면 {player}만 바꾼 이름</summary>
+        public string GetSpeakerDisplayName(string speaker) =>
+            IsProtagonist(speaker) ? PlayerProfile.PlayerName : PlayerProfile.ApplyTokens(speaker);
+
+        /// <summary>현재 줄의 화면용 화자 이름</summary>
+        public string GetCurrentSpeakerName() => CurrentLine == null ? string.Empty : GetSpeakerDisplayName(CurrentLine.speaker);
 
         /// <summary>줄이 서는 자리 (Auto면 주인공 → 왼쪽, 다른 이름 → 오른쪽, 이름 없음 → 해설)</summary>
         public DialogueSide GetSide(DialogueLine line)
@@ -245,33 +275,38 @@ namespace InfraTown.EventSystem
             if (request.cutscene != null && cutscenes != null)
             {
                 _waitingDialogue = dialogue;
-                bool started = cutscenes.Play(request.cutscene, () => OnCutsceneFinished(dialogue));
+                bool started = cutscenes.Play(request.cutscene, () => OnCutsceneFinished(request));
                 if (started) return;
                 _waitingDialogue = null; // 이미 본 컷씬 등으로 재생 안 되면 바로 대화
             }
 
-            StartLines(dialogue);
+            StartLines(request);
         }
 
-        private void OnCutsceneFinished(DialogueData dialogue)
+        private void OnCutsceneFinished(Request request)
         {
-            if (_waitingDialogue != dialogue) { BeginNextInQueue(); return; } // ClearAll로 취소됨
+            if (_waitingDialogue != request.dialogue) { BeginNextInQueue(); return; } // ClearAll로 취소됨
             _waitingDialogue = null;
-            StartLines(dialogue);
+            StartLines(request);
         }
 
-        private void StartLines(DialogueData dialogue)
+        private void StartLines(Request request)
         {
+            var dialogue = request.dialogue;
             CurrentDialogue = dialogue;
             CurrentLineIndex = 0;
             LeftPortrait = protagonistPortrait;
             RightSpeakerName = null;
             RightPortrait = null;
+            _currentOnFinished = request.onFinished;
+
+            request.onStarted?.Invoke();
 
             if (!HasViewer)
             {
                 // 표시할 UI가 없으면 멈추지 않고 기록만 남김
-                foreach (var line in dialogue.lines) Debug.Log($"[대화] {line.speaker}: {line.GetText(useEasyText)}");
+                foreach (var line in dialogue.lines)
+                    Debug.Log($"[대화] {GetSpeakerDisplayName(line.speaker)}: {PlayerProfile.ApplyTokens(line.GetText(useEasyText))}");
                 End();
                 return;
             }
@@ -301,7 +336,7 @@ namespace InfraTown.EventSystem
             }
             else if (CurrentSide == DialogueSide.Right)
             {
-                RightSpeakerName = line.speaker;
+                RightSpeakerName = GetSpeakerDisplayName(line.speaker);
                 RightPortrait = GetPortrait(line);
             }
 
@@ -314,7 +349,7 @@ namespace InfraTown.EventSystem
             {
                 var next = CurrentDialogue.lines[i];
                 if (GetSide(next) != DialogueSide.Right) continue;
-                RightSpeakerName = next.speaker;
+                RightSpeakerName = GetSpeakerDisplayName(next.speaker);
                 RightPortrait = GetPortrait(next);
                 return;
             }
@@ -323,6 +358,8 @@ namespace InfraTown.EventSystem
         private void End()
         {
             var ended = CurrentDialogue;
+            var onFinished = _currentOnFinished;
+            _currentOnFinished = null;
             CurrentDialogue = null;
             CurrentLineIndex = -1;
             CurrentSide = DialogueSide.Narration;
@@ -331,6 +368,7 @@ namespace InfraTown.EventSystem
             _pausedForDialogue = false;
 
             OnDialogueEnded?.Invoke(ended);
+            onFinished?.Invoke();
 
             BeginNextInQueue();
         }

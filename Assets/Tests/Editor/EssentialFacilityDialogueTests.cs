@@ -55,7 +55,7 @@ namespace InfraTown.Tests
             _dialogue.OnDialogueStarted += d => _started.Add(d.dialogueId);
             _dialogue.OnLineShown += (l, i, n) => { };
 
-            TestWorld.Invoke(_triggers, "Start");
+            TestWorld.Invoke(_triggers, "Start"); TestWorld.Invoke(_triggers, "Update");
         }
 
         [TearDown]

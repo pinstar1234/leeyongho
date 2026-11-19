@@ -199,7 +199,7 @@ namespace InfraTown.Tests
             _world.Dispose();
         }
 
-        private void Start() => TestWorld.Invoke(_triggers, "Start");
+        private void Start() { TestWorld.Invoke(_triggers, "Start"); TestWorld.Invoke(_triggers, "Update"); }
 
         [Test]
         public void 시작하면_Tier1_해금_스토리를_보여준다()
