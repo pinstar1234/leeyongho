@@ -188,8 +188,24 @@ namespace InfraTown.Tests.Playtest
             Shot("01_middle_village", null);
 
             Section("1-2. 완성된 마을 — 필수 시설 4종 추가");
+            var dialogueTriggers = UnityEngine.Object.FindObjectOfType<InfraTown.EventSystem.DialogueTriggers>();
+            var firstInstalled = new List<ServiceType>();
+            if (dialogueTriggers != null) dialogueTriggers.OnFacilityFirstInstalled += t => firstInstalled.Add(t);
+
             yield return PlaceEssentials(withNimby: true);
             yield return EnsurePower();
+
+            if (dialogueTriggers != null)
+            {
+                var dialogue = InfraTown.EventSystem.DialogueEventManager.Instance;
+                Check("[대화] 씬에 대화 매니저 있음", dialogue != null);
+                Check("[대화] 필수 시설 4종을 처음 지을 때 설치 대사", firstInstalled.Count == 4,
+                    string.Join(", ", firstInstalled));
+                Check("[대화] 대화창 UI가 없으면 대사는 콘솔에만, 게임은 멈추지 않음",
+                    dialogue != null && !dialogue.IsPlaying && !TimeManager.Instance.IsEventPaused);
+                Note($"[대화] 지금까지 재생된 대화 {dialogue?.PlayedDialogueIds.Count}개: {string.Join(", ", dialogue?.PlayedDialogueIds ?? new string[0])}");
+            }
+            else Note("[대화] 이 씬에는 DialogueTriggers 없음");
             float full = SatisfactionSummary("완성된 마을");
             Check("완성된 마을이 중간 단계보다 만족도가 높다", full > middle, $"{middle:F1}% → {full:F1}%");
             yield return VillageChecks();

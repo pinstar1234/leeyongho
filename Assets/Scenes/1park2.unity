@@ -390,6 +390,93 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 64497028}
   m_CullTransparentMesh: 1
+--- !u!1 &73417815
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 73417818}
+  - component: {fileID: 73417817}
+  - component: {fileID: 73417816}
+  m_Layer: 0
+  m_Name: DialogueSystem
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &73417816
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 73417815}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 073b1c2c156545509b7e009f97f5fb80, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  introDialogue: {fileID: 0}
+  showInitialUnlockStories: 1
+  essentialDialogues:
+  - service: 1
+    missingDialogue: {fileID: 0}
+    installedDialogue: {fileID: 0}
+  - service: 4
+    missingDialogue: {fileID: 0}
+    installedDialogue: {fileID: 0}
+  - service: 2
+    missingDialogue: {fileID: 0}
+    installedDialogue: {fileID: 0}
+  - service: 0
+    missingDialogue: {fileID: 0}
+    installedDialogue: {fileID: 0}
+  complaintMinDays: 30
+  complaintMaxDays: 90
+  repeatComplaint: 1
+  countOnlyWhenNotGood: 0
+  randomSeed: 0
+  residentSpeaker: "\uC8FC\uBBFC"
+  residentPortrait: {fileID: 0}
+  unlockSpeaker: "\uC774\uC7A5\uB2D8"
+  unlockSpeakerPortrait: {fileID: 0}
+  warningSpeaker: "\uC548\uB0B4\uC6D0"
+  warningSpeakerPortrait: {fileID: 0}
+  badStreakWarningDays: 0a0000001400000019000000
+  victoryDialogue: {fileID: 0}
+  defeatDialogue: {fileID: 0}
+--- !u!114 &73417817
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 73417815}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a8e1e661ac9ca04d92ee2d60079e7ae, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  useEasyText: 0
+--- !u!4 &73417818
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 73417815}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &112422891
 GameObject:
   m_ObjectHideFlags: 0
@@ -5312,6 +5399,9 @@ MonoBehaviour:
   validPreviewMaterial: {fileID: 2100000, guid: 1c05ec9f0a3ebd54ab24217363b7cd29, type: 2}
   invalidPreviewMaterial: {fileID: 2100000, guid: c18be7f6593b2ac488d5636a9b6050fd, type: 2}
   highlightController: {fileID: 0}
+  rotateKeyPositive: 113
+  rotateKeyNegative: 101
+  rotationStep: 90
 --- !u!1 &1053249834
 GameObject:
   m_ObjectHideFlags: 0
@@ -8016,6 +8106,9 @@ MonoBehaviour:
   validPreviewMaterial: {fileID: 2100000, guid: 1c05ec9f0a3ebd54ab24217363b7cd29, type: 2}
   invalidPreviewMaterial: {fileID: 2100000, guid: c18be7f6593b2ac488d5636a9b6050fd, type: 2}
   highlightController: {fileID: 0}
+  rotateKeyPositive: 113
+  rotateKeyNegative: 101
+  rotationStep: 90
 --- !u!1 &1571548097
 GameObject:
   m_ObjectHideFlags: 0
@@ -11525,3 +11618,4 @@ SceneRoots:
   - {fileID: 833435341}
   - {fileID: 534053994}
   - {fileID: 1016892244}
+  - {fileID: 73417818}
