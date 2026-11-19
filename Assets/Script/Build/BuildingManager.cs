@@ -22,6 +22,8 @@ namespace InfraTown.Building
         [Header("하이라이트 컨트롤러 참조")]
         [SerializeField] private GridHighlightController highlightController;
 
+        
+
         private BuildingData _selectedBuildingData;
         private GameObject _previewInstance;
         private MeshRenderer[] _previewRenderers;
@@ -281,7 +283,6 @@ namespace InfraTown.Building
 
             GameLoopManager.Instance?.RegisterBuilding(instance);
 
-            // 건설 완료 안내 토스트 (남색 배경, 흔들림 없음)
             ToastUIManager.Instance?.ShowToast($"✅ '{_selectedBuildingData.buildingName}' 건설 완료!", false);
         }
 
