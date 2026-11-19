@@ -32,7 +32,8 @@ function Test-EditorOpen {
 $projectPath = $root
 if ($ForceCopy -or (Test-EditorOpen)) {
     $projectPath = Join-Path $env:LOCALAPPDATA "InfraTownTestProject"
-    Write-Host "Unity editor is using the project -> running in a mirrored copy: $projectPath" -ForegroundColor Yellow
+    $why = if ($ForceCopy) { "-ForceCopy" } else { "Unity editor is using the project" }
+    Write-Host "$why -> running in a mirrored copy: $projectPath" -ForegroundColor Yellow
     foreach ($dir in "Assets", "Packages", "ProjectSettings") {
         robocopy (Join-Path $root $dir) (Join-Path $projectPath $dir) /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
         if ($LASTEXITCODE -ge 8) { Write-Host "robocopy failed for $dir ($LASTEXITCODE)" -ForegroundColor Red; exit 1 }
@@ -59,11 +60,18 @@ $unityArgs = @(
 )
 
 Write-Host "Running playtest with Unity $version (timeout $TimeoutMinutes min) ..."
-$proc = Start-Process -FilePath $UnityPath -ArgumentList $unityArgs -PassThru -NoNewWindow
-if (-not $proc.WaitForExit($TimeoutMinutes * 60 * 1000)) {
-    Write-Host "Timed out -> stopping Unity" -ForegroundColor Red
-    Stop-Process -Id $proc.Id -Force
-    exit 1
+for ($attempt = 1; $attempt -le 2; $attempt++) {
+    $proc = Start-Process -FilePath $UnityPath -ArgumentList $unityArgs -PassThru -NoNewWindow
+    if (-not $proc.WaitForExit($TimeoutMinutes * 60 * 1000)) {
+        Write-Host "Timed out -> stopping Unity" -ForegroundColor Red
+        Stop-Process -Id $proc.Id -Force
+        exit 1
+    }
+    # Unity licensing client sometimes is not reachable on the first try -> retry once
+    $licenseFail = (-not (Test-Path (Join-Path $outDir "report.md"))) -and (Test-Path $logPath) -and
+        (Select-String -Path $logPath -Pattern "LicensingClient doesn't exist" -Quiet)
+    if (-not $licenseFail) { break }
+    Write-Host "Unity licensing client not ready -> retrying once" -ForegroundColor DarkYellow
 }
 
 $report = Join-Path $outDir "report.md"

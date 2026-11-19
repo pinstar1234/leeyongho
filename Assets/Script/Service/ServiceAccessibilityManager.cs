@@ -79,7 +79,7 @@ namespace InfraTown.Services
 
         private void Awake()
         {
-            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
             Instance = this;
 
             foreach (var type in AllServiceTypes)

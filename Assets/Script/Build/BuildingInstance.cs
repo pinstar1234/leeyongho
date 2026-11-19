@@ -26,7 +26,12 @@ namespace InfraTown.Building
 
         private void OnMouseDown()
         {
-            // 마우스 왼쪽 버튼 클릭 시 UI 호출 (UI 클릭 시 레이캐스트 방지 등은 상황에 맞게 추가)
+            // 마우스 왼쪽 버튼 클릭 시 UI 호출. UI 위를 누른 클릭은 건물로 넘기지 않음
+            if (InfraTown.Core.PointerGuard.IsPointerOverUI()) return;
+
+            // 건설 모드 중에는 건물 정보 창을 띄우지 않음 (설치 클릭이 옆 건물 클릭으로 처리되지 않도록)
+            if (BuildingManager.Instance != null && BuildingManager.Instance.IsBuildMode) return;
+
             if (InfraTown.UI.BuildingUIManager.Instance != null)
             {
                 InfraTown.UI.BuildingUIManager.Instance.OnBuildingClicked(this);

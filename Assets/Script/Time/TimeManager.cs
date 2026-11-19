@@ -49,7 +49,7 @@ namespace InfraTown.TimeSystem
 
         private void Awake()
         {
-            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
             Instance = this;
         }
 
@@ -61,6 +61,12 @@ namespace InfraTown.TimeSystem
 
         private void Update()
         {
+            // 일시정지를 건 UI·대화 오브젝트가 해제 없이 삭제됐으면 그 잠금을 풀어 준다 (영구 정지 방지)
+            if (_pauseLockSources.Count > 0 && InfraTown.Core.LockSourceUtil.RemoveDestroyed(_pauseLockSources) > 0)
+            {
+                ApplyTimeScale();
+            }
+
             if (IsEventPaused || currentSpeed == GameSpeed.Pause) return;
 
             _dayTimer += Time.deltaTime;
@@ -131,6 +137,7 @@ namespace InfraTown.TimeSystem
         /// </summary>
         public void RequestEventPause(object source)
         {
+            if (source == null) return; // null은 해제할 방법이 없으므로 받지 않음
             if (_pauseLockSources.Add(source))
             {
                 ApplyTimeScale();
@@ -142,10 +149,21 @@ namespace InfraTown.TimeSystem
         /// </summary>
         public void ReleaseEventPause(object source)
         {
+            if (source == null) return;
             if (_pauseLockSources.Remove(source))
             {
                 ApplyTimeScale();
             }
+        }
+
+        /// <summary>현재 걸려 있는 일시정지 잠금 수</summary>
+        public int PauseLockCount => _pauseLockSources.Count;
+
+        /// <summary>모든 일시정지 잠금 해제 (씬 전환·디버그용)</summary>
+        public void ClearAllEventPauses()
+        {
+            _pauseLockSources.Clear();
+            ApplyTimeScale();
         }
     }
 }

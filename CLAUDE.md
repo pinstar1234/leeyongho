@@ -36,6 +36,7 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 - 테스트는 `Assets/Tests/Editor/`에 있고 asmdef 없이 `Assembly-CSharp-Editor`로 컴파일된다(게임 스크립트가 asmdef 없는 `Assembly-CSharp`이고 DOTween이 firstpass에 있어서 asmdef를 도입하면 참조가 깨진다). EditMode에서는 Awake/Start가 자동 호출되지 않으므로 `TestWorld`(`TestHelpers.cs`)로 매니저를 만들고 정리한다. 기능을 추가·수정하면 해당 테스트도 함께 작성한다.
 - `[Ignore("미연결: ...")]` 테스트는 아직 연결되지 않은 기능의 목표 동작이다. 해당 기능을 연결하면 `[Ignore]`를 지워 통과시킨다.
 - 실행 결과가 `error CS2011 ... .rsp 지시 파일을 여는 동안 오류`(코드와 무관, 바뀌지 않은 firstpass까지 실패)면, 이전 배치 실행이 남긴 C# 컴파일러 서버(`VBCSCompiler.dll`, 부모 프로세스가 이미 종료된 것) 때문이다. `run-tests.ps1`이 실행 전에 이런 서버를 자동 종료하므로 보통은 다시 실행하면 된다.
+- 종료 코드 199 + 로그에 `IPC channel to LicensingClient doesn't exist`면 Unity 라이선스 클라이언트 연결 실패(코드와 무관). 두 스크립트가 한 번 자동 재시도한다. 에디터가 닫혀 있어도 사용 중인 프로젝트의 Library를 건드리지 않으려면 `-ForceCopy`를 붙인다.
 - `dotnet build`는 이 PC에 .NET SDK가 없어 사용할 수 없다.
 - **자동 플레이 테스트**: `powershell -ExecutionPolicy Bypass -File Tools/run-playtest.ps1 [-Scene "Assets/Scenes/2Park 1.unity"]` — 기본 `1park2.unity`를 배치 모드 플레이로 열어 `Assets/Tests/Editor/PlaytestRunner.cs` 시나리오(부팅 → 중간 단계 마을(평균 만족도 84±1.5% 검사) → 완성된 마을 → 종합 현황 UI 값·지원금 슬라이더·건물 정보 UI → 월 정산 → 전신주 → 철거(코드·UI 버튼) → 배드엔딩 → 엔딩 판정 재시작 후 10년 해피엔딩)를 돌린다. 씬에 없는 매니저·건물 목록은 플레이 직전 메모리에서만 채우고 보고서 맨 위에 적는다(씬 저장 안 함). 결과 `Logs/Playtest/report.md` + 스크린샷 PNG(종합 현황 UI 포함), 콘솔 에러는 실패, 폰트 누락 글자는 UI 경고로 집계. 기능을 바꾸면 단위 테스트와 함께 이것도 돌린다(약 3~5분, 대부분 임포트). `-Mode rotation`은 10년 진행 없이 건물 100개를 Q/E 무작위 회전으로 설치 → 미리보기·설치 회전/위치/점유 칸 일치 확인 → 전부 철거(코드·Destroy 절반씩)를 3회 반복한다(원래 회전이 들어간 테스트 프리팹을 플레이 중에만 만들어 사용).
 - 사람이 하는 동작 확인은 플레이 모드에서 `SystemTestManager` 단축키(1: 종합 현황 UI, 3: 강제 정전, 4: 전력 복구, 5: 월 정산 강제 실행)로 한다. 플레이 테스트는 사용자가 해야 하므로 무엇을 확인할지 구체적으로 안내한다.
@@ -46,12 +47,15 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 모든 스크립트는 `Assets/Script/` 아래 `InfraTown.*` 네임스페이스(`Building`, `Grid`, `Economy`, `Population`, `Power`, `Satisfaction`, `Services`, `TimeSystem`, `Core`, `UI`, `EventSystem`, `Testing`).
 
 **싱글톤 매니저 + 이벤트 구조.** 각 매니저는 `public static X Instance`를 `Awake`에서 설정하고, 상태가 바뀌면 C# `event`를 발생시킨다. UI 스크립트는 `Start`에서 이 이벤트를 구독해 화면을 갱신한다. 매니저끼리는 `X.Instance?.Method()`로 직접 호출한다. 새 시스템도 이 패턴을 따른다.
+- 중복 처리는 반드시 `if (Instance != null && Instance != this) { SingletonGuard.RemoveDuplicate(this, Instance); return; }` (`Assets/Script/Core/`). 예전 `Destroy(gameObject)`는 같은 오브젝트의 다른 컴포넌트(그리드 등)까지 지웠다. `BuildingUIManager`(팀원 1)만 아직 `Destroy(gameObject)`.
+- 마우스 클릭을 받는 기능 코드는 `PointerGuard.IsPointerOverUI()`로 UI 위 클릭을 걸러낸다(`LightweightGridManager.TryRaiseClick`, `BuildingInstance.OnMouseDown`). 건설 모드 중에는 건물 클릭 정보창을 띄우지 않는다.
+- 일시정지(`TimeManager`)·패배 유예(`GameOutcomeManager`)처럼 요청자를 기록하는 잠금은 요청자가 해제 없이 삭제되면 `LockSourceUtil.RemoveDestroyed`로 자동 해제된다(TimeManager는 매 프레임, 유예는 하루마다). null 요청은 무시.
 
 **데이터.** 건물 정의는 `BuildingData` ScriptableObject(`Assets/Data/Build/*.asset`, 메뉴 `InfraTown/Building Data`). 크기(1x1/2x2/4x4 — 대형은 기획서 3x3에서 사용자 결정으로 4x4로 변경, 2026-11-12), 카테고리(Essential/Facility/Nimbys/Housing/Infrastructure), 전력, 유지비, 건설비, 수용 인구, 만족도 영향·반경, 전력 공급 반경, 해금 인구, 서비스 고정값을 담는다. 수치는 코드가 아니라 이 에셋에서 조정한다. 건물 목록은 `BuildingManager`의 `buildingDatabase`에 등록(씬 인스펙터).
 - 기획서 4장 건물 13종은 `Assets/Data/Build/Spec/T{티어}_{이름}.asset`. 기획서에 있는 값(크기, 분류, 티어, 건설/철거 일수, 설명 3종, 필수 시설 반경 12/15)은 기획서 그대로이고, 비용·유지비·전력·수용 인구·만족도 수치·해금 인구(T2 50 / T3 150 / T4 300)는 임시값이다. `BuildingSpecTests`가 기획서 값과의 일치를 검사한다. 프리팹은 기본 도형(Cube/Capsule/Cylinder/Sphere) 임시 연결, 아이콘 없음.
 - **만족도 밸런스 기준(사용자 결정 2026-11-12)**: 중간 단계 마을(주택 30채 y=0 줄 + 마을회관·편의점·버스·경로당을 y=2 줄에 7칸 간격) 평균 ≈ 84%. 이를 위해 필수 시설 영향치 +1(반경은 기획서 12/15), 마을회관·편의점·버스 +6/반경 7, 경로당 +9/반경 6. 완성된 마을(+필수 4종 y=5 줄)은 약 95%. 영향치를 바꾸면 자동 플레이 테스트의 84% 검사로 확인한다.
 - `Assets/Data/Build/House|Small|Medium.asset`은 초기 테스트용 데이터.
-- `1park2.unity`에는 `BuildingManager`가 두 개(GridManager 오브젝트, BuildingManager 오브젝트) 있고 둘 다 13종이 등록되어 있다. 싱글톤 중복 처리가 `Destroy(gameObject)`라서 GridManager 쪽이 중복으로 판정되면 그리드까지 사라질 수 있다(팀원 2와 정리 필요).
+- `1park2.unity`에는 `BuildingManager`가 두 개(GridManager 오브젝트, BuildingManager 오브젝트) 있고 둘 다 13종이 등록되어 있다. 이제 중복 쪽은 컴포넌트만 제거되므로 그리드는 안전하지만, 어느 쪽이 남는지는 실행마다 다를 수 있어 팀원 2와 하나로 정리하는 게 좋다.
 - 분류 `Infrastructure`(도로·전신주)는 기획서 4장 '인프라'. `isPowerPole` 데이터는 배치 시 `UtilityPoleInstance`가 자동으로 붙는다.
 - 현재 건설 UI(`BuildingUIManager`, 팀원 1)는 `GetBuildingDataByCategoryAndSize`로 분류+크기당 1개만 고를 수 있고 Infrastructure 버튼이 없다. 목록형 UI용 API: `GetBuildingsByCategory`, `GetUnlockedBuildings`, `AllBuildingData`.
 
@@ -66,6 +70,7 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 8. `ServiceAccessibilityManager` — 주택별로 가장 빠른 시설까지 접근 시간 = 시설 `fixedAccessTimeMinutes`(기본 시간) + 두 건물 영역 사이 빈 칸 수(맨해튼) × `minutesPerTile`(0.5분). 마을 수치는 주택 평균, 기준(15분) 넘는 주택 수는 불만 문구로. 시설 종류는 ID/이름(police·경찰, hospital·병원, fire·소방, school·학교, convenience·store·편의점)으로 판별하고 나머지(마을회관, 버스 정류장 등)는 접근성 계산에서 빠진다. 만족도 보너스 = 서비스마다 (읍내 기준 60분 − 접근 시간)/60 × 2점, 주택당 합계 최대 `maxTotalAccessBonus` 10점(5종 균등 분배, 사용자 결정 2026-11-12) (기획서 6장 '단축 비율 보너스').
 10. `GameOutcomeManager` — 엔딩 판정(하루마다 `TimeManager.OnDateChanged`). 패배: 마을 평균 '나쁨' 30일 연속(`RequestDefeatGrace/ReleaseDefeatGrace`로 공사 중 유예). 승리: 10년(360일×10) 경과 + 필수 시설(병원·학교·소방·경찰) 설치 + '좋음' 주택 70% 이상 30일 연속 + 인구 기준(기획 미정, 0). 10년에 미달이면 계속 플레이. 씬에 없으면 `GameLoopManager.Start`가 자기 오브젝트에 추가한다(씬 수정 회피). 종료 시 시간 정지 + `OnGameEnded`.
 9. `TimeManager` — 하루 90초, 0~3배속(`Time.timeScale`). 팝업/대화는 `RequestEventPause(source)`/`ReleaseEventPause(source)`로 일시정지 잠금을 건다.
+11. **대화** (`Assets/Script/Dialogue/`, 네임스페이스 `InfraTown.EventSystem`) — `DialogueData` ScriptableObject(Create > InfraTown > Dialogue: 줄마다 화자·초상화·일반 문장·쉬운 문장, `pauseGame`, `playOnce`). `DialogueEventManager`가 재생·대기열·시간 정지·재생 기록을 관리하고 UI(팀원 1)는 `OnDialogueStarted`/`OnLineShown`/`OnDialogueEnded`를 구독해 그리며 `Next()`/`Skip()`을 부른다. **표시할 UI 구독자가 없으면 시간을 멈추지 않고 콘솔에만 출력하고 끝낸다**(대화창 없이 게임이 멈추지 않도록). `DialogueTriggers`(같은 오브젝트)는 시작 대화, 인구 증가로 새로 해금된 건물의 `unlockMessage`(화자 '이장님'), '나쁨' 10·20·25일째 경고(화자 '안내원'), 엔딩 대화를 자동 재생한다. 두 컴포넌트는 아직 어느 씬에도 없다(씬 배치는 UI 준비 후).
 
 건물 철거는 `BuildingInstance.DestroyBuilding()` → 정적 이벤트 `OnBuildingDestroyed`를 `BuildingManager`(점유 해제)와 `GameLoopManager`(재계산)가 구독. UI 등이 `Destroy(gameObject)`를 직접 불러도 `BuildingInstance.OnDestroy`가 한 번만 알린다(씬 전환·게임 종료 시는 알리지 않음).
 
