@@ -18,7 +18,7 @@ namespace InfraTown.Core
         public static bool IsPointerOverUI()
         {
             if (InfraTown.EventSystem.CutsceneManager.Instance != null && InfraTown.EventSystem.CutsceneManager.Instance.IsPlaying) return true;
-            if (InfraTown.EventSystem.DialogueEventManager.Instance != null && InfraTown.EventSystem.DialogueEventManager.Instance.IsBusy) return true;
+            if (InfraTown.EventSystem.DialogueEventManager.Instance != null && InfraTown.EventSystem.DialogueEventManager.Instance.BlocksWorldInput) return true;
             if (OverrideForTests != null) return OverrideForTests();
             // InfraTown.EventSystem 네임스페이스와 이름이 겹치므로 전체 이름으로 씀
             var eventSystem = UnityEngine.EventSystems.EventSystem.current;

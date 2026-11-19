@@ -18,7 +18,13 @@ namespace InfraTown.EventSystem
     ///                          오른쪽 = 지금(또는 마지막으로) 말한 다른 인물(RightSpeakerName/RightPortrait)
     ///                          주인공·나레이션이 말하는 동안에도 오른쪽 인물은 그대로 두고 회색으로 가라앉힘
     ///                          → 초상화 Image.color = RightPortraitColor (IsRightDimmed면 dimmedPortraitColor, 아니면 흰색)
-    ///   클릭/버튼          → Next() (끝까지 넘기기 Skip())
+    ///   글자 출력          → 한 글자씩 나옴 (charactersPerSecond). TMP는 maxVisibleCharacters = VisibleCharacterCount 권장,
+    ///                        일반 Text는 GetVisibleText(). 바뀔 때마다 OnVisibleTextChanged, 다 나오면 OnLineFullyShown
+    ///   Enter / 마우스 왼쪽 → (이 매니저가 직접 받음) 출력 중이면 문장 전체를 한 번에, 다 나왔으면 다음 줄 = Advance()
+    ///                        기본은 다 나와도 입력이 없으면 그 줄에서 멈춰 있음. 버튼 위 클릭은 무시
+    ///   Skip 버튼          → Skip() (지금 대화를 한 번에 끝까지 건너뜀)
+    ///   Auto 버튼          → ToggleAutoMode() (켜면 문장이 다 나온 뒤 autoAdvanceDelay(1초) 후 자동으로 다음 줄, 끌 때까지 유지)
+    ///                        버튼 표시는 IsAutoMode / OnAutoModeChanged
     ///   OnDialogueEnded    → 대화창 닫기
     /// 대화에 컷씬(cutsceneBefore)이 있으면 CutsceneManager로 컷씬을 먼저 보여준 뒤 대화를 시작한다.
     /// 대화를 보여줄 UI(구독자)가 없으면 시간을 멈추지 않고 콘솔에만 출력한 뒤 바로 끝낸다 (게임이 멈춘 채로 남지 않도록).
@@ -46,7 +52,48 @@ namespace InfraTown.EventSystem
             new DialogueCharacter("안내원"),
         };
 
+        [Header("글자 출력 / 넘기기 (사용자 기획 2026-11-19)")]
+        [Tooltip("1초에 나오는 글자 수. 0이면 한 번에 전부")]
+        [SerializeField] private float charactersPerSecond = 30f;
+
+        [Tooltip("Auto: 문장이 다 나온 뒤 다음 줄로 넘어가기까지 기다리는 시간(초)")]
+        [SerializeField] private float autoAdvanceDelay = 1f;
+
+        [Tooltip("Auto 모드 (켜면 끌 때까지 다음 대화에도 유지)")]
+        [SerializeField] private bool autoMode = false;
+
+        [Tooltip("Enter·마우스 왼쪽 클릭을 이 매니저가 직접 받아 Advance() (끄면 UI가 직접 Advance()를 부름)")]
+        [SerializeField] private bool handleInput = true;
+
         public bool UseEasyText { get => useEasyText; set => useEasyText = value; }
+
+        public float CharactersPerSecond { get => charactersPerSecond; set => charactersPerSecond = Mathf.Max(0f, value); }
+        public float AutoAdvanceDelay { get => autoAdvanceDelay; set => autoAdvanceDelay = Mathf.Max(0f, value); }
+        public bool HandleInput { get => handleInput; set => handleInput = value; }
+
+        /// <summary>Auto 모드 켜짐</summary>
+        public bool IsAutoMode => autoMode;
+
+        /// <summary>현재 줄에서 지금까지 보이는 글자 수 (TMP maxVisibleCharacters에 그대로)</summary>
+        public int VisibleCharacterCount { get; private set; }
+
+        /// <summary>현재 줄 전체 글자 수</summary>
+        public int CurrentTextLength => _currentText.Length;
+
+        /// <summary>현재 줄이 끝까지 다 나왔는지</summary>
+        public bool IsLineFullyShown => !IsPlaying || VisibleCharacterCount >= _currentText.Length;
+
+        /// <summary>Auto 모드에서 다음 줄까지 남은 시간(초). Auto가 아니거나 아직 출력 중이면 -1</summary>
+        public float AutoAdvanceRemaining => IsPlaying && autoMode && IsLineFullyShown ? Mathf.Max(0f, autoAdvanceDelay - _autoTimer) : -1f;
+
+        /// <summary>보이는 글자가 늘었을 때 (지금까지 보이는 문장)</summary>
+        public event Action<string> OnVisibleTextChanged;
+
+        /// <summary>현재 줄이 끝까지 다 나왔을 때 (한 번에 띄웠을 때 포함)</summary>
+        public event Action OnLineFullyShown;
+
+        /// <summary>Auto 모드가 바뀌었을 때</summary>
+        public event Action<bool> OnAutoModeChanged;
 
         public string ProtagonistName { get => protagonistName; set => protagonistName = value; }
         public Color DimmedPortraitColor { get => dimmedPortraitColor; set => dimmedPortraitColor = value; }
@@ -109,6 +156,25 @@ namespace InfraTown.EventSystem
         private DialogueData _waitingDialogue;
         private bool _pausedForDialogue;
         private bool _manualPause;
+
+        // 글자 출력
+        private string _currentText = string.Empty;
+        private float _revealProgress;
+        private float _autoTimer;
+        private int _lineShownFrame = -1;
+        private int _endFrame = -1;
+        private bool _shownOnScreen;
+
+        /// <summary>
+        /// 대화 중이거나 이번 프레임에 대화가 끝났음 — 마지막 줄을 넘긴 클릭이 같은 프레임에 건설·건물 클릭으로 새지 않도록 PointerGuard가 사용
+        /// </summary>
+        public bool BlocksWorldInput => IsBusy || _endFrame == Time.frameCount;
+
+        private void Update()
+        {
+            ProcessInput();
+            Tick(Time.unscaledDeltaTime); // 대화 중 게임 시간이 멈춰도 글자는 실제 시간으로 나옴
+        }
 
         private void Awake()
         {
@@ -177,10 +243,66 @@ namespace InfraTown.EventSystem
             ShowCurrentLine();
         }
 
-        /// <summary>현재 대화를 끝까지 건너뜀 (대기열 다음 대화는 이어서 재생)</summary>
+        /// <summary>
+        /// Enter·클릭 동작: 문장이 아직 나오는 중이면 전체를 한 번에 띄우고, 이미 다 나왔으면 다음 줄로
+        /// </summary>
+        public void Advance()
+        {
+            if (!IsPlaying) return;
+            if (!IsLineFullyShown) RevealCurrentLine();
+            else Next();
+        }
+
+        /// <summary>현재 줄을 끝까지 한 번에 띄움 (다음 줄로는 넘어가지 않음)</summary>
+        public void RevealCurrentLine()
+        {
+            if (!IsPlaying || IsLineFullyShown) return;
+            SetVisibleCount(_currentText.Length);
+        }
+
+        /// <summary>Skip 버튼: 현재 대화를 끝까지 건너뜀 (대기열 다음 대화는 이어서 재생)</summary>
         public void Skip()
         {
+            ClearButtonSelection();
             if (IsPlaying) End();
+        }
+
+        /// <summary>Auto 버튼: 켜고 끄기</summary>
+        public void ToggleAutoMode() => SetAutoMode(!autoMode);
+
+        /// <summary>Auto 모드 설정. 켜면 문장이 다 나온 뒤 autoAdvanceDelay초 후 자동으로 다음 줄 (켠 순간부터 다시 셈)</summary>
+        public void SetAutoMode(bool on)
+        {
+            ClearButtonSelection();
+            if (autoMode == on) return;
+            autoMode = on;
+            _autoTimer = 0f;
+            OnAutoModeChanged?.Invoke(autoMode);
+        }
+
+        /// <summary>현재 줄에서 지금까지 보이는 문장</summary>
+        public string GetVisibleText() =>
+            VisibleCharacterCount >= _currentText.Length ? _currentText : _currentText.Substring(0, VisibleCharacterCount);
+
+        /// <summary>
+        /// 시간 경과 처리: 글자 출력, Auto 넘김 (Update에서 실제 시간으로 호출, 테스트에서 직접 호출 가능)
+        /// </summary>
+        public void Tick(float deltaSeconds)
+        {
+            if (!IsPlaying || deltaSeconds <= 0f) return;
+
+            if (!IsLineFullyShown)
+            {
+                _revealProgress += deltaSeconds * charactersPerSecond;
+                int count = Mathf.Min(_currentText.Length, Mathf.FloorToInt(_revealProgress));
+                if (count > VisibleCharacterCount) SetVisibleCount(count);
+                return;
+            }
+
+            if (!autoMode) return; // 기본: 다 나와도 입력이 있을 때까지 그 줄에서 멈춤
+
+            _autoTimer += deltaSeconds;
+            if (_autoTimer >= autoAdvanceDelay) Next();
         }
 
         /// <summary>현재 대화와 대기열을 모두 비움 (대화 앞 컷씬이 진행 중이면 컷씬이 끝나도 대화는 시작하지 않음)</summary>
@@ -325,6 +447,7 @@ namespace InfraTown.EventSystem
                 _pausedForDialogue = true;
             }
 
+            _shownOnScreen = true;
             OnDialogueStarted?.Invoke(dialogue);
             ShowCurrentLine();
         }
@@ -347,7 +470,66 @@ namespace InfraTown.EventSystem
                 RightPortrait = GetPortrait(line);
             }
 
+            // 글자 출력 준비: 처음부터 다시 (글자 속도 0이면 한 번에)
+            _currentText = GetCurrentText();
+            _revealProgress = 0f;
+            _autoTimer = 0f;
+            _lineShownFrame = Time.frameCount; // 이 줄을 띄운 클릭이 바로 넘기기로 처리되지 않도록
+            VisibleCharacterCount = charactersPerSecond <= 0f ? _currentText.Length : 0;
+
             OnLineShown?.Invoke(line, CurrentLineIndex, CurrentDialogue.lines.Count);
+            if (!IsPlaying || CurrentLine != line) return; // 구독자가 그 자리에서 넘긴 경우
+            OnVisibleTextChanged?.Invoke(GetVisibleText());
+            if (IsLineFullyShown) OnLineFullyShown?.Invoke();
+        }
+
+        private void SetVisibleCount(int count)
+        {
+            VisibleCharacterCount = Mathf.Clamp(count, 0, _currentText.Length);
+            _revealProgress = Mathf.Max(_revealProgress, VisibleCharacterCount);
+            _autoTimer = 0f; // Auto는 다 나온 순간부터 셈
+            OnVisibleTextChanged?.Invoke(GetVisibleText());
+            if (IsLineFullyShown) OnLineFullyShown?.Invoke();
+        }
+
+        // ─── 입력 (Enter / 마우스 왼쪽) ───
+
+        private void ProcessInput()
+        {
+            if (!handleInput || !IsPlaying) return;
+            if (_lineShownFrame == Time.frameCount) return; // 대화를 띄운 그 클릭·키는 무시
+
+            bool key = Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
+            bool click = Input.GetMouseButtonDown(0) && !IsPointerOverButton();
+            if (key || click) Advance();
+        }
+
+        /// <summary>마우스가 버튼(Skip·Auto 등 Selectable) 위에 있으면 true — 버튼 클릭이 넘기기로도 처리되지 않도록</summary>
+        private static bool IsPointerOverButton()
+        {
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es == null) return false;
+            var data = new UnityEngine.EventSystems.PointerEventData(es) { position = Input.mousePosition };
+            var results = new List<UnityEngine.EventSystems.RaycastResult>();
+            es.RaycastAll(data, results);
+            foreach (var r in results)
+            {
+                if (r.gameObject != null && r.gameObject.GetComponentInParent<UnityEngine.UI.Selectable>() != null) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 버튼을 누른 뒤 선택 상태가 남으면 Enter가 그 버튼을 다시 누르므로 선택을 풀어 둠
+        /// </summary>
+        private static void ClearButtonSelection()
+        {
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es != null && es.currentSelectedGameObject != null &&
+                es.currentSelectedGameObject.GetComponent<UnityEngine.UI.Selectable>() != null)
+            {
+                es.SetSelectedGameObject(null);
+            }
         }
 
         private void SetRightFromUpcoming()
@@ -370,6 +552,10 @@ namespace InfraTown.EventSystem
             CurrentDialogue = null;
             CurrentLineIndex = -1;
             CurrentSide = DialogueSide.Narration;
+            _currentText = string.Empty;
+            VisibleCharacterCount = 0;
+            if (_shownOnScreen) _endFrame = Time.frameCount; // 화면에 보인 대화만 (UI 없이 콘솔로 끝난 대화는 클릭과 무관)
+            _shownOnScreen = false;
 
             if (_pausedForDialogue && !_manualPause) ReleasePause();
             _pausedForDialogue = false;
