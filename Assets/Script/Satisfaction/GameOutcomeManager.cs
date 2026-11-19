@@ -82,7 +82,7 @@ namespace InfraTown.Core
 
         private void Awake()
         {
-            if (Instance != null && Instance != this) { Destroy(this); return; }
+            if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
             Instance = this;
         }
 
@@ -120,6 +120,9 @@ namespace InfraTown.Core
             if (IsGameOver) return;
 
             DaysElapsed++;
+
+            // 유예를 요청한 공사 등이 해제 없이 사라졌으면 유예도 끝낸다 (패배 판정이 영원히 멈추지 않도록)
+            InfraTown.Core.LockSourceUtil.RemoveDestroyed(_graceSources);
 
             var satisfaction = SatisfactionManager.Instance;
 
@@ -184,12 +187,18 @@ namespace InfraTown.Core
         /// <summary>
         /// 패배 타이머 유예 요청 (예: 필수 대형/중형 시설 공사 시작 시)
         /// </summary>
-        public void RequestDefeatGrace(object source) => _graceSources.Add(source);
+        public void RequestDefeatGrace(object source)
+        {
+            if (source != null) _graceSources.Add(source); // null은 해제할 방법이 없으므로 받지 않음
+        }
 
         /// <summary>
         /// 패배 타이머 유예 해제 (예: 공사 완료 시)
         /// </summary>
-        public void ReleaseDefeatGrace(object source) => _graceSources.Remove(source);
+        public void ReleaseDefeatGrace(object source)
+        {
+            if (source != null) _graceSources.Remove(source);
+        }
 
         private static int CurrentPopulation =>
             PopulationManager.Instance != null ? PopulationManager.Instance.CurrentPopulation : 0;

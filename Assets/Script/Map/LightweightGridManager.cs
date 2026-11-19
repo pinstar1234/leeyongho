@@ -27,9 +27,21 @@ namespace InfraTown.Grid
         private Camera _mainCamera;
         private Plane _groundPlane; // Y=0 평면 물리 레이캐스트 대체용 수학적 Plane
 
+        /// <summary>
+        /// 현재 가리키는 칸 클릭 처리. 마우스가 UI 위에 있으면 무시한다
+        /// (예전에는 UI 버튼을 눌러도 그 아래 칸에 건물이 지어졌음)
+        /// </summary>
+        public bool TryRaiseClick()
+        {
+            if (HoveredGridPos.x < 0 || HoveredGridPos.y < 0) return false;
+            if (InfraTown.Core.PointerGuard.IsPointerOverUI()) return false;
+            OnGridClicked?.Invoke(HoveredGridPos);
+            return true;
+        }
+
         private void Awake()
         {
-            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
             Instance = this;
 
             _mainCamera = Camera.main;
@@ -69,7 +81,7 @@ namespace InfraTown.Grid
 
                     if (Input.GetMouseButtonDown(0))
                     {
-                        OnGridClicked?.Invoke(HoveredGridPos);
+                        TryRaiseClick();
                     }
                     return;
                 }

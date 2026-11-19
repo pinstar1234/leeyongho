@@ -49,13 +49,13 @@ namespace InfraTown.Tests
         [Test]
         public void 읍내_60분_기준_대비_단축비율만큼_보너스()
         {
-            // 맞닿은 병원 → 5분, 단축 비율 55/60 → 보너스 6 × 0.9167 = 5.5
+            // 맞닿은 병원 → 5분, 단축 비율 55/60 → 보너스 (10 ÷ 5종 = 2) × 0.9167 = 1.833
             var house = House(0, 0);
             Recalculate(new List<BuildingInstance> { house, Service("hospital", 1, 0) });
 
-            Assert.AreEqual(5.5f, _service.GetAccessBonus(house, ServiceType.Hospital), 0.001f);
-            Assert.AreEqual(75.5f, house.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
-            Assert.AreEqual(5.5f, house.GetComponent<HousingInstance>().AccessBonus, 0.001f);
+            Assert.AreEqual(2f * 55f / 60f, _service.GetAccessBonus(house, ServiceType.Hospital), 0.001f);
+            Assert.AreEqual(70f + 2f * 55f / 60f, house.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
+            Assert.AreEqual(2f * 55f / 60f, house.GetComponent<HousingInstance>().AccessBonus, 0.001f);
         }
 
         [Test]
@@ -63,7 +63,25 @@ namespace InfraTown.Tests
         {
             var house = House(0, 0);
             Recalculate(new List<BuildingInstance> { house, Service("hospital", 1, 0), Service("school", 0, 1) });
-            Assert.AreEqual(11f, _service.GetTotalAccessBonus(house), 0.001f);
+            Assert.AreEqual(2f * 2f * 55f / 60f, _service.GetTotalAccessBonus(house), 0.001f);
+        }
+
+        [Test]
+        public void 접근_보너스_합계는_최대_10점()
+        {
+            Assert.AreEqual(10f, _service.MaxTotalAccessBonus);
+            Assert.AreEqual(2f, _service.MaxBonusPerService, 0.001f);
+
+            // 5종 시설이 모두 맞닿아 있어도 (기본 시간 0분이면) 합계 10을 넘지 않는다
+            var house = House(5, 5);
+            Recalculate(new List<BuildingInstance>
+            {
+                house,
+                Service("hospital", 6, 5, baseTime: 0f), Service("school", 4, 5, baseTime: 0f),
+                Service("fire", 5, 6, baseTime: 0f), Service("police", 5, 4, baseTime: 0f),
+                Service("convenience_store", 6, 6, baseTime: 0f)
+            });
+            Assert.AreEqual(10f, _service.GetTotalAccessBonus(house), 0.001f);
         }
 
         [Test]

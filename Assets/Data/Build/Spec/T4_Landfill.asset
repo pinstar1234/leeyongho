@@ -11,14 +11,16 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T4_Landfill
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: landfill
-  buildingName: "쓰레기 매립지"
-  description: "쓰레기 처리 (악취/감점 발생)"
+  buildingName: "\uC4F0\uB808\uAE30 \uB9E4\uB9BD\uC9C0"
+  description: "\uC4F0\uB808\uAE30 \uCC98\uB9AC (\uC545\uCDE8/\uAC10\uC810 \uBC1C\uC0DD)"
   requiredPopulation: 300
   unlockTier: 4
-  easyDescription: "쓰레기를 모아두는 곳 냄새 주의!"
-  unlockMessage: "방치된 불법 쓰레기 더미로 인해 마을 환경이 크게 오염되고 있습니다."
+  easyDescription: "\uC4F0\uB808\uAE30\uB97C \uBAA8\uC544\uB450\uB294 \uACF3 \uB0C4\uC0C8
+    \uC8FC\uC758!"
+  unlockMessage: "\uB9C8\uC744\uC5D0 \uC4F0\uB808\uAE30\uAC00 \uB108\uBB34 \uB9CE\uAE34\uD558\uC9C0\uB9CC
+    \uC774\uAC74 \uB0C4\uC0C8\uAC00 \uB108\uBB34 \uC2EC\uD558\uB124\uC694."
   constructionDays: 28
   demolitionDays: 3
   sizeType: 2

@@ -21,7 +21,7 @@ namespace InfraTown.Core
 
         private void Awake()
         {
-            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
             Instance = this;
         }
 
@@ -134,6 +134,9 @@ namespace InfraTown.Core
                 : 70f;
 
             PopulationManager.Instance?.ProcessWeeklyPopulationUpdate(currentSatisfaction);
+
+            // 해금됐는데 없는 필수 시설 → 주마다 마을 만족도 감점 누적 (지으면 주마다 회복)
+            SatisfactionManager.Instance?.ProcessWeeklyMissingFacilityPenalty();
             TriggerSatisfactionUpdate();
         }
 

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 using InfraTown.Grid;
 using InfraTown.Core;
@@ -22,9 +23,28 @@ namespace InfraTown.Building
         [Header("하이라이트 컨트롤러 참조")]
         [SerializeField] private GridHighlightController highlightController;
 
-        
+        [Header("건설 회전 (Q: +90°, E: -90°)")]
+        [SerializeField] private KeyCode rotateKeyPositive = KeyCode.Q;
+        [SerializeField] private KeyCode rotateKeyNegative = KeyCode.E;
+        [SerializeField] private float rotationStep = 90f;
+
+        /// <summary>건설 모드에서 플레이어가 돌린 Y축 회전 (0/90/180/270). 같은 건물을 연속 설치하는 동안 유지되고, 다른 건물을 고르면 0으로 돌아간다</summary>
+        public float CurrentRotationY { get; private set; }
+
+        /// <summary>건설 모드 중인지</summary>
+        public bool IsBuildMode => _selectedBuildingData != null;
+
+        /// <summary>건설 모드에서 고른 건물 (없으면 null)</summary>
+        public BuildingData SelectedBuildingData => _selectedBuildingData;
+
+        /// <summary>미리보기 회전이 바뀔 때 (새 Y 회전값)</summary>
+        public event Action<float> OnPreviewRotationChanged;
+
+        /// <summary>건물이 설치됐을 때 (연출·효과용)</summary>
+        public event Action<BuildingInstance> OnBuildingPlaced;
 
         private BuildingData _selectedBuildingData;
+        private BuildingData _lastSelectedBuildingData;
         private GameObject _previewInstance;
         private MeshRenderer[] _previewRenderers;
 
@@ -33,7 +53,7 @@ namespace InfraTown.Building
 
         private void Awake()
         {
-            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
             Instance = this;
 
             if (highlightController == null)
@@ -55,6 +75,44 @@ namespace InfraTown.Building
             if (highlightController != null)
             {
                 highlightController.HideHighlight();
+            }
+        }
+
+        private void Update()
+        {
+            if (_selectedBuildingData == null) return;
+
+            if (Input.GetKeyDown(rotateKeyPositive)) RotatePreview(rotationStep);
+            else if (Input.GetKeyDown(rotateKeyNegative)) RotatePreview(-rotationStep);
+        }
+
+        /// <summary>
+        /// 설치할 건물의 Y축 회전을 바꾼다 (Q/E 키, UI 회전 버튼에서도 호출 가능). 미리보기에 바로 반영된다
+        /// </summary>
+        public void RotatePreview(float deltaDegrees)
+        {
+            CurrentRotationY = Mathf.Repeat(Mathf.Round(CurrentRotationY + deltaDegrees), 360f);
+            ApplyPreviewRotation();
+            OnPreviewRotationChanged?.Invoke(CurrentRotationY);
+        }
+
+        /// <summary>
+        /// 설치 시 실제로 쓰일 회전 = 플레이어 Y 회전 × 프리팹에 설정된 원래 회전.
+        /// 미리보기와 설치 모두 이 값을 쓰므로 보이는 모습 그대로 설치된다
+        /// </summary>
+        public Quaternion GetPlacementRotation(BuildingData data)
+        {
+            Quaternion prefabRotation = data != null && data.buildingPrefab != null
+                ? data.buildingPrefab.transform.rotation
+                : Quaternion.identity;
+            return Quaternion.Euler(0f, CurrentRotationY, 0f) * prefabRotation;
+        }
+
+        private void ApplyPreviewRotation()
+        {
+            if (_previewInstance != null && _selectedBuildingData != null)
+            {
+                _previewInstance.transform.rotation = GetPlacementRotation(_selectedBuildingData);
             }
         }
 
@@ -106,14 +164,15 @@ namespace InfraTown.Building
             }
             return result;
         }
+
         public List<BuildingData> GetBuildingsByCategoryAndSize(BuildingType category, BuildingSizeType sizeType)
         {
             var result = new List<BuildingData>();
-            if (buildingDatabase == null) return result; //[cite: 20]
+            if (buildingDatabase == null) return result;
 
-            foreach (var data in buildingDatabase) //[cite: 20]
+            foreach (var data in buildingDatabase)
             {
-                if (data != null && data.category == category && data.sizeType == sizeType) //[cite: 20]
+                if (data != null && data.category == category && data.sizeType == sizeType)
                 {
                     result.Add(data);
                 }
@@ -166,10 +225,14 @@ namespace InfraTown.Building
 
             CancelBuildingMode();
 
+            // 다른 건물을 고르면 회전 초기화, 같은 건물을 다시 고르면 직전 회전 유지
+            if (data != _lastSelectedBuildingData) CurrentRotationY = 0f;
+            _lastSelectedBuildingData = data;
             _selectedBuildingData = data;
 
+            // 미리보기도 설치와 같은 회전(플레이어 Y 회전 × 설치 프리팹의 원래 회전)으로 생성
             GameObject prefabToInstantiate = data.previewPrefab != null ? data.previewPrefab : data.buildingPrefab;
-            _previewInstance = Instantiate(prefabToInstantiate);
+            _previewInstance = Instantiate(prefabToInstantiate, prefabToInstantiate.transform.position, GetPlacementRotation(data));
 
             foreach (var col in _previewInstance.GetComponentsInChildren<Collider>())
             {
@@ -261,12 +324,12 @@ namespace InfraTown.Building
                 return;
             }
 
-            // 4. 정상 건설 진행
+            // 4. 정상 건설 진행 (미리보기와 같은 회전값 적용)
             Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
-            GameObject buildingObj = Instantiate(_selectedBuildingData.buildingPrefab, spawnPos, Quaternion.identity);
+            GameObject buildingObj = Instantiate(_selectedBuildingData.buildingPrefab, spawnPos, GetPlacementRotation(_selectedBuildingData));
 
             BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
-            instance.Init(_selectedBuildingData, gridPos);
+            instance.Init(_selectedBuildingData, gridPos, CurrentRotationY);
 
             if (_selectedBuildingData.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
             {
@@ -282,6 +345,7 @@ namespace InfraTown.Building
             }
 
             GameLoopManager.Instance?.RegisterBuilding(instance);
+            OnBuildingPlaced?.Invoke(instance);
 
             ToastUIManager.Instance?.ShowToast($"✅ '{_selectedBuildingData.buildingName}' 건설 완료!", false);
         }
@@ -332,7 +396,9 @@ namespace InfraTown.Building
             _selectedBuildingData = null;
             if (_previewInstance != null)
             {
-                Destroy(_previewInstance);
+                if (Application.isPlaying) Destroy(_previewInstance);
+                else DestroyImmediate(_previewInstance); // 에디터 테스트에서 호출될 때
+                _previewInstance = null;
             }
 
             if (highlightController != null)
