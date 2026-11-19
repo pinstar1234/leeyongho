@@ -44,6 +44,71 @@ namespace InfraTown.Satisfaction
         /// <summary>(마을 상태, 좋음 주택 비율)</summary>
         public event Action<SatisfactionState, float> OnSatisfactionStateUpdated;
 
+        [Header("필수 시설 미설치 감점 (밸런스, 사용자 결정 2026-11-19)")]
+        [Tooltip("해금됐는데 없으면 감점이 쌓이는 시설")]
+        [SerializeField] private List<ServiceType> penalizedServices = new List<ServiceType>
+        {
+            ServiceType.Hospital, ServiceType.School, ServiceType.FireStation, ServiceType.Police
+        };
+
+        [Tooltip("없는 시설 1종당 1주일마다 쌓이는 감점 (%)")]
+        [SerializeField] private float missingFacilityPenaltyPerWeek = 2f;
+
+        [Tooltip("시설 1종당 감점 최대치 (%)")]
+        [SerializeField] private float maxMissingFacilityPenalty = 10f;
+
+        [Tooltip("시설을 지은 뒤(또는 다시 잠기면) 1주일마다 회복되는 양 (%)")]
+        [SerializeField] private float missingFacilityRecoveryPerWeek = 2f;
+
+        private readonly Dictionary<ServiceType, float> _missingFacilityPenalties = new Dictionary<ServiceType, float>();
+
+        /// <summary>필수 시설 미설치로 지금 마을 만족도에서 빠지고 있는 합계 (%)</summary>
+        public float TotalMissingFacilityPenalty
+        {
+            get
+            {
+                float total = 0f;
+                foreach (var p in _missingFacilityPenalties.Values) total += p;
+                return total;
+            }
+        }
+
+        /// <summary>해당 시설 미설치로 쌓인 감점 (%)</summary>
+        public float GetMissingFacilityPenalty(ServiceType type) =>
+            _missingFacilityPenalties.TryGetValue(type, out var p) ? p : 0f;
+
+        /// <summary>미설치 감점이 바뀌었을 때 (합계)</summary>
+        public event Action<float> OnMissingFacilityPenaltyChanged;
+
+        /// <summary>
+        /// 1주일 경과 처리 (GameLoopManager 주간 틱에서 호출).
+        /// 해금됐는데 없는 필수 시설은 감점이 쌓이고(시설당 최대치까지), 지어졌거나 잠긴 시설은 같은 비율로 회복된다.
+        /// 반영은 다음 RecalculateSatisfaction 때.
+        /// </summary>
+        public void ProcessWeeklyMissingFacilityPenalty()
+        {
+            var service = ServiceAccessibilityManager.Instance;
+            float before = TotalMissingFacilityPenalty;
+
+            foreach (var type in penalizedServices)
+            {
+                float current = GetMissingFacilityPenalty(type);
+                bool missing = service != null && service.IsServiceMissing(type);
+
+                current = missing
+                    ? Mathf.Min(current + missingFacilityPenaltyPerWeek, maxMissingFacilityPenalty)
+                    : Mathf.Max(current - missingFacilityRecoveryPerWeek, 0f);
+
+                if (current > 0f) _missingFacilityPenalties[type] = current;
+                else _missingFacilityPenalties.Remove(type);
+            }
+
+            if (!Mathf.Approximately(before, TotalMissingFacilityPenalty))
+            {
+                OnMissingFacilityPenaltyChanged?.Invoke(TotalMissingFacilityPenalty);
+            }
+        }
+
         private void Awake()
         {
             if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
@@ -83,12 +148,15 @@ namespace InfraTown.Satisfaction
                 ? PowerManager.Instance.GetPowerBlackoutSatisfactionPenalty()
                 : 0f;
 
+            // 3. 필수 시설 미설치 누적 감점 (주간 틱에서 쌓이고 풀림)
+            float missingFacilityPenalty = TotalMissingFacilityPenalty;
+
             if (housingBuildings.Count == 0)
             {
                 HousingCount = 0;
                 GoodHousingRatio = 0f;
                 BadHousingRatio = 0f;
-                ApplyAverage(DefaultSatisfaction - overCapacityPenalty - blackoutPenalty);
+                ApplyAverage(DefaultSatisfaction - overCapacityPenalty - blackoutPenalty - missingFacilityPenalty);
                 return;
             }
 
@@ -129,8 +197,8 @@ namespace InfraTown.Satisfaction
                 housingComp.SetAccessBonus(accessBonus);
                 satisfactionOffset += accessBonus;
 
-                // 마을 전체 감점(인구 초과, 정전)도 주택마다 적용해야 주택별 좋음/나쁨 판정에 반영된다
-                satisfactionOffset -= overCapacityPenalty + blackoutPenalty;
+                // 마을 전체 감점(인구 초과, 정전, 필수 시설 미설치)도 주택마다 적용해야 주택별 좋음/나쁨 판정에 반영된다
+                satisfactionOffset -= overCapacityPenalty + blackoutPenalty + missingFacilityPenalty;
 
                 housingComp.RecalculateSatisfaction(satisfactionOffset);
 

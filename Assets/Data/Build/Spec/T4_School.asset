@@ -11,14 +11,17 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T4_School
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: school
-  buildingName: "학교"
-  description: "교육 제공, 반경 15타일 만족도 증가"
+  buildingName: "\uD559\uAD50"
+  description: "\uAD50\uC721 \uC81C\uACF5, \uBC18\uACBD 15\uD0C0\uC77C \uB9CC\uC871\uB3C4
+    \uC99D\uAC00"
   requiredPopulation: 300
   unlockTier: 4
-  easyDescription: "아이들이 공부하는 학교"
-  unlockMessage: "아이들 교육 문제 때문에 귀농했던 청년층이 도로 떠나려 합니다."
+  easyDescription: "\uC544\uC774\uB4E4\uC774 \uACF5\uBD80\uD558\uB294 \uD559\uAD50"
+  unlockMessage: "\uB9C8\uC744\uC5D0 \uC544\uC774\uB4E4 \uAD50\uC721 \uBB38\uC81C\uB85C
+    \uCCAD\uB144\uCE35\uC774 \uB5A0\uB098\uB2C8 \uB2E4\uC2DC \uC5B4\uB974\uC2E0\uB4E4\uB9CC
+    \uB0A8\uAC8C\uB418\uB124\uC694."
   constructionDays: 28
   demolitionDays: 3
   sizeType: 2

@@ -11,14 +11,16 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T2_ConvenienceStore
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: convenience_store
-  buildingName: "편의점"
-  description: "생필품 공급, 만족도 증가"
+  buildingName: "\uD3B8\uC758\uC810"
+  description: "\uC0DD\uD544\uD488 \uACF5\uAE09, \uB9CC\uC871\uB3C4 \uC99D\uAC00"
   requiredPopulation: 50
   unlockTier: 2
-  easyDescription: "맛있는 과자와 물건을 사는 곳"
-  unlockMessage: "휴지 하나 사려해도 읍내까지 차타고 나가야 해요."
+  easyDescription: "\uB9DB\uC788\uB294 \uACFC\uC790\uC640 \uBB3C\uAC74\uC744 \uC0AC\uB294
+    \uACF3"
+  unlockMessage: "\uD734\uC9C0 \uD558\uB098 \uC0AC\uB294\uB370\uB3C4 \uC74D\uB0B4\uAE4C\uC9C0
+    \uB098\uAC00\uC57C\uB3FC\uC694."
   constructionDays: 14
   demolitionDays: 2
   sizeType: 1

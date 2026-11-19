@@ -204,6 +204,25 @@ namespace InfraTown.Services
         public bool HasService(ServiceType type) => _facilities[type].Count > 0;
 
         /// <summary>
+        /// 해당 서비스 건물이 지금 인구로 해금(지을 수 있음)되었는지 (BuildingManager 등록 건물 기준)
+        /// </summary>
+        public static bool IsServiceUnlocked(ServiceType type)
+        {
+            var buildings = BuildingManager.Instance;
+            if (buildings == null) return false;
+            foreach (var data in buildings.GetUnlockedBuildings())
+            {
+                if (GetServiceType(data) == type) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// 해금됐는데 마을에 하나도 없는 서비스인지 (필수 시설 미설치 감점·불만 판정에 사용)
+        /// </summary>
+        public bool IsServiceMissing(ServiceType type) => IsServiceUnlocked(type) && !HasService(type);
+
+        /// <summary>
         /// 주택 1채가 서비스 1종에서 받는 접근 시간 단축 보너스.
         /// 단축 비율 = (읍내 기준 시간 - 현재 접근 시간) / 기준 시간 (0~1), 보너스 = 비율 × MaxBonusPerService(최대 합계 ÷ 서비스 종류 수).
         /// 시설이 없거나 기준 시간보다 멀면 0.

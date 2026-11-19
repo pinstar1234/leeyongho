@@ -242,12 +242,7 @@ namespace InfraTown.EventSystem
             return _rng.Next(min, max + 1);
         }
 
-        private bool IsServiceUnlocked(ServiceType type)
-        {
-            var buildings = BuildingManager.Instance;
-            return buildings != null && buildings.GetUnlockedBuildings()
-                .Any(d => ServiceAccessibilityManager.GetServiceType(d) == type);
-        }
+        private static bool IsServiceUnlocked(ServiceType type) => ServiceAccessibilityManager.IsServiceUnlocked(type);
 
         private void PlayComplaint(EssentialFacilityDialogue entry)
         {

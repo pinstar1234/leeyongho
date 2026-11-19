@@ -11,14 +11,14 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T1_House
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: house
-  buildingName: "주택"
-  description: "인구 제공, 매월 주민세 창출"
+  buildingName: "\uC8FC\uD0DD"
+  description: "\uC778\uAD6C \uC81C\uACF5, \uB9E4\uC6D4 \uC8FC\uBBFC\uC138 \uCC3D\uCD9C"
   requiredPopulation: 0
   unlockTier: 1
-  easyDescription: "사람이 사는 집 (주민 늘어남)"
-  unlockMessage: "살 곳이 부족해 젊은이들이 마을을 떠나고 있어요."
+  easyDescription: "\uC0AC\uB78C\uC774 \uC0AC\uB294 \uC9D1 (\uC8FC\uBBFC \uB298\uC5B4\uB0A8)"
+  unlockMessage: "\uC0AC\uB78C\uC774 \uC0AC\uB294 \uC9D1 (\uC8FC\uBBFC \uB298\uC5B4\uB0A8)"
   constructionDays: 7
   demolitionDays: 1
   sizeType: 0

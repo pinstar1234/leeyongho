@@ -11,14 +11,16 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T2_SeniorCenter
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: senior_center
-  buildingName: "경로당"
-  description: "노인 만족도 대폭 증가"
+  buildingName: "\uACBD\uB85C\uB2F9"
+  description: "\uB178\uC778 \uB9CC\uC871\uB3C4 \uB300\uD3ED \uC99D\uAC00"
   requiredPopulation: 50
   unlockTier: 2
-  easyDescription: "할머니, 할아버지가 쉬는 경로당"
-  unlockMessage: "겨울철 난방도 안 되는 외딴집에 어르신들이 외로이 계십니다."
+  easyDescription: "\uD560\uBA38\uB2C8, \uD560\uC544\uBC84\uC9C0\uAC00 \uC26C\uB294
+    \uACBD\uB85C\uB2F9"
+  unlockMessage: "\uB9C8\uC744 \uC5B4\uB974\uC2E0\uB4E4\uC774 \uBAA8\uC5EC\uC11C
+    \uC274 \uC218 \uC788\uB294 \uACF5\uAC04\uC774 \uD544\uC694\uD569\uB2C8\uB2E4."
   constructionDays: 14
   demolitionDays: 2
   sizeType: 1

@@ -582,6 +582,9 @@ namespace InfraTown.Tests.Playtest
             yield return WaitUntil(() => ended != GameResult.None, 40, "배드엔딩");
             Check("나쁨 30일 연속 → 배드엔딩", ended == GameResult.Defeat, $"{ended}, 나쁨 {lastBad}일");
             Check("엔딩 후 시간 정지", TimeManager.Instance.IsEventPaused);
+            Check("필수 시설이 없던 4주 동안 미설치 감점이 시설마다 주 2%씩 쌓임",
+                Mathf.Approximately(sat.GetMissingFacilityPenalty(ServiceType.Hospital), 8f) && Mathf.Approximately(sat.TotalMissingFacilityPenalty, 32f),
+                $"병원 {sat.GetMissingFacilityPenalty(ServiceType.Hospital):F0}%, 합계 {sat.TotalMissingFacilityPenalty:F0}%");
         }
 
         private static IEnumerator VictoryCheck()
@@ -611,6 +614,19 @@ namespace InfraTown.Tests.Playtest
             var sat = SatisfactionManager.Instance;
             Note($"좋은 마을 재건: 평균 {sat.CurrentAverageSatisfaction:F1}, 좋음 비율 {sat.GoodHousingRatio:P0}, 누락 필수 시설 [{string.Join(", ", outcome.GetMissingRequiredServices())}]");
             Check("필수 시설 4종 → 인프라 정상화", outcome.IsInfrastructureNormalized());
+
+            // 배드엔딩 단계에서 필수 시설이 없던 동안 쌓인 미설치 감점은 다시 지어도 주마다 2%씩 천천히 회복된다
+            float leftover = sat.TotalMissingFacilityPenalty;
+            if (leftover > 0f)
+            {
+                Note($"필수 시설 미설치 감점이 {leftover:F0}% 남아 있음 → 주마다 회복되는지 확인");
+                int startDay = outcome.DaysElapsed;
+                yield return WaitUntil(() => sat.TotalMissingFacilityPenalty <= 0f, 70, "미설치 감점 회복");
+                int weeks = Mathf.CeilToInt((outcome.DaysElapsed - startDay) / 7f);
+                Check("다시 지으면 미설치 감점이 주마다 회복되어 0이 됨 (시설당 최대 10% → 5주 이내)",
+                    sat.TotalMissingFacilityPenalty <= 0f && weeks <= 5, $"{weeks}주 걸림");
+                Note($"회복 후: 평균 {sat.CurrentAverageSatisfaction:F1}, 좋음 비율 {sat.GoodHousingRatio:P0}");
+            }
 
             if (sat.GoodHousingRatio < outcome.RequiredGoodRatio)
             {
