@@ -1,6 +1,7 @@
-using UnityEngine;
+﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using DG.Tweening;
 
 namespace InfraTown.TimeSystem
 {
@@ -15,18 +16,26 @@ namespace InfraTown.TimeSystem
         [SerializeField] private Button btnSpeed2;
         [SerializeField] private Button btnSpeed3;
 
+        [Header("버튼 강조 색상 설정")]
+        [SerializeField] private Color activeButtonColor = new Color(0.25f, 0.75f, 0.45f, 1f);   // 선택됨 (초록)
+        [SerializeField] private Color pauseActiveColor = new Color(0.9f, 0.35f, 0.35f, 1f);    // 정지 선택됨 (빨강)
+        [SerializeField] private Color inactiveButtonColor = new Color(0.25f, 0.28f, 0.35f, 1f);// 비활성 (어두운 회색)
+
         private void Start()
         {
             if (TimeManager.Instance != null)
             {
-                TimeManager.Instance.OnDateChanged += UpdateDateUI;
-                UpdateDateUI(TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentDay);
+                TimeManager.Instance.OnDateChanged += UpdateDateUI; 
+                TimeManager.Instance.OnSpeedChanged += UpdateSpeedButtonVisuals; 
+
+                UpdateDateUI(TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentDay); 
+                UpdateSpeedButtonVisuals(TimeManager.Instance.CurrentSpeed); 
             }
 
-            if (btnPause != null) btnPause.onClick.AddListener(() => TimeManager.Instance?.SetGameSpeed(GameSpeed.Pause));
-            if (btnSpeed1 != null) btnSpeed1.onClick.AddListener(() => TimeManager.Instance?.SetGameSpeed(GameSpeed.Normal));
-            if (btnSpeed2 != null) btnSpeed2.onClick.AddListener(() => TimeManager.Instance?.SetGameSpeed(GameSpeed.Fast));
-            if (btnSpeed3 != null) btnSpeed3.onClick.AddListener(() => TimeManager.Instance?.SetGameSpeed(GameSpeed.SuperFast));
+            if (btnPause != null) btnPause.onClick.AddListener(() => OnClickSpeedButton(btnPause, GameSpeed.Pause)); 
+            if (btnSpeed1 != null) btnSpeed1.onClick.AddListener(() => OnClickSpeedButton(btnSpeed1, GameSpeed.Normal));
+            if (btnSpeed2 != null) btnSpeed2.onClick.AddListener(() => OnClickSpeedButton(btnSpeed2, GameSpeed.Fast));
+            if (btnSpeed3 != null) btnSpeed3.onClick.AddListener(() => OnClickSpeedButton(btnSpeed3, GameSpeed.SuperFast)); 
         }
 
         private void OnDestroy()
@@ -36,12 +45,36 @@ namespace InfraTown.TimeSystem
                 TimeManager.Instance.OnDateChanged -= UpdateDateUI;
             }
         }
+        private void OnClickSpeedButton(Button clickedBtn, GameSpeed speed)
+        {
+            TimeManager.Instance?.SetGameSpeed(speed); 
+
+            // 일시정지(timeScale = 0) 중에도 눌리는 느낌이 나도록 SetUpdate(true) 적용
+            clickedBtn.transform.DOKill();
+            clickedBtn.transform.localScale = Vector3.one;
+            clickedBtn.transform.DOPunchScale(Vector3.one * 0.15f, 0.2f, 8, 1f).SetUpdate(true);
+        }
 
         private void UpdateDateUI(int year, int month, int day)
         {
             if (dateText != null)
             {
-                dateText.text = $"{year}년차 {month}월 {day}일";
+                dateText.text = $"{year}년차 {month}월 {day}일"; 
+            }
+        }
+        private void UpdateSpeedButtonVisuals(GameSpeed currentSpeed)
+        {
+            SetButtonColor(btnPause, currentSpeed == GameSpeed.Pause ? pauseActiveColor : inactiveButtonColor); 
+            SetButtonColor(btnSpeed1, currentSpeed == GameSpeed.Normal ? activeButtonColor : inactiveButtonColor); 
+            SetButtonColor(btnSpeed2, currentSpeed == GameSpeed.Fast ? activeButtonColor : inactiveButtonColor); 
+            SetButtonColor(btnSpeed3, currentSpeed == GameSpeed.SuperFast ? activeButtonColor : inactiveButtonColor); 
+        }
+
+        private void SetButtonColor(Button btn, Color color)
+        {
+            if (btn != null && btn.targetGraphic != null)
+            {
+                btn.targetGraphic.color = color;
             }
         }
     }
