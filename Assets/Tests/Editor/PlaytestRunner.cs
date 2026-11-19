@@ -28,7 +28,7 @@ namespace InfraTown.Tests.Playtest
     /// 결과: -playtestOut 폴더의 report.md 와 스크린샷 PNG.
     /// </summary>
     [InitializeOnLoad]
-    public static class PlaytestRunner
+    public static partial class PlaytestRunner
     {
         private const string ActiveKey = "InfraTown.Playtest.Active";
         private const string OutKey = "InfraTown.Playtest.Out";
@@ -171,6 +171,12 @@ namespace InfraTown.Tests.Playtest
             else foreach (var line in injected.Split('\n')) Note("⚠ " + line);
             yield return Frames(3);
             yield return BootChecks();
+
+            if (SessionState.GetString(ModeKey, "full") == "dialogue")
+            {
+                yield return DialogueScenario(); // PlaytestDialogue.cs
+                yield break;
+            }
 
             if (SessionState.GetString(ModeKey, "full") == "rotation")
             {

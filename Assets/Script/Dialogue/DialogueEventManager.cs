@@ -552,6 +552,8 @@ namespace InfraTown.EventSystem
             CurrentDialogue = null;
             CurrentLineIndex = -1;
             CurrentSide = DialogueSide.Narration;
+            RightSpeakerName = null; // 대화가 끝나면 오른쪽 인물도 비움
+            RightPortrait = null;
             _currentText = string.Empty;
             VisibleCharacterCount = 0;
             if (_shownOnScreen) _endFrame = Time.frameCount; // 화면에 보인 대화만 (UI 없이 콘솔로 끝난 대화는 클릭과 무관)

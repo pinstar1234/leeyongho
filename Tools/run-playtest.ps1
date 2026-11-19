@@ -10,7 +10,7 @@
 
 param(
     [string]$Scene = "Assets/Scenes/1park2.unity",
-    [string]$Mode = "full",   # full = 전체 시나리오, rotation = 건물 100개 회전 설치·철거 반복
+    [string]$Mode = "full",   # full = 전체 시나리오, rotation = 건물 100개 회전 설치·철거 반복, dialogue = 임시 대화창으로 대화·컷씬 확인 + 스크린샷
     [string]$UnityPath = $env:UNITY_EDITOR,
     [int]$TimeoutMinutes = 20,
     [switch]$ForceCopy

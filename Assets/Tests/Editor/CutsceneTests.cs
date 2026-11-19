@@ -130,6 +130,17 @@ namespace InfraTown.Tests
         }
 
         [Test]
+        public void 대화가_끝나면_오른쪽_인물도_비워진다()
+        {
+            _dialogue.Play(DialogueData.Create("talk4", true, false, new DialogueLine("주민", "안녕히 계세요")));
+            Assert.AreEqual("주민", _dialogue.RightSpeakerName);
+            _dialogue.Next();
+            Assert.IsNull(_dialogue.RightSpeakerName);
+            Assert.IsNull(_dialogue.RightPortrait);
+            Assert.IsFalse(_dialogue.IsRightDimmed);
+        }
+
+        [Test]
         public void 자리를_직접_지정하면_그대로_따른다()
         {
             var line = new DialogueLine("주민", "...") { side = DialogueSide.Left };
