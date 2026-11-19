@@ -51,7 +51,7 @@ namespace InfraTown.EventSystem
         [SerializeField] private bool askPlayerNameAtStart = true;
 
         [Header("1. 게임 시작 (오프닝 컷씬 → 마을 도착 후 주민 대화 → 튜토리얼)")]
-        [Tooltip("처음에 보여줄 오프닝 컷씬 — 게임 화면 연출(Scene) 방식 권장, 마지막 장면을 마을 도착 위치로 (비워도 됨)")]
+        [Tooltip("처음에 보여줄 오프닝 컷씬 — 시네머신(Cinemachine) 방식 권장, 팀원이 만든 시퀀스가 마을 도착까지 보여줌 (비워도 됨)")]
         [SerializeField] private CutsceneData openingCutscene;
 
         [Tooltip("오프닝 컷씬이 끝나고 마을에 도착해서 나누는 주민 대화 (비워도 됨)")]

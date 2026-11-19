@@ -99,7 +99,7 @@ namespace InfraTown.Tests
             PlayerProfile.TrySetPlayerName("민수", out _);
             var cutscene = _world.CreateManager<CutsceneManager>();
             cutscene.OnShotShown += (s, i, n) => { };
-            cutscene.Play(CutsceneData.Create("c", CutsceneStyle.Scene,
+            cutscene.Play(CutsceneData.CreateComic("c",
                 new CutsceneShot { speaker = "{player}", caption = "{player}의 첫 출근 날" }));
 
             Assert.AreEqual("민수의 첫 출근 날", cutscene.GetCurrentCaption());
