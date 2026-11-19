@@ -1539,6 +1539,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   goodThreshold: 71
   badThreshold: 30
+  penalizedServices: 01000000040000000200000000000000
+  missingFacilityPenaltyPerWeek: 2
+  maxMissingFacilityPenalty: 10
+  missingFacilityRecoveryPerWeek: 2
 --- !u!1 &199540544
 GameObject:
   m_ObjectHideFlags: 0
@@ -1764,6 +1768,9 @@ MonoBehaviour:
   validPreviewMaterial: {fileID: 2100000, guid: 1c05ec9f0a3ebd54ab24217363b7cd29, type: 2}
   invalidPreviewMaterial: {fileID: 2100000, guid: c18be7f6593b2ac488d5636a9b6050fd, type: 2}
   highlightController: {fileID: 243961311}
+  rotateKeyPositive: 113
+  rotateKeyNegative: 101
+  rotationStep: 90
 --- !u!114 &243961311
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3405,7 +3412,7 @@ MonoBehaviour:
   minutesPerTile: 0.5
   longAccessThresholdMinutes: 15
   townBaselineMinutes: 60
-  maxBonusPerService: 6
+  maxTotalAccessBonus: 10
   <HasHospital>k__BackingField: 0
   <HasFireStation>k__BackingField: 0
   <HasConvenienceStore>k__BackingField: 0
@@ -4655,6 +4662,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   pricePerPowerUnit: 10
   targetPurchasedPower: 200
+  maxPurchasablePower: 2000
+  purchaseStep: 10
   purchaseOnStart: 1
   totalBlackoutPenalty: 30
   unpoweredHousingPenalty: 15
@@ -4961,6 +4970,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   goodThreshold: 71
   badThreshold: 30
+  penalizedServices: 01000000040000000200000000000000
+  missingFacilityPenaltyPerWeek: 2
+  maxMissingFacilityPenalty: 10
+  missingFacilityRecoveryPerWeek: 2
 --- !u!1 &752186185
 GameObject:
   m_ObjectHideFlags: 0
@@ -5851,6 +5864,8 @@ MonoBehaviour:
   slideInEase: 9
   slideOutEase: 8
   powerText: {fileID: 1709451826}
+  powerPurchaseText: {fileID: 0}
+  powerSlider: {fileID: 0}
   populationText: {fileID: 658481060}
   subsidyText: {fileID: 1459617482}
   subsidySlider: {fileID: 1237450757}
@@ -7101,6 +7116,9 @@ MonoBehaviour:
   validPreviewMaterial: {fileID: 2100000, guid: 1c05ec9f0a3ebd54ab24217363b7cd29, type: 2}
   invalidPreviewMaterial: {fileID: 2100000, guid: c18be7f6593b2ac488d5636a9b6050fd, type: 2}
   highlightController: {fileID: 1052840644}
+  rotateKeyPositive: 113
+  rotateKeyNegative: 101
+  rotationStep: 90
 --- !u!1 &1059831278
 GameObject:
   m_ObjectHideFlags: 0
@@ -7413,6 +7431,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   secondsPerDay: 90
+  skipDays: 7
+  skipSecondsPerDay: 0.3
   currentYear: 1
   currentMonth: 1
   currentDay: 1
@@ -9185,7 +9205,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &1332560243
 Transform:
   m_ObjectHideFlags: 0
@@ -10655,6 +10675,9 @@ MonoBehaviour:
   validPreviewMaterial: {fileID: 2100000, guid: 1c05ec9f0a3ebd54ab24217363b7cd29, type: 2}
   invalidPreviewMaterial: {fileID: 2100000, guid: c18be7f6593b2ac488d5636a9b6050fd, type: 2}
   highlightController: {fileID: 0}
+  rotateKeyPositive: 113
+  rotateKeyNegative: 101
+  rotationStep: 90
 --- !u!1 &1631964613
 GameObject:
   m_ObjectHideFlags: 0
