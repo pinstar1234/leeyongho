@@ -19,6 +19,8 @@ namespace InfraTown.Satisfaction
         [SerializeField] private Sprite stableSprite;     // 61~80% (안정)
         [SerializeField] private Sprite prosperousSprite; // 81~100% (활기찬)
 
+        [SerializeField] private string textPrefix = "";
+
         private void Start()
         {
             if (SatisfactionManager.Instance != null)
@@ -48,7 +50,7 @@ namespace InfraTown.Satisfaction
             // 1. 퍼센티지 텍스트 갱신
             if (satisfactionText != null)
             {
-                satisfactionText.text = $"{scoreInt}%";
+                satisfactionText.text = $"{textPrefix}{scoreInt}%";
             }
 
             // 2. 표정 Sprite 이미지 갱신

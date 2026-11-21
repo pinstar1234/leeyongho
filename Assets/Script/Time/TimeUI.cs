@@ -15,6 +15,7 @@ namespace InfraTown.TimeSystem
         [SerializeField] private Button btnSpeed1;
         [SerializeField] private Button btnSpeed2;
         [SerializeField] private Button btnSpeed3;
+        [SerializeField] private Button btnWeekSkip;
 
         [Header("버튼 강조 색상 설정")]
         [SerializeField] private Color activeButtonColor = new Color(0.25f, 0.75f, 0.45f, 1f);   // 선택됨 (초록)
@@ -36,6 +37,28 @@ namespace InfraTown.TimeSystem
             if (btnSpeed1 != null) btnSpeed1.onClick.AddListener(() => OnClickSpeedButton(btnSpeed1, GameSpeed.Normal));
             if (btnSpeed2 != null) btnSpeed2.onClick.AddListener(() => OnClickSpeedButton(btnSpeed2, GameSpeed.Fast));
             if (btnSpeed3 != null) btnSpeed3.onClick.AddListener(() => OnClickSpeedButton(btnSpeed3, GameSpeed.SuperFast)); 
+            if (btnWeekSkip != null) btnWeekSkip.onClick.AddListener(OnClickWeekSkip);
+            UpdateWeekSkipButton();
+        }
+
+        private void LateUpdate()
+        {
+            UpdateWeekSkipButton();
+        }
+
+        private void UpdateWeekSkipButton()
+        {
+            if (btnWeekSkip != null)
+            {
+                var timeManager = TimeManager.Instance;
+                btnWeekSkip.interactable = timeManager != null && timeManager.CanSkip;
+            }
+        }
+
+        private void OnClickWeekSkip()
+        {
+            TimeManager.Instance?.StartWeekSkip();
+            UpdateWeekSkipButton();
         }
 
         private void OnDestroy()
@@ -43,7 +66,10 @@ namespace InfraTown.TimeSystem
             if (TimeManager.Instance != null)
             {
                 TimeManager.Instance.OnDateChanged -= UpdateDateUI;
+                TimeManager.Instance.OnSpeedChanged -= UpdateSpeedButtonVisuals;
             }
+
+            if (btnWeekSkip != null) btnWeekSkip.onClick.RemoveListener(OnClickWeekSkip);
         }
         private void OnClickSpeedButton(Button clickedBtn, GameSpeed speed)
         {
