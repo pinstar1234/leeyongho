@@ -50,6 +50,7 @@ namespace InfraTown.UI
         public TextMeshProUGUI txtCategory; //[cite: 18]
         public TextMeshProUGUI txtPower; //[cite: 18]
         public TextMeshProUGUI txtCost; //[cite: 18]
+        [SerializeField] private TextMeshProUGUI txtMonthlyCost;
         public TextMeshProUGUI txtDescription; //[cite: 18]
         public Button btnCloseInfo; //[cite: 18]
 
@@ -366,9 +367,19 @@ namespace InfraTown.UI
                 }
             }
 
-            if (txtCategory != null) txtCategory.text = $"<b>분류:</b> {GetCategoryName(data.category)}"; //[cite: 18]
-            if (txtPower != null) txtPower.text = $"<b>전력 소비:</b> {data.requiredPower} kW"; //[cite: 18]
-            if (txtCost != null) txtCost.text = $"<b>유지비:</b> {data.maintenanceCost:N0}원/월\n<b>건설비:</b> {data.constructionCost:N0}원"; //[cite: 18]
+            if (txtMonthlyCost != null)
+            {
+                if (txtCategory != null) txtCategory.text = GetCategoryName(data.category);
+                if (txtPower != null) txtPower.text = $"{data.requiredPower} kW";
+                if (txtCost != null) txtCost.text = $"{data.constructionCost:N0} 원";
+                txtMonthlyCost.text = $"{data.maintenanceCost:N0} 원";
+            }
+            else
+            {
+                if (txtCategory != null) txtCategory.text = $"<b>분류:</b> {GetCategoryName(data.category)}";
+                if (txtPower != null) txtPower.text = $"<b>전력 소비:</b> {data.requiredPower} kW";
+                if (txtCost != null) txtCost.text = $"<b>유지비:</b> {data.maintenanceCost:N0}원/월\n<b>건설비:</b> {data.constructionCost:N0}원";
+            }
             if (txtDescription != null) txtDescription.text = data.description; //[cite: 18]
 
             if (infoPanelCanvasGroup != null) //[cite: 18]
