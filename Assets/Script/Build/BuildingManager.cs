@@ -21,6 +21,10 @@ namespace InfraTown.Building
 
         [Header("하이라이트 컨트롤러 참조")]
         [SerializeField] private GridHighlightController highlightController;
+        [SerializeField] private bool singlePlacement;
+
+        public bool IsPlacingBuilding => _selectedBuildingData != null;
+        public event System.Action<bool> OnPlacementModeChanged;
 
         
 
@@ -164,7 +168,8 @@ namespace InfraTown.Building
                 return;
             }
 
-            CancelBuildingMode();
+            bool wasPlacing = IsPlacingBuilding;
+            ClearBuildingPreview();
 
             _selectedBuildingData = data;
 
@@ -177,7 +182,9 @@ namespace InfraTown.Building
             }
 
             _previewRenderers = _previewInstance.GetComponentsInChildren<MeshRenderer>();
-            SetPreviewMaterial(validPreviewMaterial);
+            var grid = LightweightGridManager.Instance;
+            UpdateBuildingPreview(grid != null ? grid.HoveredGridPos : new Vector2Int(-1, -1));
+            if (!wasPlacing) OnPlacementModeChanged?.Invoke(true);
         }
 
         /// <summary>
@@ -284,6 +291,7 @@ namespace InfraTown.Building
             GameLoopManager.Instance?.RegisterBuilding(instance);
 
             ToastUIManager.Instance?.ShowToast($"✅ '{_selectedBuildingData.buildingName}' 건설 완료!", false);
+            if (singlePlacement) CancelBuildingMode();
         }
 
         private bool CanPlaceBuilding(int startX, int startZ, int sizeX, int sizeZ)
@@ -329,11 +337,21 @@ namespace InfraTown.Building
 
         public void CancelBuildingMode()
         {
+            bool wasPlacing = IsPlacingBuilding;
             _selectedBuildingData = null;
+            ClearBuildingPreview();
+            if (wasPlacing) OnPlacementModeChanged?.Invoke(false);
+        }
+
+        private void ClearBuildingPreview()
+        {
             if (_previewInstance != null)
             {
+                _previewInstance.SetActive(false);
                 Destroy(_previewInstance);
             }
+            _previewInstance = null;
+            _previewRenderers = null;
 
             if (highlightController != null)
             {

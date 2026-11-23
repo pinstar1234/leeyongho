@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UIEventSystem = UnityEngine.EventSystems.EventSystem;
 
 namespace InfraTown.Grid
 {
@@ -37,7 +38,7 @@ namespace InfraTown.Grid
             _groundPlane = new Plane(Vector3.up, Vector3.zero);
         }
 
-        private void Update()
+        private void LateUpdate()
         {
             HandleGridRaycast();
         }
@@ -49,7 +50,8 @@ namespace InfraTown.Grid
         {
             Ray ray = _mainCamera.ScreenPointToRay(Input.mousePosition);
 
-            if (_groundPlane.Raycast(ray, out float enter))
+            bool pointerOverUI = UIEventSystem.current != null && UIEventSystem.current.IsPointerOverGameObject();
+            if (!pointerOverUI && _groundPlane.Raycast(ray, out float enter))
             {
                 Vector3 hitPoint = ray.GetPoint(enter);
 

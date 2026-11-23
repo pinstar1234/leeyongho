@@ -15,6 +15,7 @@ namespace InfraTown.UI
         [SerializeField] private Button button;
         [SerializeField] private Image iconImage;
         [SerializeField] private TextMeshProUGUI nameText;
+        [SerializeField] private TextMeshProUGUI footprintText;
         [SerializeField] private TextMeshProUGUI lockInfoText; // 예: "잠김 (필요 인구: 50명)"
         [SerializeField] private GameObject lockOverlay;      // 자물쇠 어두운 패널
 
@@ -52,7 +53,18 @@ namespace InfraTown.UI
             if (buildingData == null) return;
 
             if (nameText != null) nameText.text = buildingData.buildingName;
-            if (iconImage != null && buildingData.buildingIcon != null) iconImage.sprite = buildingData.buildingIcon;
+            bool hasIcon = buildingData.buildingIcon != null;
+            if (iconImage != null)
+            {
+                iconImage.sprite = buildingData.buildingIcon;
+                iconImage.gameObject.SetActive(hasIcon);
+            }
+            if (footprintText != null)
+            {
+                Vector2Int size = buildingData.GridSize;
+                footprintText.text = $"{size.x} x {size.y}";
+                footprintText.gameObject.SetActive(!hasIcon);
+            }
 
             int currentPop = PopulationManager.Instance != null ? PopulationManager.Instance.CurrentPopulation : 0;
             UpdateLockState(currentPop);
@@ -83,7 +95,7 @@ namespace InfraTown.UI
                 }
                 else
                 {
-                    lockInfoText.text = $"🔒 필요 인구 {buildingData.requiredPopulation}명";
+                    lockInfoText.text = $"필요 인구 {buildingData.requiredPopulation}명";
                 }
             }
         }
