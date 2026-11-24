@@ -226,27 +226,31 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 전봇대가_없으면_전력_부족_비율만큼_마을_전체_감점()
+        public void 전봇대가_없으면_마을_전체_비율_감점_대신_모든_주택이_꺼진다()
         {
             MonthlyPurchase(); // 보유 200
+            var house = _world.CreateBuilding(_world.CreateData(BuildingType.Housing, capacity: 10), 5, 5);
             _power.RecalculatePowerUsage(new List<BuildingInstance>
             {
-                _world.CreateBuilding(_world.CreateData(BuildingType.Facility, power: 400), 0, 0)
+                house, _world.CreateBuilding(_world.CreateData(BuildingType.Facility, power: 400), 0, 0)
             });
 
-            // 400 중 200 부족 → 50% × 30 = 15
-            Assert.AreEqual(15f, _power.GetPowerBlackoutSatisfactionPenalty(), 0.001f);
+            // 사용자 결정 2026-11-24: 부족 비율 마을 감점(예전 15)은 없애고, 전봇대가 없으면 주택이 꺼진 상태로 개별 감점
+            Assert.AreEqual(0f, _power.GetPowerBlackoutSatisfactionPenalty(), 0.001f);
+            Assert.IsFalse(_power.IsHousingPowered(house));
+            Assert.AreEqual(15f, _power.GetHousingPowerPenalty(house));
         }
 
         [Test]
-        public void 전봇대가_없으면_전력이_충분한지로_주택_전기공급을_판단한다()
+        public void 전봇대가_없으면_전력이_충분해도_주택에_전기가_없다()
         {
             MonthlyPurchase();
             var house = _world.CreateBuilding(_world.CreateData(BuildingType.Housing, capacity: 10, power: 50), 0, 0);
             _power.RecalculatePowerUsage(new List<BuildingInstance> { house });
 
-            Assert.IsTrue(_power.IsHousingPowered(house));
-            Assert.AreEqual(0f, _power.GetHousingPowerPenalty(house));
+            Assert.IsFalse(_power.IsPowerShortage);
+            Assert.IsFalse(_power.IsHousingPowered(house));
+            Assert.AreEqual(15f, _power.GetHousingPowerPenalty(house));
         }
 
         [Test]

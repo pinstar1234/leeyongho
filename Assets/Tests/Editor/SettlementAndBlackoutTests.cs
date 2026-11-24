@@ -6,7 +6,9 @@ using InfraTown.Core;
 using InfraTown.Economy;
 using InfraTown.Gas;
 using InfraTown.Power;
+using InfraTown.Satisfaction;
 using InfraTown.Save;
+using InfraTown.Services;
 using InfraTown.TimeSystem;
 
 namespace InfraTown.Tests
@@ -210,7 +212,7 @@ namespace InfraTown.Tests
 
     /// <summary>
     /// 사용자 기획 2026-11-24: 전력이 부족하면 무작위가 아니라 외곽 전봇대부터 중앙으로 꺼지고,
-    /// 꺼지는 개수 = 부족 비율(필요 대비 %) ÷ 전봇대 1개당 % (올림, 최소 1)
+    /// 꺼지는 개수 = 부족해지면 1개 + 부족 비율이 1개당 %(기본 5%)만큼 늘 때마다 1개 = 1 + 내림(부족% ÷ 1개당 %)
     /// </summary>
     public class PoleBlackoutTests
     {
@@ -242,11 +244,11 @@ namespace InfraTown.Tests
 
         private static bool On(BuildingInstance pole) => pole.GetComponent<UtilityPoleInstance>().IsPowered;
 
-        [TestCase(2f, 5)]
-        [TestCase(3f, 4)]
-        [TestCase(4f, 3)]
-        [TestCase(5f, 2)]
-        public void 부족_10퍼센트면_전봇대_1개당_퍼센트만큼_꺼진다(float percentPerPole, int expectedOff)
+        [TestCase(2f, 6)] // 1 + 10/2
+        [TestCase(3f, 4)] // 1 + 3
+        [TestCase(4f, 3)] // 1 + 2
+        [TestCase(5f, 3)] // 1 + 2
+        public void 부족_10퍼센트면_1개_더하기_퍼센트마다_1개씩_꺼진다(float percentPerPole, int expectedOff)
         {
             _power.ShortagePercentPerPole = percentPerPole;
             var poles = Enumerable.Range(0, 10).Select(i => Pole(i * 5, 10)).ToList();
@@ -256,6 +258,21 @@ namespace InfraTown.Tests
             Assert.AreEqual(expectedOff, _power.BlackoutPoleCount);
             Assert.AreEqual(expectedOff, poles.Count(p => !On(p)));
             Assert.AreEqual(expectedOff, _power.BlackedOutPoles.Count);
+        }
+
+        [TestCase(951, 1)] // 4.9%
+        [TestCase(950, 2)] // 5%
+        [TestCase(901, 2)] // 9.9%
+        [TestCase(900, 3)] // 10%
+        [TestCase(851, 3)] // 14.9%
+        [TestCase(850, 4)] // 15%
+        public void 처음_부족하면_1개_그뒤_5퍼센트마다_1개씩_더_꺼진다(int available, int expectedOff)
+        {
+            _power.ShortagePercentPerPole = 5f;
+            var poles = Enumerable.Range(0, 20).Select(i => Pole(i * 3, 10)).ToList();
+            Evaluate(new List<BuildingInstance>(poles), available);
+            Assert.AreEqual(expectedOff, _power.BlackoutPoleCount, $"부족 {_power.ShortagePercent:F2}%");
+            Assert.AreEqual(expectedOff, poles.Count(p => !On(p)));
         }
 
         [Test]
@@ -278,12 +295,12 @@ namespace InfraTown.Tests
             var right = Pole(40, 10);
             var all = new List<BuildingInstance> { center, midRight, left, right, midLeft }; // 목록 순서와 무관해야 함
 
-            Evaluate(new List<BuildingInstance>(all), 900); // 10% → 2개
+            Evaluate(new List<BuildingInstance>(all), 950); // 5% → 2개 (양 끝, 거리가 같으면 왼쪽부터)
             Assert.IsFalse(On(left));
             Assert.IsFalse(On(right));
             Assert.IsTrue(On(midLeft) && On(center) && On(midRight));
 
-            Evaluate(new List<BuildingInstance>(all), 800); // 20% → 4개, 중앙만 남음
+            Evaluate(new List<BuildingInstance>(all), 850); // 15% → 4개, 중앙만 남음
             Assert.IsFalse(On(midLeft) || On(midRight));
             Assert.IsTrue(On(center));
         }
@@ -344,7 +361,7 @@ namespace InfraTown.Tests
         [TestCase(2f, 4, 30)]
         [TestCase(3f, 4, 30)]
         [TestCase(4f, 3, 21)]
-        [TestCase(5f, 2, 12)]
+        [TestCase(5f, 3, 21)]
         public void 밸런스_중간_단계_마을_부족_10퍼센트(float percentPerPole, int poleOff, int darkHouses)
         {
             _power.ShortagePercentPerPole = percentPerPole;
@@ -358,6 +375,186 @@ namespace InfraTown.Tests
 
             Assert.AreEqual(poleOff, poles.Count(p => !On(p)));
             Assert.AreEqual(darkHouses, houses.Count(h => !_power.IsHousingPowered(h)));
+        }
+    }
+
+    /// <summary>
+    /// 사용자 결정 2026-11-24: 모든 건물은 켜진 전봇대 공급 범위(한 칸이라도 닿으면) 안에 있어야 전기가 들어온다.
+    /// 꺼진 주택은 −15, 꺼진 시설은 기능 정지(좋은 만족도 영향·접근성 제공 안 함, 설치로는 인정), 불쾌 시설의 나쁜 영향은 그대로
+    /// </summary>
+    public class BuildingPowerRangeTests
+    {
+        private TestWorld _world;
+        private PowerManager _power;
+        private SatisfactionManager _satisfaction;
+        private BuildingData _poleData;
+
+        [SetUp]
+        public void SetUp()
+        {
+            _world = new TestWorld();
+            _power = _world.CreateManager<PowerManager>();
+            _satisfaction = _world.CreateManager<SatisfactionManager>();
+            _poleData = _world.CreateData(BuildingType.Infrastructure, id: "pole", name: "전신주");
+            _poleData.powerSupplyRadius = 1; // 좁은 반경으로 범위 안/밖을 나눔
+        }
+
+        [TearDown]
+        public void TearDown() => _world.Dispose();
+
+        private BuildingInstance Pole(int x, int y) => _world.CreateBuilding(_poleData, x, y, withPole: true);
+        private BuildingInstance House(int x, int y) => _world.CreateBuilding(_world.CreateData(BuildingType.Housing, id: "house", capacity: 10), x, y);
+
+        /// <summary>전력 넉넉히(1,000kW) 보유한 상태로 판정</summary>
+        private void Evaluate(List<BuildingInstance> buildings)
+        {
+            TestWorld.SetField(_power, "currentAvailablePower", 1000);
+            _power.RecalculatePowerUsage(buildings);
+        }
+
+        private float SatisfactionOf(BuildingInstance house, List<BuildingInstance> buildings)
+        {
+            _satisfaction.RecalculateSatisfaction(buildings);
+            return house.GetComponent<HousingInstance>().CurrentSatisfaction;
+        }
+
+        [Test]
+        public void 전봇대가_없으면_전력이_넉넉해도_모든_건물이_꺼진다()
+        {
+            var house = House(0, 0);
+            var facility = _world.CreateBuilding(_world.CreateData(BuildingType.Facility), 3, 0);
+            Evaluate(new List<BuildingInstance> { house, facility });
+
+            Assert.IsFalse(_power.IsPowerShortage);
+            Assert.IsFalse(_power.IsBuildingPowered(house));
+            Assert.IsFalse(_power.IsBuildingPowered(facility));
+        }
+
+        [Test]
+        public void 반경_안은_켜지고_밖은_꺼진다()
+        {
+            var near = House(1, 0);   // 전봇대(0,0)에서 1칸
+            var far = House(2, 0);    // 2칸 → 반경 1 밖
+            Evaluate(new List<BuildingInstance> { Pole(0, 0), near, far });
+
+            Assert.IsTrue(_power.IsBuildingPowered(near));
+            Assert.IsFalse(_power.IsBuildingPowered(far));
+        }
+
+        [Test]
+        public void 큰_건물은_한_칸이라도_범위_안이면_켜진다()
+        {
+            _poleData.powerSupplyRadius = 4;
+            var large = _world.CreateBuilding(_world.CreateData(BuildingType.Facility, size: BuildingSizeType.Large), 10, 10); // 10~13칸
+            var touching = Pole(17, 10); // 오른쪽 끝 칸(13)에서 4칸
+            Evaluate(new List<BuildingInstance> { large, touching });
+            Assert.IsTrue(_power.IsBuildingPowered(large), "기준 칸(10)에서는 7칸이지만 13번 칸이 반경 안");
+
+            var tooFar = Pole(18, 10);
+            Evaluate(new List<BuildingInstance> { large, tooFar });
+            Assert.IsFalse(_power.IsBuildingPowered(large));
+        }
+
+        [Test]
+        public void 꺼진_전봇대의_범위는_전기를_주지_않는다()
+        {
+            _poleData.powerSupplyRadius = 4;
+            var house = House(0, 0);
+            var pole = Pole(1, 1);
+            var buildings = new List<BuildingInstance> { house, pole, _world.CreateBuilding(_world.CreateData(BuildingType.Facility, power: 1000), 50, 35) };
+            TestWorld.SetField(_power, "currentAvailablePower", 900); // 10% 부족 → 전봇대 1개뿐이라 그것이 꺼짐
+            _power.RecalculatePowerUsage(buildings);
+
+            Assert.IsFalse(pole.GetComponent<UtilityPoleInstance>().IsPowered);
+            Assert.IsFalse(_power.IsBuildingPowered(pole));
+            Assert.IsFalse(_power.IsBuildingPowered(house));
+        }
+
+        [Test]
+        public void 전기가_꺼진_시설은_좋은_만족도_영향을_주지_않는다()
+        {
+            var house = House(0, 0);
+            var pole = Pole(1, 0);   // 반경 1 → x 0~2
+            var park = _world.CreateBuilding(_world.CreateData(BuildingType.Facility, id: "park", impact: 10f, radius: 3), 3, 0); // 전봇대에서 2칸 → 꺼짐
+            var buildings = new List<BuildingInstance> { house, pole, park };
+            Evaluate(buildings);
+
+            Assert.IsFalse(_power.IsBuildingPowered(park));
+            Assert.AreEqual(70f, SatisfactionOf(house, buildings), 0.001f, "꺼진 시설의 +10은 반영 안 됨");
+
+            buildings.Add(Pole(4, 0)); // 시설에도 전기
+            Evaluate(buildings);
+            Assert.IsTrue(_power.IsBuildingPowered(park));
+            Assert.AreEqual(80f, SatisfactionOf(house, buildings), 0.001f);
+        }
+
+        [Test]
+        public void 불쾌_시설의_나쁜_영향은_전기가_꺼져도_그대로()
+        {
+            var house = House(0, 0);
+            var pole = Pole(1, 0);
+            var farm = _world.CreateBuilding(_world.CreateData(BuildingType.Nimbys, id: "farm", impact: -20f, radius: 3), 3, 0);
+            var buildings = new List<BuildingInstance> { house, pole, farm };
+            Evaluate(buildings);
+
+            Assert.IsFalse(_power.IsBuildingPowered(farm));
+            Assert.AreEqual(50f, SatisfactionOf(house, buildings), 0.001f);
+        }
+
+        [Test]
+        public void 전봇대_범위_밖_주택은_15점_감점()
+        {
+            var near = House(0, 0);
+            var far = House(10, 0);
+            var buildings = new List<BuildingInstance> { near, far, Pole(1, 0) };
+            Evaluate(buildings);
+
+            Assert.AreEqual(70f, SatisfactionOf(near, buildings), 0.001f);
+            Assert.AreEqual(55f, far.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
+        }
+
+        [Test]
+        public void 전기가_꺼진_병원은_설치로는_인정되지만_접근성을_주지_않는다()
+        {
+            var service = _world.CreateManager<ServiceAccessibilityManager>();
+            var house = House(0, 0);
+            var hospital = _world.CreateBuilding(_world.CreateData(BuildingType.Essential, id: "hospital", name: "병원"), 5, 0);
+            var buildings = new List<BuildingInstance> { house, Pole(1, 0), hospital };
+            Evaluate(buildings);
+            service.RecalculateServiceMetrics(buildings);
+
+            Assert.IsTrue(service.HasService(ServiceType.Hospital), "필수 시설 미설치 감점·승리 조건에는 설치로 인정");
+            Assert.IsFalse(service.HasPoweredService(ServiceType.Hospital));
+            Assert.IsTrue(service.IsServiceUnpowered(ServiceType.Hospital));
+            Assert.AreEqual(ServiceAccessibilityManager.DefaultUninstalledTime, service.GetAccessTime(house, ServiceType.Hospital));
+            Assert.AreEqual(0f, service.GetAccessBonus(house, ServiceType.Hospital));
+            StringAssert.Contains("병원에 전기가 들어오지 않아", service.GetServiceComplaintSummary());
+
+            buildings.Add(Pole(4, 0)); // 병원에도 전기
+            Evaluate(buildings);
+            service.RecalculateServiceMetrics(buildings);
+            Assert.IsTrue(service.HasPoweredService(ServiceType.Hospital));
+            Assert.Greater(service.GetAccessBonus(house, ServiceType.Hospital), 0f);
+        }
+
+        [Test]
+        public void 전력_변화로_전봇대가_꺼지면_게임루프가_접근성과_만족도를_다시_계산한다()
+        {
+            var service = _world.CreateManager<ServiceAccessibilityManager>();
+            _world.CreateManager<EconomyManager>();
+            var loop = _world.CreateManager<GameLoopManager>(callStart: true); // OnPowerDataChanged 구독
+            _poleData.powerSupplyRadius = 10;
+            loop.RegisterBuilding(House(0, 0));
+            loop.RegisterBuilding(Pole(1, 0));
+            loop.RegisterBuilding(_world.CreateBuilding(_world.CreateData(BuildingType.Essential, id: "hospital", name: "병원", power: 100), 3, 0));
+            TestWorld.SetField(_power, "currentAvailablePower", 1000);
+            _power.ShortagePercentPerPole = 5f; // 다시 판정 → OnPowerDataChanged
+            Assert.IsTrue(service.HasPoweredService(ServiceType.Hospital));
+
+            TestWorld.SetField(_power, "currentAvailablePower", 50); // 부족 → 하나뿐인 전봇대가 꺼짐
+            _power.ShortagePercentPerPole = 5f;
+            Assert.IsFalse(service.HasPoweredService(ServiceType.Hospital), "전봇대가 꺼졌는데 병원이 계속 운영 중");
+            TestWorld.Invoke(loop, "OnDestroy");
         }
     }
 }

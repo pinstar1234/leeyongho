@@ -135,6 +135,7 @@ namespace InfraTown.Tests
         {
             _world = new TestWorld();
             _manager = _world.CreateManager<BuildingManager>();
+            _manager.RequireRoadAccess = false; // 도로 접근 조건은 RoadAccessTests
         }
 
         [TearDown]

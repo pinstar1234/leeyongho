@@ -18,6 +18,7 @@ namespace InfraTown.Tests
         {
             _world = new TestWorld();
             _manager = _world.CreateManager<BuildingManager>();
+            _manager.RequireRoadAccess = false; // 회전만 검사 (도로 접근 조건은 RoadAccessTests)
 
             // 에셋에서 흔한 경우처럼 원래 회전이 들어간 '프리팹' (X -90°, Y 30°)
             _prefab = GameObject.CreatePrimitive(PrimitiveType.Cube);

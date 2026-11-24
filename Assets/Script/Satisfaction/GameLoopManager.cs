@@ -126,6 +126,8 @@ namespace InfraTown.Core
 
         private void HandlePowerDataChanged(int used, int available)
         {
+            // 전봇대가 켜지고 꺼지면 시설 운영 여부(접근성)도 바뀌므로 접근성 → 만족도 순서로 다시 계산 (사용자 결정 2026-11-24)
+            ServiceAccessibilityManager.Instance?.RecalculateServiceMetrics(_placedBuildings);
             TriggerSatisfactionUpdate();
         }
 

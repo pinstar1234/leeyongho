@@ -158,7 +158,7 @@ namespace InfraTown.Satisfaction
                     housingBuildings.Add(building);
                 }
 
-                if (Mathf.Abs(building.Data.satisfactionImpact) > 0.01f)
+                if (Mathf.Abs(building.Data.satisfactionImpact) > 0.01f && IsAffectorActive(building))
                 {
                     affectorBuildings.Add(building);
                 }
@@ -247,6 +247,18 @@ namespace InfraTown.Satisfaction
 
             // 최종 만족도 = 주택별 최종 만족도의 평균
             ApplyAverage(totalHousingSatisfactionSum / housingBuildings.Count);
+        }
+
+        /// <summary>
+        /// 만족도 영향을 주는 중인지 (사용자 결정 2026-11-24): 전봇대 범위 밖이라 전기가 꺼진 시설은 기능이 멈춰 좋은 영향(+)을 주지 않는다.
+        /// 불쾌 시설의 나쁜 영향(−, 악취·소음 등)은 전기와 상관없이 그대로 준다 (전기를 끊어 감점을 피하지 못하게).
+        /// PowerManager가 없으면(테스트 등) 항상 영향을 준다
+        /// </summary>
+        public static bool IsAffectorActive(BuildingInstance building)
+        {
+            if (building == null || building.Data == null) return false;
+            if (building.Data.satisfactionImpact < 0f) return true;
+            return PowerManager.Instance == null || PowerManager.Instance.IsBuildingPowered(building);
         }
 
         private void ApplyAverage(float average)

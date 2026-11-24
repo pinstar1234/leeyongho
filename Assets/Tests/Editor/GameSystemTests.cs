@@ -470,11 +470,11 @@ namespace InfraTown.Tests
         {
             var power = _world.CreateManager<PowerManager>(); // 보유 전력 0
             _loop.RegisterBuilding(_world.CreateBuilding(_world.CreateData(BuildingType.Housing, capacity: 10), 0, 0));
-            Assert.AreEqual(70f, _satisfaction.CurrentAverageSatisfaction);
+            Assert.AreEqual(55f, _satisfaction.CurrentAverageSatisfaction); // 전봇대가 없어 전기 꺼진 주택 -15 (사용자 결정 2026-11-24)
 
             _loop.RegisterBuilding(_world.CreateBuilding(_world.CreateData(BuildingType.Facility, power: 40), 10, 10));
 
-            Assert.AreEqual(40f, _satisfaction.CurrentAverageSatisfaction); // 전면 정전 -30
+            Assert.AreEqual(40f, _satisfaction.CurrentAverageSatisfaction); // 전면 정전 -30 (이때는 주택 개별 감점과 겹치지 않음)
         }
 
         [Test]

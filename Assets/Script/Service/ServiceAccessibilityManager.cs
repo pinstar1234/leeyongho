@@ -71,6 +71,8 @@ namespace InfraTown.Services
             { ServiceType.Police, ServiceType.Hospital, ServiceType.FireStation, ServiceType.Convenience, ServiceType.School };
 
         private readonly Dictionary<ServiceType, List<BuildingInstance>> _facilities = new Dictionary<ServiceType, List<BuildingInstance>>();
+        // 그중 전기가 들어와 운영 중인 시설 (사용자 결정 2026-11-24: 전봇대 범위 밖 시설은 기능 정지 — 접근성·보너스 계산에서 빠짐)
+        private readonly Dictionary<ServiceType, List<BuildingInstance>> _poweredFacilities = new Dictionary<ServiceType, List<BuildingInstance>>();
         private readonly Dictionary<BuildingInstance, Dictionary<ServiceType, float>> _housingAccessTimes = new Dictionary<BuildingInstance, Dictionary<ServiceType, float>>();
         private readonly Dictionary<ServiceType, float> _averageTimes = new Dictionary<ServiceType, float>();
         private readonly Dictionary<ServiceType, int> _longAccessHousingCounts = new Dictionary<ServiceType, int>();
@@ -85,6 +87,7 @@ namespace InfraTown.Services
             foreach (var type in AllServiceTypes)
             {
                 _facilities[type] = new List<BuildingInstance>();
+                _poweredFacilities[type] = new List<BuildingInstance>();
                 _averageTimes[type] = DefaultUninstalledTime;
                 _longAccessHousingCounts[type] = 0;
             }
@@ -113,7 +116,7 @@ namespace InfraTown.Services
         /// </summary>
         public void RecalculateServiceMetrics(List<BuildingInstance> allBuildings)
         {
-            foreach (var type in AllServiceTypes) _facilities[type].Clear();
+            foreach (var type in AllServiceTypes) { _facilities[type].Clear(); _poweredFacilities[type].Clear(); }
             _housingAccessTimes.Clear();
 
             var housings = new List<BuildingInstance>();
@@ -129,7 +132,11 @@ namespace InfraTown.Services
                 }
 
                 var type = GetServiceType(building.Data);
-                if (type.HasValue) _facilities[type.Value].Add(building);
+                if (type.HasValue)
+                {
+                    _facilities[type.Value].Add(building);
+                    if (IsFacilityPowered(building)) _poweredFacilities[type.Value].Add(building);
+                }
             }
 
             // 주택별 가장 빠른 시설까지의 시간
@@ -138,7 +145,7 @@ namespace InfraTown.Services
                 var times = new Dictionary<ServiceType, float>();
                 foreach (var type in AllServiceTypes)
                 {
-                    times[type] = CalculateAccessTime(housing, _facilities[type]);
+                    times[type] = CalculateAccessTime(housing, _poweredFacilities[type]); // 전기 없는 시설은 이용 불가
                 }
                 _housingAccessTimes[housing] = times;
             }
@@ -146,7 +153,7 @@ namespace InfraTown.Services
             // 마을 평균 및 너무 먼 주택 수
             foreach (var type in AllServiceTypes)
             {
-                var facilities = _facilities[type];
+                var facilities = _poweredFacilities[type];
                 int longCount = 0;
                 float average;
 
@@ -182,7 +189,7 @@ namespace InfraTown.Services
             HasConvenienceStore = _facilities[ServiceType.Convenience].Count > 0;
 
             DailyPolicePatrolCount = 0;
-            foreach (var police in _facilities[ServiceType.Police])
+            foreach (var police in _poweredFacilities[ServiceType.Police])
             {
                 DailyPolicePatrolCount = Mathf.Max(DailyPolicePatrolCount, police.Data.policePatrolCount);
             }
@@ -199,9 +206,22 @@ namespace InfraTown.Services
         }
 
         /// <summary>
-        /// 해당 서비스가 마을에 하나 이상 설치되어 있는지
+        /// 해당 서비스가 마을에 하나 이상 설치되어 있는지 (전기가 꺼져 있어도 설치로 인정 — 필수 시설 미설치 감점·승리 조건은 이 기준, 사용자 결정 2026-11-24)
         /// </summary>
         public bool HasService(ServiceType type) => _facilities[type].Count > 0;
+
+        /// <summary>해당 서비스 시설 중 전기가 들어와 운영 중인 것이 있는지</summary>
+        public bool HasPoweredService(ServiceType type) => _poweredFacilities[type].Count > 0;
+
+        /// <summary>설치는 됐지만 전기가 꺼져 하나도 운영되지 않는 서비스인지 (불만 문구·경고 연출용)</summary>
+        public bool IsServiceUnpowered(ServiceType type) => HasService(type) && !HasPoweredService(type);
+
+        /// <summary>해당 서비스 시설 중 전기가 들어와 운영 중인 시설 목록</summary>
+        public IReadOnlyList<BuildingInstance> GetPoweredFacilities(ServiceType type) => _poweredFacilities[type];
+
+        /// <summary>PowerManager가 없으면(테스트 등) 항상 운영 중으로 본다</summary>
+        private static bool IsFacilityPowered(BuildingInstance building) =>
+            InfraTown.Power.PowerManager.Instance == null || InfraTown.Power.PowerManager.Instance.IsBuildingPowered(building);
 
         /// <summary>
         /// 해당 서비스 건물이 지금 인구로 해금(지을 수 있음)되었는지 (BuildingManager 등록 건물 기준)
@@ -229,7 +249,7 @@ namespace InfraTown.Services
         /// </summary>
         public float GetAccessBonus(BuildingInstance housing, ServiceType type)
         {
-            if (townBaselineMinutes <= 0f || !HasService(type)) return 0f;
+            if (townBaselineMinutes <= 0f || !HasPoweredService(type)) return 0f;
 
             float time = GetAccessTime(housing, type);
             float ratio = Mathf.Clamp01((townBaselineMinutes - time) / townBaselineMinutes);
@@ -292,6 +312,12 @@ namespace InfraTown.Services
             if (!HasConvenienceStore)
                 complaints.Add("• 편의 시설이 부족하여 주민 생활이 불편합니다.");
 
+            AddUnpoweredComplaint(complaints, ServiceType.Police, "경찰서");
+            AddUnpoweredComplaint(complaints, ServiceType.Hospital, "병원");
+            AddUnpoweredComplaint(complaints, ServiceType.FireStation, "소방서");
+            AddUnpoweredComplaint(complaints, ServiceType.School, "학교");
+            AddUnpoweredComplaint(complaints, ServiceType.Convenience, "편의 시설");
+
             AddDistanceComplaint(complaints, ServiceType.Police, "경찰서");
             AddDistanceComplaint(complaints, ServiceType.Hospital, "병원");
             AddDistanceComplaint(complaints, ServiceType.FireStation, "소방서");
@@ -304,10 +330,16 @@ namespace InfraTown.Services
             return string.Join("\n", complaints);
         }
 
+        private void AddUnpoweredComplaint(List<string> complaints, ServiceType type, string label)
+        {
+            if (IsServiceUnpowered(type))
+                complaints.Add($"• {label}에 전기가 들어오지 않아 운영하지 못하고 있습니다. (전봇대 범위 밖)");
+        }
+
         private void AddDistanceComplaint(List<string> complaints, ServiceType type, string label)
         {
             int count = _longAccessHousingCounts[type];
-            if (_facilities[type].Count > 0 && count > 0)
+            if (_poweredFacilities[type].Count > 0 && count > 0)
             {
                 complaints.Add($"• 주택 {count}채가 {label}까지 {longAccessThresholdMinutes:F0}분 넘게 걸립니다. (평균 {_averageTimes[type]:F1}분)");
             }

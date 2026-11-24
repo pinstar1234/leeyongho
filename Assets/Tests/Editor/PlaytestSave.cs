@@ -93,6 +93,7 @@ namespace InfraTown.Tests.Playtest
             yield return EnsurePower();
             // 회전한 건물도 하나 (회전 저장 확인)
             var manager = BuildingManager.Instance;
+            Place("road", 40, 19, "rotated_store_road"); // 도로에 맞닿아야 설치 (사용자 기획 2026-11-24). 도로를 먼저 깔아야 아래 회전이 유지됨
             var store = manager.FindBuildingData("convenience_store");
             manager.SelectBuildingToBuild(store);
             manager.RotatePreview(90f);
@@ -175,7 +176,7 @@ namespace InfraTown.Tests.Playtest
                 $"날짜 +{WeekIndex(TimeManager.Instance) - weekBefore}, 판정 +{GameOutcomeManager.Instance.WeeksElapsed - elapsedBefore}");
             int moneyBefore = EconomyManager.Instance.CurrentMoney;
             Check("불러온 건물(축사 50,30) 자리에는 겹쳐 지을 수 없음", Place("house", 50, 30, null) == null && EconomyManager.Instance.CurrentMoney == moneyBefore);
-            var built = Place("house", 55, 10, "after_load_house");
+            var built = PlaceWithRoad("house", 55, 10, "after_load_house");
             Check("이어서 건물을 지을 수 있음 (건설비 차감)", built != null && EconomyManager.Instance.CurrentMoney < moneyBefore,
                 $"건물 {(built != null ? "생김" : "없음")}, 돈 {moneyBefore:N0} → {EconomyManager.Instance.CurrentMoney:N0}, 배치 모드 {BuildingManager.Instance.IsPlacingBuilding}, 시간 정지 {TimeManager.Instance.IsEventPaused}");
 

@@ -283,6 +283,12 @@ namespace InfraTown.Tests.Playtest
         {
             EconomyManager.Instance.AddMoney(1_000_000); // 테스트 자금
 
+            // 사용자 기획 2026-11-24: 건물은 도로에 맞닿아야 설치 → 도로 없이 지으면 실패, 마을 도로를 먼저 깖
+            Check("도로에 닿지 않은 주택은 지어지지 않음", Place("house", 45, 35, null) == null && (BuildingManager.Instance.LastPlacementError ?? "").Contains("도로"),
+                BuildingManager.Instance.LastPlacementError);
+            int roads = LayTownRoads();
+            Check("마을 도로 60칸 (y=1, y=4 줄)", roads == 60, $"{roads}칸");
+
             int placedHouses = 0;
             for (int x = 0; x < 30; x++)
             {
@@ -317,8 +323,13 @@ namespace InfraTown.Tests.Playtest
             P("convenience_store", 9, 2, "store");
             P("bus_stop", 16, 2, "bus");
             P("senior_center", 23, 2, "senior");
-            P("road", 0, 1, "road");
-            if (withNimby) P("livestock_farm", 50, 30, "farm");
+            LayTownRoads(); // 배드엔딩 뒤 재건할 때는 도로도 다시
+            // 사용자 결정 2026-11-24: 전봇대 범위 밖 건물은 전기가 꺼지므로 기준 마을 전체를 덮는 전봇대 4개 (반경 4) — 도로 위에 세움
+            P("power_pole", 4, 1, "pole_a");
+            P("power_pole", 13, 1, "pole_b");
+            P("power_pole", 22, 1, "pole_c");
+            P("power_pole", 29, 1, "pole_d");
+            if (withNimby) { PlaceWithRoad("livestock_farm", 50, 30, "farm"); keys.Add("farm"); }
 
             int ok = keys.Count(k => Placed.TryGetValue(k, out var b) && b != null);
             Check("Tier 1~2 시설 배치", ok == keys.Count, $"{ok}/{keys.Count}");
@@ -334,7 +345,7 @@ namespace InfraTown.Tests.Playtest
             P("school", 9, 5, "school");
             P("fire_station", 16, 5, "fire");
             P("police_station", 20, 5, "police");
-            if (withNimby) P("landfill", 54, 34, "landfill");
+            if (withNimby) { PlaceWithRoad("landfill", 54, 34, "landfill"); keys.Add("landfill"); }
 
             int ok = keys.Count(k => Placed.TryGetValue(k, out var b) && b != null);
             Check("Tier 3~4 필수 시설 배치", ok == keys.Count, $"{ok}/{keys.Count}");
@@ -629,21 +640,30 @@ namespace InfraTown.Tests.Playtest
         private static IEnumerator PowerPoleCheck()
         {
             var power = PowerManager.Instance;
-            float farBefore = Placed["house29"].GetComponent<HousingInstance>().CurrentSatisfaction;
+            // 기준 마을은 전봇대 4개가 모두 덮음 (멀리 둔 불쾌 시설 제외)
+            var unpowered = Placed.Where(kv => kv.Value != null && kv.Value.Data.category != BuildingType.Nimbys && !kv.Value.Data.IsRoad && !power.IsBuildingPowered(kv.Value))
+                .Select(kv => kv.Key).ToList();
+            Check("기준 마을 건물 전부 전봇대 범위 안 (전기 공급)", unpowered.Count == 0, string.Join(", ", unpowered));
 
-            var pole = Place("power_pole", 1, 1, "pole");
+            var house = PlaceWithRoad("house", 45, 25, "farHouse"); // 전봇대 없는 곳
+            yield return Frames(1);
+            Check("전봇대 범위 밖 주택은 전기 꺼짐", house != null && !power.IsBuildingPowered(house));
+            float before = house != null ? house.GetComponent<HousingInstance>().CurrentSatisfaction : 0f;
+
+            var pole = PlaceWithRoad("power_pole", 49, 25, "pole");
             yield return Frames(1);
             Check("전신주에 UtilityPoleInstance 자동 부착", pole != null && pole.GetComponent<UtilityPoleInstance>() != null);
-            Check("전력망 생김", power.HasPowerGrid);
-            Check("반경 4 안 주택(x=0) 전기 공급", power.IsHousingPowered(Placed["house0"]));
-            Check("반경 밖 주택(x=29) 전기 끊김", !power.IsHousingPowered(Placed["house29"]));
-            float farAfter = Placed["house29"].GetComponent<HousingInstance>().CurrentSatisfaction;
-            Check("전기 끊긴 주택 만족도 하락", farAfter < farBefore, $"{farBefore:F1} → {farAfter:F1}");
+            Check("반경 4 안이 되면 전기 공급", house != null && power.IsBuildingPowered(house));
+            float after = house != null ? house.GetComponent<HousingInstance>().CurrentSatisfaction : 0f;
+            Check("전기가 들어온 주택 만족도 상승", after > before, $"{before:F1} → {after:F1}");
 
-            pole.DestroyBuilding();
+            if (pole != null) pole.DestroyBuilding();
             Placed.Remove("pole");
             yield return Frames(2);
-            Check("전신주 철거 → 전력망 해제", !power.HasPowerGrid);
+            Check("전신주 철거 → 다시 전기 꺼짐", house != null && !power.IsBuildingPowered(house));
+            if (house != null) house.DestroyBuilding();
+            Placed.Remove("farHouse");
+            yield return Frames(2);
         }
 
         private static IEnumerator DemolishCheck()
@@ -701,7 +721,7 @@ namespace InfraTown.Tests.Playtest
             yield return Frames(2);
             power.SetTargetPurchasedPower(0);
             power.ProcessMonthlyPowerPurchase();
-            foreach (int x in new[] { 0, 8, 16, 24 }) Place("landfill", x, 2, $"landfill{x}");
+            foreach (int x in new[] { 0, 8, 16, 24 }) PlaceWithRoad("landfill", x, 2, $"landfill{x}"); // 도로도 철거된 뒤라 도로부터
             yield return Frames(2);
 
             Note($"악화된 마을: 평균 {sat.CurrentAverageSatisfaction:F1}, 상태 {sat.CurrentState}, 나쁨 주택 {sat.BadHousingRatio:P0}");
@@ -793,6 +813,7 @@ namespace InfraTown.Tests.Playtest
             var manager = BuildingManager.Instance;
             var loop = GameLoopManager.Instance;
             EconomyManager.Instance.AddMoney(100_000_000);
+            manager.RequireRoadAccess = false; // 회전만 검사 (격자 위치에 100개를 지으므로 도로 접근 조건은 끔 — 도로 규칙은 RoadAccessTests·기본 시나리오에서)
 
             // 원래 회전이 들어간 길쭉한 테스트 프리팹 (에셋에서 X -90° 등으로 들여오는 경우를 흉내)
             var template = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -902,6 +923,7 @@ namespace InfraTown.Tests.Playtest
 
             database.RemoveAll(d => testData.Contains(d));
             UnityEngine.Object.Destroy(template);
+            manager.RequireRoadAccess = true;
         }
 
         // ───────────────────────── 도우미 ─────────────────────────
@@ -916,14 +938,60 @@ namespace InfraTown.Tests.Playtest
         private static BuildingInstance Place(string id, int x, int y, string key)
         {
             var manager = BuildingManager.Instance;
-            manager.SelectBuildingToBuild(Data(id));
+            var data = Data(id);
+            // 도로는 일반 칸, 나머지는 도로 위 전신주부터 (사용자 기획 2026-11-24: 전신주는 도로 위에도)
+            BuildingInstance At() => data.IsRoad ? GetGrid()[x, y] : manager.GetBuildingAt(new Vector2Int(x, y));
+            var before = At();
+            manager.SelectBuildingToBuild(data);
             TestWorld.Invoke(manager, "TryPlaceBuilding", new Vector2Int(x, y));
             manager.CancelBuildingMode();
 
-            var placed = GetGrid()[x, y];
-            if (placed != null && placed.Data.buildingID != id) placed = null;
+            var placed = At();
+            if (placed != null && (placed == before || placed.Data.buildingID != id)) placed = null;
             if (key != null) Placed[key] = placed;
             return placed;
+        }
+
+        /// <summary>
+        /// 도로에 맞닿아 있지 않으면 바로 옆(아래 → 왼쪽 → 위 → 오른쪽) 빈 칸에 도로를 하나 깐 뒤 설치 (사용자 기획 2026-11-24: 도로 접근 조건).
+        /// 깐 도로는 key + "_road"로 Placed에 넣어 배드엔딩 단계의 시설 철거 때 같이 철거된다. 설치에 실패하면 그 도로는 다시 철거
+        /// </summary>
+        private static BuildingInstance PlaceWithRoad(string id, int x, int y, string key)
+        {
+            var manager = BuildingManager.Instance;
+            var data = Data(id);
+            BuildingInstance road = null;
+            if (!data.IsRoad && !manager.HasRoadAccess(data, new Vector2Int(x, y)))
+            {
+                var size = data.GridSize;
+                foreach (var c in new[] { new Vector2Int(x, y - 1), new Vector2Int(x - 1, y), new Vector2Int(x, y + size.y), new Vector2Int(x + size.x, y) })
+                {
+                    if (c.x < 0 || c.y < 0 || c.x >= 60 || c.y >= 40 || GetGrid()[c.x, c.y] != null || manager.GetRoadPoleAt(c) != null) continue;
+                    road = Place("road", c.x, c.y, null);
+                    if (road != null) break;
+                }
+            }
+            var placed = Place(id, x, y, key);
+            if (placed == null && road != null) road.DestroyBuilding();
+            else if (road != null) Placed[(key ?? $"{id}_{x}_{y}") + "_road"] = road;
+            return placed;
+        }
+
+        /// <summary>기준 마을 도로: y=1 줄(주택 y=0·시설 y=2~3), y=4 줄(시설·필수 시설 y=5), x 0~29. 이미 깔린 칸은 건너뜀</summary>
+        private static int LayTownRoads()
+        {
+            int laid = 0;
+            foreach (int y in new[] { 1, 4 })
+            {
+                for (int x = 0; x < 30; x++)
+                {
+                    string key = $"road_{x}_{y}";
+                    if (Placed.TryGetValue(key, out var existing) && existing != null) { laid++; continue; }
+                    var road = Place("road", x, y, null); // 실패한 칸은 Placed에 null로 남기지 않음 (철거 단계에서 null 참조 방지)
+                    if (road != null) { Placed[key] = road; laid++; }
+                }
+            }
+            return laid;
         }
 
         private static void UiText(object ui, string field, string expectedPart)

@@ -33,6 +33,7 @@ namespace InfraTown.Tests
         {
             _world = new TestWorld();
             _buildings = _world.CreateManager<BuildingManager>();
+            _buildings.RequireRoadAccess = false; // 대화 조건만 검사 (도로 접근 조건은 RoadAccessTests)
             _population = _world.CreateManager<PopulationManager>();
             _world.CreateManager<ServiceAccessibilityManager>();
             _world.CreateManager<GameLoopManager>(callStart: true);

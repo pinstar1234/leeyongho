@@ -85,6 +85,9 @@ namespace InfraTown.Building
         public GameObject previewPrefab;
         public Sprite buildingIcon;
 
+        /// <summary>도로인지 (인프라 분류 중 전신주가 아닌 것). 다른 건물은 한 면 이상 도로에 닿아야 설치 가능 (사용자 기획 2026-11-24)</summary>
+        public bool IsRoad => category == BuildingType.Infrastructure && !isPowerPole;
+
         public Vector2Int GridSize => sizeType switch
         {
             BuildingSizeType.Small => new Vector2Int(1, 1),

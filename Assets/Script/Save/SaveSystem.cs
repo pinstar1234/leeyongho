@@ -452,10 +452,18 @@ namespace InfraTown.Save
             }
 
             int missing = 0;
-            foreach (var s in buildings)
+            // 도로를 먼저 되살림: 도로 위 전신주가 도로보다 먼저 복원되면 맨땅 전신주로 자리를 차지해 도로가 겹치게 된다 (사용자 기획 2026-11-24)
+            var entries = new List<(BuildingSaveState state, BuildingData data)>();
+            foreach (var s in buildings) entries.Add((s, manager.FindBuildingData(s.buildingID, s.buildingName)));
+
+            for (int pass = 0; pass < 2; pass++) // 0: 도로, 1: 나머지 (각각 저장된 순서대로)
             {
-                var data = manager.FindBuildingData(s.buildingID, s.buildingName);
-                if (data == null || manager.RestoreBuilding(data, new Vector2Int(s.x, s.y), s.rotationY) == null) missing++;
+                foreach (var (s, data) in entries)
+                {
+                    bool isRoad = data != null && data.IsRoad;
+                    if ((pass == 0) != isRoad) continue;
+                    if (data == null || manager.RestoreBuilding(data, new Vector2Int(s.x, s.y), s.rotationY) == null) missing++;
+                }
             }
             if (missing > 0) Debug.LogWarning($"[SaveSystem] 건물 {missing}개를 되살리지 못했어요 (건물 목록에 없거나 자리가 겹침).");
         }

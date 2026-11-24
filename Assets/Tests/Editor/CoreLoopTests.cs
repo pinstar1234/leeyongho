@@ -170,8 +170,8 @@ namespace InfraTown.Tests
 
             _satisfaction.RecalculateSatisfaction(buildings);
 
-            // 80 - 전면 정전 30 = 50 → 보통
-            Assert.AreEqual(50f, house.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
+            // 70 - 전면 정전 30 = 40 → 보통 (+10 시설은 전봇대가 없어 전기가 꺼져 기능 정지 — 사용자 결정 2026-11-24)
+            Assert.AreEqual(40f, house.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
             Assert.AreEqual(SatisfactionState.Normal, house.GetComponent<HousingInstance>().State);
             Assert.AreEqual(0f, _satisfaction.GoodHousingRatio);
         }

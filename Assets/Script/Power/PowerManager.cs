@@ -44,7 +44,7 @@ namespace InfraTown.Power
         [SerializeField] private float unpoweredHousingPenalty = 15f;
 
         [Header("전봇대 정전 (사용자 기획 2026-11-24) — 외곽부터 중앙으로 꺼짐")]
-        [Tooltip("필요 전력 대비 부족 비율이 이 %만큼 늘 때마다 전봇대가 1개씩 더 꺼진다 (부족하면 최소 1개, 전력 0이면 전부). 밸런스 후보 2~5%")]
+        [Tooltip("전력이 부족해지면 전봇대 1개가 꺼지고, 부족 비율이 이 %만큼 더 늘 때마다 1개씩 더 꺼진다 (사용자 결정 2026-11-24: 5%). 전력 0이면 전부")]
         [SerializeField] private float shortagePercentPerPole = 5f;
 
         [Header("현재 전력 현황")]
@@ -119,7 +119,8 @@ namespace InfraTown.Power
             : 0f;
 
         /// <summary>
-        /// 지금 꺼져야 하는 전봇대 수: 부족 비율 ÷ shortagePercentPerPole (올림, 최소 1). 전력 0이면 전부, 부족하지 않으면 0
+        /// 지금 꺼져야 하는 전봇대 수 (사용자 결정 2026-11-24): 부족해지면 1개, 그 뒤 부족 비율이 shortagePercentPerPole(5%)만큼 늘 때마다 1개씩 더
+        /// = 1 + 내림(부족% ÷ 5%) — 부족 0~5% 미만 1개, 5~10% 미만 2개, 10~15% 미만 3개 … 전력 0이면 전부, 부족하지 않으면 0
         /// </summary>
         public int BlackoutPoleCount
         {
@@ -129,7 +130,7 @@ namespace InfraTown.Power
                 if (!IsPowerShortage || poles == 0) return 0;
                 if (currentAvailablePower <= 0) return poles;
                 float per = Mathf.Max(0.01f, shortagePercentPerPole);
-                int count = Mathf.CeilToInt(ShortagePercent / per - 0.0001f); // 10% ÷ 2% = 5개 (부동소수 오차로 6이 되지 않게)
+                int count = 1 + Mathf.FloorToInt(ShortagePercent / per + 0.0001f); // 10% ÷ 5% = 2 → 3개 (부동소수 오차로 1.9999가 1이 되지 않게)
                 return Mathf.Clamp(count, 1, poles);
             }
         }
@@ -359,64 +360,62 @@ namespace InfraTown.Power
         }
 
         /// <summary>
-        /// 주택에 전기가 들어오는지 여부.
-        /// 전봇대 망이 없으면 보유 전력이 필요 전력을 감당하는지로 판단하고,
-        /// 망이 있으면 정상 전봇대의 공급 반경 안에 있어야 한다.
+        /// 건물에 전기가 들어오는지 (사용자 결정 2026-11-24): 모든 건물은 켜진 전봇대의 공급 범위 안에 있어야 전기가 들어온다.
+        /// 전봇대가 하나도 없거나, 건물이 차지한 칸이 모두 범위 밖이면 꺼진 상태. 전봇대 자신은 자기 상태(IsPowered)를 따른다.
+        /// 꺼진 주택은 만족도 감점, 꺼진 시설은 기능 정지(만족도 + 효과·접근성 제공 안 함 — SatisfactionManager·ServiceAccessibilityManager)
         /// </summary>
-        public bool IsHousingPowered(BuildingInstance housing)
+        public bool IsBuildingPowered(BuildingInstance building)
         {
-            if (housing == null || housing.Data == null || housing.Data.category != BuildingType.Housing) return true;
-
-            if (!HasPowerGrid)
-            {
-                return !IsPowerShortage;
-            }
+            if (building == null || building.Data == null) return false;
+            if (building.TryGetComponent<UtilityPoleInstance>(out var self)) return self.IsPowered;
 
             foreach (var pole in _allPoles)
             {
                 if (pole == null || !pole.IsPowered) continue;
-
-                if (GetTileDistance(housing.OriginGridPos, pole.GridPos) <= pole.SupplyRadius)
-                {
-                    return true;
-                }
+                if (IsInSupplyRange(pole, building)) return true;
             }
-
             return false;
         }
 
         /// <summary>
-        /// 마을 전체에 적용되는 정전 감점.
-        /// 전력 0 → 전면 정전 감점, 전봇대 망이 없을 때 부족분 비율만큼 감점.
-        /// (전봇대 망이 있으면 주택별 감점 GetHousingPowerPenalty로 처리)
+        /// 건물이 차지한 칸 중 한 칸이라도 전봇대 공급 반경(체비셰프 거리) 안에 들어오는지 (사용자 결정 2026-11-24: 한 칸이라도 닿으면)
         /// </summary>
-        public float GetPowerBlackoutSatisfactionPenalty()
+        public static bool IsInSupplyRange(UtilityPoleInstance pole, BuildingInstance building)
         {
-            if (!IsPowerShortage) return 0f;
-
-            if (currentAvailablePower <= 0) return totalBlackoutPenalty;
-
-            if (!HasPowerGrid)
-            {
-                float shortageRatio = 1f - (float)currentAvailablePower / currentUsedPower;
-                return totalBlackoutPenalty * shortageRatio;
-            }
-
-            return 0f;
+            if (pole == null || building == null || building.Data == null) return false;
+            Vector2Int pMin = pole.GridPos, pMax = pMin + pole.GridSize - Vector2Int.one;
+            Vector2Int bMin = building.OriginGridPos, bMax = bMin + building.Data.GridSize - Vector2Int.one;
+            int dx = Mathf.Max(0, Mathf.Max(bMin.x - pMax.x, pMin.x - bMax.x));
+            int dy = Mathf.Max(0, Mathf.Max(bMin.y - pMax.y, pMin.y - bMax.y));
+            return Mathf.Max(dx, dy) <= pole.SupplyRadius;
         }
 
         /// <summary>
-        /// 주택 1채에 적용되는 정전 감점 (전봇대 망이 있고 일부 전력이라도 있을 때만)
+        /// 주택에 전기가 들어오는지 (주택이 아니면 true — 예전 API, 새 코드는 IsBuildingPowered)
+        /// </summary>
+        public bool IsHousingPowered(BuildingInstance housing)
+        {
+            if (housing == null || housing.Data == null || housing.Data.category != BuildingType.Housing) return true;
+            return IsBuildingPowered(housing);
+        }
+
+        /// <summary>전면 정전인지 (필요 전력이 있는데 보유 전력이 0)</summary>
+        public bool IsTotalBlackout => IsPowerShortage && currentAvailablePower <= 0;
+
+        /// <summary>
+        /// 마을 전체에 적용되는 정전 감점: 전면 정전(전력 0)일 때만 totalBlackoutPenalty.
+        /// 그 밖의 부족은 전봇대가 외곽부터 꺼지고, 전기가 끊긴 주택만 GetHousingPowerPenalty로 감점된다
+        /// (예전의 '전봇대가 없으면 부족 비율만큼 마을 전체 감점'은 2026-11-24에 없앰 — 이제 전봇대가 없으면 모든 건물이 꺼진 상태)
+        /// </summary>
+        public float GetPowerBlackoutSatisfactionPenalty() => IsTotalBlackout ? totalBlackoutPenalty : 0f;
+
+        /// <summary>
+        /// 주택 1채에 적용되는 정전 감점: 전기가 들어오지 않으면 unpoweredHousingPenalty (전면 정전 때는 마을 전체 감점만 적용해 겹치지 않게 0)
         /// </summary>
         public float GetHousingPowerPenalty(BuildingInstance housing)
         {
-            if (!HasPowerGrid || currentAvailablePower <= 0) return 0f;
+            if (IsTotalBlackout) return 0f;
             return IsHousingPowered(housing) ? 0f : unpoweredHousingPenalty;
-        }
-
-        private int GetTileDistance(Vector2Int posA, Vector2Int posB)
-        {
-            return Mathf.Max(Mathf.Abs(posA.x - posB.x), Mathf.Abs(posA.y - posB.y));
         }
     }
 }
