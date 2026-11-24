@@ -19,8 +19,8 @@ MonoBehaviour:
   unlockTier: 1
   easyDescription: "\uAE38 (\uBAA8\uB4E0 \uAC74\uBB3C \uC5F0\uACB0 \uD544\uC694)"
   unlockMessage: "\uAE38 (\uBAA8\uB4E0 \uAC74\uBB3C \uC5F0\uACB0 \uD544\uC694)"
-  constructionDays: 0
-  demolitionDays: 0
+  constructionWeeks: 0
+  demolitionWeeks: 0
   sizeType: 0
   category: 4
   requiredPower: 0

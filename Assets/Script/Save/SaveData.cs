@@ -10,7 +10,7 @@ namespace InfraTown.Save
     [Serializable]
     public class SaveData
     {
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2; // 2: 일 단위 → 주 단위 시간, 가스 추가 (2026-11-24)
 
         public int version = CurrentVersion;
 
@@ -26,6 +26,7 @@ namespace InfraTown.Save
         public EconomySaveState economy = new EconomySaveState();
         public PopulationSaveState population = new PopulationSaveState();
         public PowerSaveState power = new PowerSaveState();
+        public GasSaveState gas = new GasSaveState();
         public SatisfactionSaveState satisfaction = new SatisfactionSaveState();
         public OutcomeSaveState outcome = new OutcomeSaveState();
         public List<BuildingSaveState> buildings = new List<BuildingSaveState>();
@@ -37,9 +38,9 @@ namespace InfraTown.Save
     [Serializable]
     public class TimeSaveState
     {
-        public int year = 1, month = 1, day = 1;
-        public int totalDaysPassed;
-        public float dayTimer;
+        public int year = 1, month = 1, week = 1; // week = 이번 달 몇 주차 (1~4)
+        public int totalWeeksPassed;
+        public float weekTimer;
         public int speed = 1; // GameSpeed
     }
 
@@ -67,6 +68,13 @@ namespace InfraTown.Save
     }
 
     [Serializable]
+    public class GasSaveState
+    {
+        public int targetPurchasedGas;
+        public int currentAvailableGas;
+    }
+
+    [Serializable]
     public class SatisfactionSaveState
     {
         /// <summary>필수 시설 미설치 누적 감점 (ServiceType 정수값과 감점을 같은 순서로)</summary>
@@ -77,9 +85,9 @@ namespace InfraTown.Save
     [Serializable]
     public class OutcomeSaveState
     {
-        public int daysElapsed;
-        public int goodStreakDays;
-        public int badStreakDays;
+        public int weeksElapsed;
+        public int goodStreakWeeks;
+        public int badStreakWeeks;
         public int result; // GameResult
     }
 
@@ -105,7 +113,7 @@ namespace InfraTown.Save
     public class EssentialFacilitySaveState
     {
         public int service; // ServiceType
-        public int missingDays;
+        public int missingWeeks;
         public int threshold;
         public bool firstInstallPlayed;
     }
@@ -123,7 +131,7 @@ namespace InfraTown.Save
     {
         public bool active;
         public bool completed;
-        public int currentDay;
+        public int currentWeek;
         public List<string> triggeredStepIds = new List<string>();
     }
 
@@ -134,7 +142,7 @@ namespace InfraTown.Save
         public string savedAt;
         public string sceneName;
         public string playerName;
-        public int year, month, day;
+        public int year, month, week;
         public int money;
         public int population;
         public int buildingCount;

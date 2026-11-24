@@ -174,6 +174,11 @@ namespace InfraTown.Satisfaction
                 ? PowerManager.Instance.GetPowerBlackoutSatisfactionPenalty()
                 : 0f;
 
+            // 2-1. 가스 부족 감점 (마을 전체, 사용자 기획 2026-11-24) — 정전 감점과 같이 마을 감점에 합침
+            blackoutPenalty += InfraTown.Gas.GasManager.Instance != null
+                ? InfraTown.Gas.GasManager.Instance.GetGasShortageSatisfactionPenalty()
+                : 0f;
+
             // 3. 필수 시설 미설치 누적 감점 (주간 틱에서 쌓이고 풀림)
             float missingFacilityPenalty = TotalMissingFacilityPenalty;
 

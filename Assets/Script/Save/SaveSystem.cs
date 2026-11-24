@@ -116,6 +116,7 @@ namespace InfraTown.Save
             if (EconomyManager.Instance != null) data.economy = EconomyManager.Instance.GetSaveState();
             if (PopulationManager.Instance != null) data.population = PopulationManager.Instance.GetSaveState();
             if (PowerManager.Instance != null) data.power = PowerManager.Instance.GetSaveState();
+            if (InfraTown.Gas.GasManager.Instance != null) data.gas = InfraTown.Gas.GasManager.Instance.GetSaveState();
             if (SatisfactionManager.Instance != null) data.satisfaction = SatisfactionManager.Instance.GetSaveState();
             if (GameOutcomeManager.Instance != null) data.outcome = GameOutcomeManager.Instance.GetSaveState();
 
@@ -164,6 +165,7 @@ namespace InfraTown.Save
                 var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(path));
                 if (data == null) { LastError = "저장 파일이 손상됐어요."; return null; }
                 if (data.version > SaveData.CurrentVersion) { LastError = "더 새로운 버전에서 만든 저장 파일이에요."; return null; }
+                if (data.version < SaveData.CurrentVersion) { LastError = "이전 버전(일 단위 시간)에서 만든 저장 파일이라 불러올 수 없어요."; return null; }
                 return data;
             }
             catch (Exception e)
@@ -184,7 +186,7 @@ namespace InfraTown.Save
                 savedAt = d.savedAt,
                 sceneName = d.sceneName,
                 playerName = string.IsNullOrEmpty(d.playerName) ? PlayerProfile.DefaultName : d.playerName,
-                year = d.time.year, month = d.time.month, day = d.time.day,
+                year = d.time.year, month = d.time.month, week = d.time.week,
                 money = d.economy.money,
                 population = d.population.currentPopulation,
                 buildingCount = d.buildings.Count,
@@ -274,6 +276,7 @@ namespace InfraTown.Save
 
                 PopulationManager.Instance?.ApplySaveState(data.population);
                 PowerManager.Instance?.ApplySaveState(data.power);
+                InfraTown.Gas.GasManager.Instance?.ApplySaveState(data.gas);
                 EconomyManager.Instance?.ApplySaveState(data.economy);
                 SatisfactionManager.Instance?.ApplySaveState(data.satisfaction);
                 GameLoopManager.Instance?.RecalculateAll();
@@ -307,7 +310,7 @@ namespace InfraTown.Save
                 IsApplying = false;
             }
 
-            Debug.Log($"[SaveSystem] 불러오기 완료: {data.time.year}년 {data.time.month}월 {data.time.day}일, 건물 {data.buildings.Count}개");
+            Debug.Log($"[SaveSystem] 불러오기 완료: {data.time.year}년 {data.time.month}월 {data.time.week}주차, 건물 {data.buildings.Count}개");
             OnGameLoaded?.Invoke(data);
         }
 

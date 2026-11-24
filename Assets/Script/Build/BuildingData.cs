@@ -44,9 +44,9 @@ namespace InfraTown.Building
         [Tooltip("해금 시 보여줄 스토리/메시지 (기획서 4장)")]
         public string unlockMessage;
 
-        [Header("건설 / 철거 기간 (기획서 3장, 일 단위, 0 = 즉시)")]
-        public int constructionDays = 0;
-        public int demolitionDays = 0;
+        [Header("건설 / 철거 기간 (주 단위, 0 = 즉시. 사용자 결정 2026-11-24: 건설 소형 2·중형 4·대형 8주, 철거 1·2·3주)")]
+        public int constructionWeeks = 0;
+        public int demolitionWeeks = 0;
 
         [Header("5가지 핵심 규격 데이터")]
         public BuildingSizeType sizeType;   // 소형, 중형, 대형

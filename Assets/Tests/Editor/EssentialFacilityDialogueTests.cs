@@ -12,7 +12,7 @@ using InfraTown.Services;
 namespace InfraTown.Tests
 {
     /// <summary>
-    /// 대화 조건 2) 필수 시설을 해금 후 30~90일(무작위) 동안 안 지으면 주민 불만
+    /// 대화 조건 2) 필수 시설을 해금 후 4~12주(1~3달, 무작위) 동안 안 지으면 주민 불만 (아래 Days(n)는 n주)
     ///          3) 필수 시설을 처음 설치하면 설치 대사
     /// </summary>
     public class EssentialFacilityDialogueTests
@@ -46,7 +46,7 @@ namespace InfraTown.Tests
             _school.buildingPrefab = _prefab;
             TestWorld.SetField(_buildings, "buildingDatabase", new List<BuildingData> { _hospital, _school });
 
-            SetRange(30, 30); // 기본은 정확히 30일 (무작위 범위 테스트는 따로)
+            SetRange(30, 30); // 테스트는 정확히 30주로 고정 (무작위 범위 테스트는 따로)
             TestWorld.SetField(_triggers, "showInitialUnlockStories", false);
 
             _complaints.Clear(); _installed.Clear(); _started.Clear();
@@ -71,14 +71,14 @@ namespace InfraTown.Tests
 
         private void SetRange(int min, int max)
         {
-            TestWorld.SetField(_triggers, "complaintMinDays", min);
-            TestWorld.SetField(_triggers, "complaintMaxDays", max);
+            TestWorld.SetField(_triggers, "complaintMinWeeks", min);
+            TestWorld.SetField(_triggers, "complaintMaxWeeks", max);
             TestWorld.SetField(_triggers, "randomSeed", 1234);
         }
 
         private void Days(int n)
         {
-            for (int i = 0; i < n; i++) _triggers.ProcessDay();
+            for (int i = 0; i < n; i++) _triggers.ProcessWeek();
         }
 
         private BuildingInstance Place(BuildingData data, int x, int y)
@@ -95,7 +95,7 @@ namespace InfraTown.Tests
         public void 해금된_필수시설을_정해진_기간동안_안_지으면_주민이_불만을_말한다()
         {
             Days(29);
-            Assert.IsFalse(_complaints.Contains(ServiceType.Hospital), "29일째는 아직");
+            Assert.IsFalse(_complaints.Contains(ServiceType.Hospital), "29주째는 아직");
 
             Days(1);
             Assert.IsTrue(_complaints.Contains(ServiceType.Hospital));
@@ -104,30 +104,36 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 불만이_나오는_기간은_30일에서_90일_사이_무작위()
+        public void 불만이_나오는_기간은_기본_4주에서_12주_사이_무작위()
         {
-            SetRange(30, 90);
-            TestWorld.SetField(_triggers, "_rng", null);
-            var rolls = Enumerable.Range(0, 2000).Select(_ => _triggers.RollComplaintDays()).ToList();
+            // 기본값 확인 (주 단위 변경 2026-11-24: 1~3달 = 4~12주)
+            var go = new GameObject("defaults");
+            var fresh = go.AddComponent<DialogueTriggers>();
+            Assert.AreEqual((4, 12), (fresh.ComplaintMinWeeks, fresh.ComplaintMaxWeeks));
+            Object.DestroyImmediate(go);
 
-            Assert.IsTrue(rolls.All(d => d >= 30 && d <= 90), $"범위 밖: {rolls.Min()}~{rolls.Max()}");
-            Assert.LessOrEqual(rolls.Min(), 32, "1달 근처 값도 나와야 함");
-            Assert.GreaterOrEqual(rolls.Max(), 88, "3달 근처 값도 나와야 함");
-            Assert.Greater(rolls.Distinct().Count(), 50, "고르게 무작위");
+            SetRange(4, 12);
+            TestWorld.SetField(_triggers, "_rng", null);
+            var rolls = Enumerable.Range(0, 2000).Select(_ => _triggers.RollComplaintWeeks()).ToList();
+
+            Assert.IsTrue(rolls.All(w => w >= 4 && w <= 12), $"범위 밖: {rolls.Min()}~{rolls.Max()}");
+            Assert.AreEqual(4, rolls.Min(), "1달 값도 나와야 함");
+            Assert.AreEqual(12, rolls.Max(), "3달 값도 나와야 함");
+            Assert.AreEqual(9, rolls.Distinct().Count(), "고르게 무작위");
         }
 
         [Test]
         public void 시설마다_기간을_따로_정한다()
         {
-            SetRange(30, 90);
+            SetRange(4, 12);
             TestWorld.SetField(_triggers, "_rng", null);
             Days(1);
 
             int hospital = _triggers.GetComplaintThreshold(ServiceType.Hospital);
             int school = _triggers.GetComplaintThreshold(ServiceType.School);
-            Assert.That(hospital, Is.InRange(30, 90));
-            Assert.That(school, Is.InRange(30, 90));
-            Assert.AreEqual(1, _triggers.GetMissingDays(ServiceType.Hospital));
+            Assert.That(hospital, Is.InRange(4, 12));
+            Assert.That(school, Is.InRange(4, 12));
+            Assert.AreEqual(1, _triggers.GetMissingWeeks(ServiceType.Hospital));
         }
 
         [Test]
@@ -135,7 +141,7 @@ namespace InfraTown.Tests
         {
             _hospital.requiredPopulation = 300;
             Days(100);
-            Assert.AreEqual(0, _triggers.GetMissingDays(ServiceType.Hospital));
+            Assert.AreEqual(0, _triggers.GetMissingWeeks(ServiceType.Hospital));
             Assert.IsFalse(_complaints.Contains(ServiceType.Hospital));
         }
 
@@ -145,7 +151,7 @@ namespace InfraTown.Tests
             Place(_hospital, 0, 0);
             Days(100);
             Assert.IsFalse(_complaints.Contains(ServiceType.Hospital));
-            Assert.AreEqual(0, _triggers.GetMissingDays(ServiceType.Hospital));
+            Assert.AreEqual(0, _triggers.GetMissingWeeks(ServiceType.Hospital));
         }
 
         [Test]
@@ -180,7 +186,7 @@ namespace InfraTown.Tests
             Assert.AreEqual(SatisfactionState.Good, sat.CurrentState);
 
             Days(60);
-            Assert.AreEqual(0, _triggers.GetMissingDays(ServiceType.Hospital));
+            Assert.AreEqual(0, _triggers.GetMissingWeeks(ServiceType.Hospital));
         }
 
         // ── 3) 설치 대사 ──

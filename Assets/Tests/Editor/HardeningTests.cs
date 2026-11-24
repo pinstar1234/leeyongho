@@ -189,7 +189,7 @@ namespace InfraTown.Tests
             Assert.IsTrue(outcome.IsDefeatGraceActive);
 
             UnityEngine.Object.DestroyImmediate(construction);
-            outcome.ProcessDay();
+            outcome.ProcessWeek();
 
             Assert.IsFalse(outcome.IsDefeatGraceActive);
         }

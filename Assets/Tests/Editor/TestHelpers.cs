@@ -26,7 +26,7 @@ namespace InfraTown.Tests
         {
             typeof(GameLoopManager), typeof(EconomyManager), typeof(PopulationManager),
             typeof(PowerManager), typeof(SatisfactionManager), typeof(ServiceAccessibilityManager),
-            typeof(TimeManager), typeof(BuildingManager), typeof(GameOutcomeManager),
+            typeof(TimeManager), typeof(BuildingManager), typeof(GameOutcomeManager), typeof(InfraTown.Gas.GasManager),
             typeof(InfraTown.EventSystem.DialogueEventManager), typeof(InfraTown.EventSystem.CutsceneManager), typeof(InfraTown.EventSystem.TutorialDialogues)
         };
 

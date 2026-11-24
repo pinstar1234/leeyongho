@@ -19,8 +19,8 @@ MonoBehaviour:
   unlockTier: 1
   easyDescription: "\uC0AC\uB78C\uC774 \uC0AC\uB294 \uC9D1 (\uC8FC\uBBFC \uB298\uC5B4\uB0A8)"
   unlockMessage: "\uC0AC\uB78C\uC774 \uC0AC\uB294 \uC9D1 (\uC8FC\uBBFC \uB298\uC5B4\uB0A8)"
-  constructionDays: 7
-  demolitionDays: 1
+  constructionWeeks: 2
+  demolitionWeeks: 1
   sizeType: 0
   category: 3
   requiredPower: 5

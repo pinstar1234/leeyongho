@@ -192,18 +192,18 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 오프닝_대화가_끝나면_튜토리얼_1일차가_이어진다()
+        public void 오프닝_대화가_끝나면_튜토리얼_1주차가_이어진다()
         {
             StartGame();
             Assert.IsTrue(_tutorial.IsActive);
-            Assert.AreEqual(1, _tutorial.CurrentDay);
+            Assert.AreEqual(1, _tutorial.CurrentWeek);
             _dialogue.Next(); // 마을 도착 대화 끝
             CollectionAssert.AreEqual(new[] { "arrive", "tutorial_day1_welcome" }, _started);
         }
     }
 
     /// <summary>
-    /// 튜토리얼: 1~7일차 비서 대화, 행동 대화, 연출용 이벤트
+    /// 튜토리얼: 1~7주차 비서 대화, 행동 대화, 연출용 이벤트
     /// </summary>
     public class TutorialTests
     {
@@ -232,11 +232,11 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 일차마다_비서가_그날_대화를_한다()
+        public void 주차마다_비서가_그주_대화를_한다()
         {
             _tutorial.BeginTutorial();
             FinishAll();
-            for (int day = 2; day <= 7; day++) { _tutorial.AdvanceDay(); FinishAll(); }
+            for (int day = 2; day <= 7; day++) { _tutorial.AdvanceWeek(); FinishAll(); }
 
             CollectionAssert.AreEqual(new[]
             {
@@ -260,12 +260,12 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 일주일이_지나면_끝나고_행동_대화도_더_안_나온다()
+        public void 튜토리얼_7주가_지나면_끝나고_행동_대화도_더_안_나온다()
         {
             bool completed = false;
             _tutorial.OnTutorialCompleted += () => completed = true;
             _tutorial.BeginTutorial();
-            for (int i = 0; i < 7; i++) { FinishAll(); _tutorial.AdvanceDay(); }
+            for (int i = 0; i < 7; i++) { FinishAll(); _tutorial.AdvanceWeek(); }
 
             Assert.IsTrue(completed);
             Assert.IsFalse(_tutorial.IsActive);
@@ -303,17 +303,17 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 날짜가_바뀌면_다음_일차로_넘어간다()
+        public void 날짜가_바뀌면_다음_주차로_넘어간다()
         {
             var time = _world.CreateManager<TimeManager>();
             _tutorial.BeginTutorial();
             FinishAll();
-            int y = time.CurrentYear, m = time.CurrentMonth, d = time.CurrentDay;
+            int y = time.CurrentYear, m = time.CurrentMonth, d = time.CurrentWeek;
 
             TestWorld.Invoke(_tutorial, "HandleDateChanged", y, m, d);
-            Assert.AreEqual(1, _tutorial.CurrentDay, "같은 날짜 알림은 세지 않음");
+            Assert.AreEqual(1, _tutorial.CurrentWeek, "같은 날짜 알림은 세지 않음");
             TestWorld.Invoke(_tutorial, "HandleDateChanged", y, m, d + 1);
-            Assert.AreEqual(2, _tutorial.CurrentDay);
+            Assert.AreEqual(2, _tutorial.CurrentWeek);
         }
 
         [Test]
@@ -356,7 +356,7 @@ namespace InfraTown.Tests
             _tutorial.BeginTutorial();
             _tutorial.SkipTutorial();
             Assert.IsTrue(_tutorial.IsCompleted);
-            _tutorial.AdvanceDay();
+            _tutorial.AdvanceWeek();
             FinishAll();
             CollectionAssert.DoesNotContain(_started, "tutorial_day2_power");
         }

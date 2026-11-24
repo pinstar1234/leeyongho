@@ -17,16 +17,16 @@ namespace InfraTown.Core
 
     /// <summary>
     /// 기획서 6장 엔딩 판정.
-    /// 승리: 10년 경과 + 필수 시설 설치 + '좋음' 주택 70% 이상을 30일 이상 유지 + 인구 기준 이상.
-    ///      10년 시점에 미달이면 계속 플레이하고, 조건을 채우는 날 승리.
-    /// 패배: 마을 평균 만족도 '나쁨'이 30일 연속 (공사 중 유예 요청이 있으면 그동안 카운트 정지).
+    /// 승리: 10년(480주) 경과 + 필수 시설 설치 + '좋음' 주택 70% 이상을 4주(1달) 이상 유지 + 인구 기준 이상.
+    ///      10년 시점에 미달이면 계속 플레이하고, 조건을 채우는 주에 승리.
+    /// 패배: 마을 평균 만족도 '나쁨'이 12주(3달) 연속 (사용자 결정 2026-11-24, 예전 30일) (공사 중 유예 요청이 있으면 그동안 카운트 정지).
     /// 씬에 없으면 GameLoopManager가 같은 오브젝트에 자동으로 추가한다.
     /// </summary>
     public class GameOutcomeManager : MonoBehaviour
     {
         public static GameOutcomeManager Instance { get; private set; }
 
-        public const int DaysPerYear = 360; // 30일 × 12달
+        public const int WeeksPerYear = TimeManager.WeeksPerYear; // 4주 × 12달 = 48주 (2026-11-24 주 단위로 변경)
 
         [Header("승리 조건")]
         [Tooltip("최소 경과 연수")]
@@ -36,8 +36,8 @@ namespace InfraTown.Core
         [Range(0f, 1f)]
         [SerializeField] private float requiredGoodRatio = 0.7f;
 
-        [Tooltip("'좋음' 비율 기준을 연속으로 유지해야 하는 일수")]
-        [SerializeField] private int requiredGoodStreakDays = 30;
+        [Tooltip("'좋음' 비율 기준을 연속으로 유지해야 하는 주 수 (4주 = 1달)")]
+        [SerializeField] private int requiredGoodStreakWeeks = TimeManager.WeeksPerMonth;
 
         [Tooltip("필요 인구 수 (기획 확정 전 0)")]
         [SerializeField] private int requiredPopulation = 0;
@@ -49,20 +49,20 @@ namespace InfraTown.Core
         };
 
         [Header("패배 조건")]
-        [Tooltip("마을 만족도 '나쁨'이 이 일수만큼 연속되면 패배 (일반 모드 30일)")]
-        [SerializeField] private int defeatBadStreakDays = 30;
+        [Tooltip("마을 만족도 '나쁨'이 이 주 수만큼 연속되면 패배 (일반 모드 12주 = 3달)")]
+        [SerializeField] private int defeatBadStreakWeeks = 3 * TimeManager.WeeksPerMonth;
 
-        public int DaysElapsed { get; private set; }
-        public int GoodStreakDays { get; private set; }
-        public int BadStreakDays { get; private set; }
+        public int WeeksElapsed { get; private set; }
+        public int GoodStreakWeeks { get; private set; }
+        public int BadStreakWeeks { get; private set; }
         public GameResult Result { get; private set; } = GameResult.None;
         public bool IsGameOver => Result != GameResult.None;
 
-        public int VictoryDays => victoryYears * DaysPerYear;
-        public int RequiredGoodStreakDays => requiredGoodStreakDays;
+        public int VictoryWeeks => victoryYears * WeeksPerYear;
+        public int RequiredGoodStreakWeeks => requiredGoodStreakWeeks;
         public float RequiredGoodRatio => requiredGoodRatio;
         public int RequiredPopulation => requiredPopulation;
-        public int DefeatBadStreakDays => defeatBadStreakDays;
+        public int DefeatBadStreakWeeks => defeatBadStreakWeeks;
         public IReadOnlyList<ServiceType> RequiredServices => requiredServices;
 
         /// <summary>패배 타이머 유예 중인지 (공사 중 '개선 기대감' 등)</summary>
@@ -70,11 +70,11 @@ namespace InfraTown.Core
 
         public event Action<GameResult> OnGameEnded;
 
-        /// <summary>(연속 '나쁨' 일수, 패배 기준 일수) — 경고 연출용</summary>
+        /// <summary>(연속 '나쁨' 주 수, 패배 기준 주 수) — 경고 연출용</summary>
         public event Action<int, int> OnBadStreakChanged;
 
-        /// <summary>하루 판정이 끝날 때마다 발생 — 진행 상황 UI용</summary>
-        public event Action OnDayEvaluated;
+        /// <summary>한 주 판정이 끝날 때마다 발생 — 진행 상황 UI용</summary>
+        public event Action OnWeekEvaluated;
 
         private readonly HashSet<object> _graceSources = new HashSet<object>();
         private (int year, int month, int day) _lastDate = (-1, -1, -1);
@@ -90,7 +90,7 @@ namespace InfraTown.Core
         {
             if (TimeManager.Instance != null)
             {
-                _lastDate = (TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentDay);
+                _lastDate = (TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentWeek);
                 TimeManager.Instance.OnDateChanged += HandleDateChanged;
                 _subscribed = true;
             }
@@ -106,45 +106,45 @@ namespace InfraTown.Core
 
         private void HandleDateChanged(int year, int month, int day)
         {
-            // TimeManager.Start의 첫 알림처럼 날짜가 그대로면 하루로 세지 않음
+            // TimeManager.Start의 첫 알림처럼 날짜가 그대로면 한 주로 세지 않음
             if (_lastDate == (year, month, day)) return;
             _lastDate = (year, month, day);
-            ProcessDay();
+            ProcessWeek();
         }
 
         /// <summary>
-        /// 하루 경과 판정 (TimeManager가 하루를 넘길 때 호출됨)
+        /// 한 주 경과 판정 (TimeManager가 한 주를 넘길 때 호출됨)
         /// </summary>
-        public void ProcessDay()
+        public void ProcessWeek()
         {
             if (IsGameOver) return;
 
-            DaysElapsed++;
+            WeeksElapsed++;
 
             // 유예를 요청한 공사 등이 해제 없이 사라졌으면 유예도 끝낸다 (패배 판정이 영원히 멈추지 않도록)
             InfraTown.Core.LockSourceUtil.RemoveDestroyed(_graceSources);
 
             var satisfaction = SatisfactionManager.Instance;
 
-            // 패배: 마을 평균 '나쁨' 연속 일수 (유예 중엔 증가도 초기화도 하지 않음)
-            int previousBad = BadStreakDays;
+            // 패배: 마을 평균 '나쁨' 연속 주 수 (유예 중엔 증가도 초기화도 하지 않음)
+            int previousBad = BadStreakWeeks;
             bool isBad = satisfaction != null && satisfaction.CurrentState == SatisfactionState.Bad;
-            if (!isBad) BadStreakDays = 0;
-            else if (!IsDefeatGraceActive) BadStreakDays++;
+            if (!isBad) BadStreakWeeks = 0;
+            else if (!IsDefeatGraceActive) BadStreakWeeks++;
 
-            if (BadStreakDays != previousBad)
+            if (BadStreakWeeks != previousBad)
             {
-                OnBadStreakChanged?.Invoke(BadStreakDays, defeatBadStreakDays);
+                OnBadStreakChanged?.Invoke(BadStreakWeeks, defeatBadStreakWeeks);
             }
 
-            // 승리: '좋음' 비율 연속 유지 일수
+            // 승리: '좋음' 비율 연속 유지 주 수
             bool goodEnough = satisfaction != null && satisfaction.HousingCount > 0
                               && satisfaction.GoodHousingRatio >= requiredGoodRatio;
-            GoodStreakDays = goodEnough ? GoodStreakDays + 1 : 0;
+            GoodStreakWeeks = goodEnough ? GoodStreakWeeks + 1 : 0;
 
-            OnDayEvaluated?.Invoke();
+            OnWeekEvaluated?.Invoke();
 
-            if (BadStreakDays >= defeatBadStreakDays)
+            if (BadStreakWeeks >= defeatBadStreakWeeks)
             {
                 EndGame(GameResult.Defeat);
             }
@@ -159,8 +159,8 @@ namespace InfraTown.Core
         /// </summary>
         public bool IsVictoryConditionMet()
         {
-            return DaysElapsed >= VictoryDays
-                   && GoodStreakDays >= requiredGoodStreakDays
+            return WeeksElapsed >= VictoryWeeks
+                   && GoodStreakWeeks >= requiredGoodStreakWeeks
                    && IsInfrastructureNormalized()
                    && CurrentPopulation >= requiredPopulation;
         }
@@ -204,22 +204,22 @@ namespace InfraTown.Core
 
         public InfraTown.Save.OutcomeSaveState GetSaveState() => new InfraTown.Save.OutcomeSaveState
         {
-            daysElapsed = DaysElapsed, goodStreakDays = GoodStreakDays, badStreakDays = BadStreakDays, result = (int)Result,
+            weeksElapsed = WeeksElapsed, goodStreakWeeks = GoodStreakWeeks, badStreakWeeks = BadStreakWeeks, result = (int)Result,
         };
 
-        /// <summary>경과 일수·연속 일수·엔딩 결과를 되돌림. 오늘 날짜는 이미 센 것으로 둔다 (불러온 직후 하루로 세지 않음)</summary>
+        /// <summary>경과 주 수·연속 주 수·엔딩 결과를 되돌림. 이번 주는 이미 센 것으로 둔다 (불러온 직후 한 주로 세지 않음)</summary>
         public void ApplySaveState(InfraTown.Save.OutcomeSaveState s)
         {
             if (s == null) return;
-            DaysElapsed = Mathf.Max(0, s.daysElapsed);
-            GoodStreakDays = Mathf.Max(0, s.goodStreakDays);
-            BadStreakDays = Mathf.Max(0, s.badStreakDays);
+            WeeksElapsed = Mathf.Max(0, s.weeksElapsed);
+            GoodStreakWeeks = Mathf.Max(0, s.goodStreakWeeks);
+            BadStreakWeeks = Mathf.Max(0, s.badStreakWeeks);
             Result = (GameResult)s.result;
             if (TimeManager.Instance != null)
-                _lastDate = (TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentDay);
+                _lastDate = (TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentWeek);
             if (IsGameOver) TimeManager.Instance?.RequestEventPause(this); // 끝난 판이면 계속 멈춤
-            OnBadStreakChanged?.Invoke(BadStreakDays, defeatBadStreakDays);
-            OnDayEvaluated?.Invoke();
+            OnBadStreakChanged?.Invoke(BadStreakWeeks, defeatBadStreakWeeks);
+            OnWeekEvaluated?.Invoke();
         }
 
         private static int CurrentPopulation =>
@@ -229,7 +229,7 @@ namespace InfraTown.Core
         {
             Result = result;
             TimeManager.Instance?.RequestEventPause(this);
-            Debug.Log($"[GameOutcomeManager] 게임 종료: {(result == GameResult.Victory ? "해피엔딩" : "배드엔딩")} ({DaysElapsed}일째)");
+            Debug.Log($"[GameOutcomeManager] 게임 종료: {(result == GameResult.Victory ? "해피엔딩" : "배드엔딩")} ({WeeksElapsed}주째)");
             OnGameEnded?.Invoke(result);
         }
     }

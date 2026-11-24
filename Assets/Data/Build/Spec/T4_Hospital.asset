@@ -21,8 +21,8 @@ MonoBehaviour:
   easyDescription: "\uC544\uD50C \uB54C \uCC3E\uC544\uAC00\uB294 \uBCD1\uC6D0"
   unlockMessage: "\uB9C8\uC744 \uC0AC\uB78C\uC774 \uB2E4\uCE58\uB354\uB77C\uB3C4
     \uAC08 \uC218 \uC788\uB294 \uBCD1\uC6D0\uC774 \uC5C6\uC5B4\uC694."
-  constructionDays: 28
-  demolitionDays: 3
+  constructionWeeks: 8
+  demolitionWeeks: 3
   sizeType: 2
   category: 0
   requiredPower: 100

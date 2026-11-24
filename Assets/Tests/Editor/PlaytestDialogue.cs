@@ -104,8 +104,8 @@ namespace InfraTown.Tests.Playtest
             Note($"Start.asset {start.lines.Count}줄, 대화 전 컷씬 = {(start.cutsceneBefore != null ? start.cutsceneBefore.name : "없음(비었거나 연결된 에셋이 없음)")}");
 
             time.SetGameSpeed(GameSpeed.Normal);
-            FastForward(); // 시간이 흐르면 하루가 1프레임에 지나감 → 대화 중 날짜가 그대로면 시간이 멈춘 것
-            int dayBefore = DayIndex(time);
+            FastForward(); // 시간이 흐르면 한 주가 1프레임에 지나감 → 대화 중 날짜가 그대로면 시간이 멈춘 것
+            int weekBefore = WeekIndex(time);
 
             dlg.ResetPlayed();
             Check("대화 시작", dlg.Play(start));
@@ -123,7 +123,7 @@ namespace InfraTown.Tests.Playtest
             RefreshView();
             Check("다 나와도 입력이 없으면 그 줄에서 멈춤", dlg.IsPlaying && dlg.CurrentLineIndex == 0 && dlg.IsLineFullyShown,
                 $"{dlg.CurrentLineIndex + 1}번째 줄, {dlg.VisibleCharacterCount}/{dlg.CurrentTextLength}");
-            Check("대화 중에는 날짜가 넘어가지 않음 (1.75초 대기)", DayIndex(time) == dayBefore, $"{dayBefore} → {DayIndex(time)}");
+            Check("대화 중에는 날짜가 넘어가지 않음 (1.75초 대기)", WeekIndex(time) == weekBefore, $"{weekBefore} → {WeekIndex(time)}");
 
             // 한 줄씩: 출력 중 넘기기 = 한 번에 / 다 나온 뒤 넘기기 = 다음 줄
             bool revealOk = true, nextOk = true, colorOk = true, playerOk = false;
@@ -168,9 +168,9 @@ namespace InfraTown.Tests.Playtest
 
             yield return Frames(2);
             Check("대화가 끝나면 시간이 다시 흐름", !time.IsEventPaused && Time.timeScale > 0f, $"timeScale {Time.timeScale}");
-            int afterEnd = DayIndex(time);
+            int afterEnd = WeekIndex(time);
             yield return Frames(10);
-            Check("대화가 끝난 뒤 날짜가 다시 넘어감", DayIndex(time) > afterEnd, $"{afterEnd} → {DayIndex(time)}");
+            Check("대화가 끝난 뒤 날짜가 다시 넘어감", WeekIndex(time) > afterEnd, $"{afterEnd} → {WeekIndex(time)}");
             RestoreSpeed();
             time.SetGameSpeed(GameSpeed.Pause); // 이후 확인 동안 마을 상태 고정 (대화 시간 정지와는 별개)
             yield return ClearStrayDialogues(dlg);
@@ -307,20 +307,20 @@ namespace InfraTown.Tests.Playtest
             yield return ClearStrayDialogues(dlg);
         }
 
-        /// <summary>D-5. 일주일 스킵 도중 대화가 화면에 뜨면 그 자리에서 멈춤</summary>
+        /// <summary>D-5. 한 달 스킵 도중 대화가 화면에 뜨면 그 자리에서 멈춤</summary>
         private static IEnumerator WeekSkipInterruptCheck(Dlg.DialogueEventManager dlg, TimeManager time)
         {
-            Section("D-5. 일주일 스킵 도중 대화가 나오면 멈춤");
+            Section("D-5. 한 달 스킵 도중 대화가 나오면 멈춤");
             var data = Dlg.DialogueData.Create("test_skip_event", true, false,
                 new Dlg.DialogueLine("주민", "큰일 났어요! 밤사이 마을 길이 물에 잠겼어요!"));
-            int days = 0, startDay = DayIndex(time);
+            int weeks = 0, startWeek = WeekIndex(time);
             bool? interrupted = null;
-            Action<int, int, int> onDate = (y, m, d) => { if (++days == 3) dlg.Play(data); };
+            Action<int, int, int> onDate = (y, m, w) => { if (++weeks == 3) dlg.Play(data); };
             Action<bool> onEnd = i => interrupted = i;
             time.OnDateChanged += onDate;
             time.OnSkipEnded += onEnd;
 
-            Check("스킵 시작", time.StartWeekSkip());
+            Check("스킵 시작", time.StartMonthSkip());
             double deadline = EditorApplication.timeSinceStartup + 15;
             while (time.IsSkipping && EditorApplication.timeSinceStartup < deadline) yield return null;
             if (time.IsSkipping) time.CancelSkip();
@@ -330,14 +330,14 @@ namespace InfraTown.Tests.Playtest
             dlg.RevealCurrentLine();
             yield return Frames(1);
             RefreshView();
-            Check("3일째에 대화가 뜨자 스킵이 그 자리에서 멈춤", interrupted == true && DayIndex(time) - startDay == 3 && dlg.IsPlaying,
-                $"{DayIndex(time) - startDay}일 진행, 중단={interrupted}");
-            Check("남은 날은 지나가지 않고 시간 정지", time.IsEventPaused && !time.IsSkipping);
+            Check("3주째에 대화가 뜨자 스킵이 그 자리에서 멈춤", interrupted == true && WeekIndex(time) - startWeek == 3 && dlg.IsPlaying,
+                $"{WeekIndex(time) - startWeek}주 진행, 중단={interrupted}");
+            Check("남은 주는 지나가지 않고 시간 정지", time.IsEventPaused && !time.IsSkipping);
             Shot("d11_week_skip_stopped_by_dialogue", _view.canvas);
 
-            int before = DayIndex(time);
+            int before = WeekIndex(time);
             yield return RealSeconds(0.5f);
-            Check("대화 중에는 스킵이 다시 시작되지 않음", DayIndex(time) == before && !time.CanSkip);
+            Check("대화 중에는 스킵이 다시 시작되지 않음", WeekIndex(time) == before && !time.CanSkip);
             dlg.Skip();
             yield return Frames(1);
             Check("대화를 닫으면 다시 스킵 가능", time.CanSkip);
@@ -613,9 +613,9 @@ namespace InfraTown.Tests.Playtest
                 _ => "나레이션"
             };
             string right = dlg.RightSpeakerName == null ? "없음" : $"{dlg.RightSpeakerName} ({(dlg.IsRightDimmed ? "회색" : "밝게")})";
-            string skip = time == null ? "-" : time.IsSkipping ? $"진행 중 {time.SkipDaysDone}/{time.SkipDays}일" : "멈춤";
+            string skip = time == null ? "-" : time.IsSkipping ? $"진행 중 {time.SkipWeeksDone}/{time.SkipWeeks}주" : "멈춤";
             v.infoText.text =
-                $"[테스트 정보] {time?.CurrentYear}년 {time?.CurrentMonth}월 {time?.CurrentDay}일   게임 시간 정지: {(time != null && time.IsEventPaused ? "예" : "아니오")} (timeScale {Time.timeScale:0.#})\n" +
+                $"[테스트 정보] {time?.CurrentYear}년 {time?.CurrentMonth}월 {time?.CurrentWeek}주차   게임 시간 정지: {(time != null && time.IsEventPaused ? "예" : "아니오")} (timeScale {Time.timeScale:0.#})\n" +
                 (comic
                     ? $"카툰 컷 {cut.CurrentShotIndex + 1}/{cut.CurrentCutscene.shots.Count}  (페이지 {cut.CurrentPageIndex + 1}, 이 페이지 컷 {cut.CurrentPageShots.Count}개)\n"
                     : playing

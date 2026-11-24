@@ -229,8 +229,11 @@ namespace InfraTown.Tests.Playtest
             Section("3. 월간 정산");
             yield return MonthlySettlementCheck();
 
-            Section("3-1. 일주일 스킵 버튼 (하루씩 빠르게, 이벤트가 나면 멈춤)");
-            yield return WeekSkipCheck();
+            Section("3-1. 한 달 스킵 버튼 (한 주씩 빠르게, 이벤트가 나면 멈춤)");
+            yield return MonthSkipCheck();
+
+            Section("3-2. 계절 — 전력·가스 사용량 (1년 진행)");
+            yield return SeasonCheck();
 
             Section("4. 전신주(전력망) 설치");
             yield return PowerPoleCheck();
@@ -238,7 +241,7 @@ namespace InfraTown.Tests.Playtest
             Section("5. 철거 — 코드 경로와 UI [철거] 버튼");
             yield return DemolishCheck();
 
-            Section("6. 배드엔딩 (나쁨 30일)");
+            Section("6. 배드엔딩 (나쁨 12주 = 3달)");
             yield return DefeatCheck();
 
             Section("7. 해피엔딩 (같은 판에서 엔딩 판정을 새로 시작해 10년 진행)");
@@ -256,6 +259,7 @@ namespace InfraTown.Tests.Playtest
             Check("TimeManager", TimeManager.Instance != null);
             Check("BuildingManager", BuildingManager.Instance != null);
             Check("GameOutcomeManager 자동 추가", GameOutcomeManager.Instance != null);
+            Check("GasManager (씬에 없으면 자동 추가)", InfraTown.Gas.GasManager.Instance != null);
 
             int managers = UnityEngine.Object.FindObjectsOfType<BuildingManager>().Length;
             Check("BuildingManager 1개", managers == 1, $"{managers}개");
@@ -264,10 +268,13 @@ namespace InfraTown.Tests.Playtest
 
             var eco = EconomyManager.Instance;
             var power = PowerManager.Instance;
-            Check("시작 시 첫 달 전력 구매 (200kW, 10,000 → 8,000원)",
-                power.CurrentAvailablePower == 200 && eco.CurrentMoney == 8000,
-                $"전력 {power.CurrentAvailablePower}kW, 잔액 {eco.CurrentMoney:N0}원");
-            yield break;
+            var gas = InfraTown.Gas.GasManager.Instance;
+            yield return Frames(1); // 자동 추가된 가스 매니저의 Start (첫 달 구매)
+            Check("시작 시 첫 달 전력·가스 구매 (전력 200kW + 가스 100, 10,000 → 7,000원)",
+                power.CurrentAvailablePower == 200 && gas != null && gas.CurrentAvailableGas == 100 && eco.CurrentMoney == 7000,
+                $"전력 {power.CurrentAvailablePower}kW, 가스 {gas?.CurrentAvailableGas}, 잔액 {eco.CurrentMoney:N0}원");
+            Check("1년 1월 1주차, 겨울에 시작", TimeManager.Instance.CurrentMonth == 1 && TimeManager.Instance.CurrentWeek == 1 && TimeManager.Instance.CurrentSeason == Season.Winter,
+                $"{TimeManager.Instance.CurrentMonth}월 {TimeManager.Instance.CurrentWeek}주차 {TimeManager.Instance.CurrentSeason}");
         }
 
         private static readonly Dictionary<string, BuildingInstance> Placed = new Dictionary<string, BuildingInstance>();
@@ -289,7 +296,7 @@ namespace InfraTown.Tests.Playtest
             Check("잠긴 건물은 지어지지 않음", Place("hospital", 2, 2, null) == null);
 
             int before = pop.CurrentPopulation;
-            yield return WaitDays(7);
+            yield return WaitWeeks(1);
             Note($"주간 유입: {before}명 → {pop.CurrentPopulation}명 (만족도 {SatisfactionManager.Instance.CurrentAverageSatisfaction:F1})");
             Check("만족도 50 이상이면 주간 인구 유입", pop.CurrentPopulation > before);
 
@@ -354,8 +361,18 @@ namespace InfraTown.Tests.Playtest
                 power.SetTargetPurchasedPower(1000);
                 power.ProcessMonthlyPowerPurchase();
             }
+            var gas = InfraTown.Gas.GasManager.Instance;
+            if (gas != null && gas.IsGasShortage)
+            {
+                Note($"⚠ 기본 가스 구매량 {gas.TargetPurchasedGas}로는 이 마을({gas.CurrentUsedGas})을 감당 못 함 → 목표 500으로 올려 즉시 구매");
+                gas.SetTargetPurchasedGas(500);
+                gas.ProcessMonthlyGasPurchase();
+            }
             yield return Frames(1);
-            Check("전력 충분 → 정전 감점 0", power.GetPowerBlackoutSatisfactionPenalty() == 0f, $"{power.CurrentUsedPower} / {power.CurrentAvailablePower} kW");
+            Check("전력 충분 → 정전 감점 0", power.GetPowerBlackoutSatisfactionPenalty() == 0f,
+                $"{power.CurrentUsedPower} / {power.CurrentAvailablePower} kW (건물 {power.BuildingPowerUsage} + 인구·계절 {power.SeasonalPowerUsage})");
+            Check("가스 충분 → 가스 부족 감점 0", gas == null || gas.GetGasShortageSatisfactionPenalty() == 0f,
+                $"{gas?.CurrentUsedGas} / {gas?.CurrentAvailableGas}");
         }
 
         private static IEnumerator VillageChecks()
@@ -501,25 +518,68 @@ namespace InfraTown.Tests.Playtest
             int moneyBefore = eco.CurrentMoney;
             int maintenance = loop.GetTotalMaintenanceCost();
             int powerCost = power.TargetPurchasedPower * power.PricePerPowerUnit;
+            var gas = InfraTown.Gas.GasManager.Instance;
+            int gasCost = gas != null ? gas.MonthlyPurchaseCost : 0;
             int requested = eco.GetRequestedSubsidy();
 
             yield return WaitUntil(() => income >= 0, 40, "월간 정산");
             eco.OnMonthlySettled -= handler;
 
-            Note($"정산: 지원금 +{income:N0}, 유지비 -{paid:N0} (미납 {unpaid:N0}), 전력 -{powerCost:N0}");
+            Note($"정산: 지원금 +{income:N0}, 유지비 -{paid:N0} (미납 {unpaid:N0}), 전력 -{powerCost:N0}, 가스 -{gasCost:N0}");
             Check("지원금 = 슬라이더로 신청한 금액", income == requested, $"{income:N0} / {requested:N0}");
             Check("유지비 = 건물 유지비 합계", paid == maintenance, $"{paid:N0} / {maintenance:N0}");
-            Check("잔액 = 이전 + 지원금 − 유지비 − 전력 구매",
-                eco.CurrentMoney == moneyBefore + income - paid - powerCost, $"{moneyBefore:N0} → {eco.CurrentMoney:N0}");
+            Check("잔액 = 이전 + 지원금 − 유지비 − 전력 구매 − 가스 구매",
+                eco.CurrentMoney == moneyBefore + income - paid - powerCost - gasCost, $"{moneyBefore:N0} → {eco.CurrentMoney:N0}");
             Check("정산 후 보유 전력 = 슬라이더로 정한 구매량", power.CurrentAvailablePower == power.TargetPurchasedPower,
                 $"{power.CurrentAvailablePower} kW");
+            Check("정산 후 보유 가스 = 정한 구매량", gas == null || gas.CurrentAvailableGas == gas.TargetPurchasedGas,
+                $"{gas?.CurrentAvailableGas}");
         }
 
-        private static IEnumerator WeekSkipCheck()
+        /// <summary>
+        /// 계절에 따라 전력·가스 사용량이 바뀌는지 실제 시간 진행으로 확인 (전력 여름 최고·겨울 최저, 가스 반대, 최고 = 최저 × 2.5)
+        /// </summary>
+        private static IEnumerator SeasonCheck()
+        {
+            var time = TimeManager.Instance;
+            var power = PowerManager.Instance;
+            var gas = InfraTown.Gas.GasManager.Instance;
+            int pop = PopulationManager.Instance.CurrentPopulation;
+            Note($"인구 {pop}명 → 최저 소비량 {pop / 10f:F1} (인구 100명당 10), 최고 {pop / 10f * 2.5f:F1}");
+
+            var seen = new Dictionary<Season, (int power, int gas)>();
+            int seasonEvents = 0;
+            Action<Season> onSeason = s => seasonEvents++;
+            time.OnSeasonChanged += onSeason;
+            // 1년(12달)을 진행하며 달마다 계절별 사용량 기록
+            for (int i = 0; i < TimeManager.MonthsPerYear; i++)
+            {
+                yield return WaitWeeks(TimeManager.WeeksPerMonth);
+                if (PopulationManager.Instance.CurrentPopulation != pop) PopulationManager.Instance.ApplySaveState(new InfraTown.Save.PopulationSaveState { currentPopulation = pop });
+                yield return Frames(1);
+                seen[time.CurrentSeason] = (power.SeasonalPowerUsage, gas != null ? gas.CurrentUsedGas : 0);
+            }
+            time.OnSeasonChanged -= onSeason;
+
+            foreach (var pair in seen) Note($"{SeasonUtil.ToKorean(pair.Key)}: 전력(인구·계절) {pair.Value.power}kW, 가스 {pair.Value.gas}");
+            int min = SeasonUtil.GetSeasonalDemand(pop, 10f, Season.Winter, Season.Summer, 2.5f);
+            int max = SeasonUtil.GetSeasonalDemand(pop, 10f, Season.Summer, Season.Summer, 2.5f);
+            int mid = SeasonUtil.GetSeasonalDemand(pop, 10f, Season.Spring, Season.Summer, 2.5f);
+            Check("1년 동안 계절이 4번 바뀜", seasonEvents == 4, $"{seasonEvents}번");
+            Check("전력: 여름 최고, 겨울 최저, 봄·가을 중간",
+                seen.Count == 4 && seen[Season.Summer].power == max && seen[Season.Winter].power == min && seen[Season.Spring].power == mid && seen[Season.Autumn].power == mid,
+                $"최저 {min} / 중간 {mid} / 최고 {max}");
+            Check("가스: 겨울 최고, 여름 최저, 봄·가을 중간",
+                seen.Count == 4 && seen[Season.Winter].gas == max && seen[Season.Summer].gas == min && seen[Season.Spring].gas == mid && seen[Season.Autumn].gas == mid,
+                $"최저 {min} / 중간 {mid} / 최고 {max}");
+            Check("최고 소비량 = 최저의 2.5배", Mathf.Abs(max - min * 2.5f) <= 1f, $"{min} × 2.5 ≈ {max}");
+        }
+
+        private static IEnumerator MonthSkipCheck()
         {
             var time = TimeManager.Instance;
             var pop = PopulationManager.Instance;
-            int daysBefore = DayIndex(time);
+            int weeksBefore = WeekIndex(time);
             int popBefore = pop.CurrentPopulation;
             var progressFrames = new HashSet<int>();
             bool? interrupted = null;
@@ -529,42 +589,42 @@ namespace InfraTown.Tests.Playtest
             time.OnSkipEnded += onEnd;
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            Check("스킵 시작", time.StartWeekSkip());
+            Check("스킵 시작", time.StartMonthSkip());
             double deadline = EditorApplication.timeSinceStartup + 15; // 실제 시간으로 대기 (배치 모드는 프레임이 매우 빠름)
             while (time.IsSkipping && EditorApplication.timeSinceStartup < deadline) yield return null;
             stopwatch.Stop();
             if (time.IsSkipping) time.CancelSkip(); // 시간 초과 시 다음 단계가 막히지 않도록
 
-            int passed = DayIndex(time) - daysBefore;
-            Check("스킵 한 번에 7일이 지나감", passed == 7 && interrupted == false, $"{passed}일, 중단={interrupted}");
-            Check("하루씩 여러 프레임에 걸쳐 진행 (값이 바뀌는 모습이 보임)", progressFrames.Count >= 7, $"{progressFrames.Count}프레임");
-            Note($"스킵 소요 실제 시간 {stopwatch.Elapsed.TotalSeconds:F1}초 (하루 {time.SkipSecondsPerDay}초), 인구 {popBefore} → {pop.CurrentPopulation}");
+            int passed = WeekIndex(time) - weeksBefore;
+            Check("스킵 한 번에 4주(한 달)가 지나감", passed == 4 && interrupted == false, $"{passed}주, 중단={interrupted}");
+            Check("한 주씩 여러 프레임에 걸쳐 진행 (값이 바뀌는 모습이 보임)", progressFrames.Count >= 4, $"{progressFrames.Count}프레임");
+            Note($"스킵 소요 실제 시간 {stopwatch.Elapsed.TotalSeconds:F1}초 (한 주 {time.SkipSecondsPerWeek}초), 인구 {popBefore} → {pop.CurrentPopulation}");
 
             // 스킵 도중 이벤트(대화·컷씬 등의 일시정지)가 일어나면 그 시점에서 멈춤
             var source = new object();
             int stopAt = -1;
             Action<int, int, int> onDate = null;
-            int dayCount = 0;
-            onDate = (y, m, d) => { if (++dayCount == 3) { time.RequestEventPause(source); stopAt = DayIndex(time); } };
+            int weekCount = 0;
+            onDate = (y, m, w) => { if (++weekCount == 3) { time.RequestEventPause(source); stopAt = WeekIndex(time); } };
             interrupted = null;
-            daysBefore = DayIndex(time);
+            weeksBefore = WeekIndex(time);
             time.OnDateChanged += onDate;
-            time.StartWeekSkip();
+            time.StartMonthSkip();
             deadline = EditorApplication.timeSinceStartup + 15;
             while (time.IsSkipping && EditorApplication.timeSinceStartup < deadline) yield return null;
             if (time.IsSkipping) time.CancelSkip();
             yield return Frames(5);
             time.OnDateChanged -= onDate;
 
-            Check("스킵 도중 이벤트가 나면 그날에서 멈춤", interrupted == true && DayIndex(time) == stopAt && DayIndex(time) - daysBefore == 3,
-                $"{DayIndex(time) - daysBefore}일 진행 후 멈춤");
+            Check("스킵 도중 이벤트가 나면 그 주에서 멈춤", interrupted == true && WeekIndex(time) == stopAt && WeekIndex(time) - weeksBefore == 3,
+                $"{WeekIndex(time) - weeksBefore}주 진행 후 멈춤");
             time.ReleaseEventPause(source);
 
             time.OnSkipProgress -= onProgress;
             time.OnSkipEnded -= onEnd;
         }
 
-        private static int DayIndex(TimeManager t) => ((t.CurrentYear - 1) * 12 + (t.CurrentMonth - 1)) * 30 + t.CurrentDay;
+        private static int WeekIndex(TimeManager t) => ((t.CurrentYear - 1) * TimeManager.MonthsPerYear + (t.CurrentMonth - 1)) * TimeManager.WeeksPerMonth + t.CurrentWeek;
 
         private static IEnumerator PowerPoleCheck()
         {
@@ -649,10 +709,10 @@ namespace InfraTown.Tests.Playtest
             Shot("03_bad_town", null);
 
             yield return WaitUntil(() => ended != GameResult.None, 40, "배드엔딩");
-            Check("나쁨 30일 연속 → 배드엔딩", ended == GameResult.Defeat, $"{ended}, 나쁨 {lastBad}일");
+            Check("나쁨 12주(3달) 연속 → 배드엔딩", ended == GameResult.Defeat && lastBad == 12, $"{ended}, 나쁨 {lastBad}주");
             Check("엔딩 후 시간 정지", TimeManager.Instance.IsEventPaused);
             TimeManager.Instance.OnWeeklyTick -= countWeek;
-            // 30일 동안 주간 틱은 시작 날짜에 따라 4~5번 → 지나간 주 수만큼 2%씩, 시설당 최대 10%
+            // 12주 동안 매주 주간 틱 → 지나간 주 수만큼 2%씩, 시설당 최대 10%
             float expectedPerFacility = Mathf.Min(weeks * 2f, 10f);
             Check($"필수 시설이 없던 {weeks}주 동안 미설치 감점이 시설마다 주 2%씩 쌓임 (최대 10%)",
                 Mathf.Approximately(sat.GetMissingFacilityPenalty(ServiceType.Hospital), expectedPerFacility) &&
@@ -693,9 +753,9 @@ namespace InfraTown.Tests.Playtest
             if (leftover > 0f)
             {
                 Note($"필수 시설 미설치 감점이 {leftover:F0}% 남아 있음 → 주마다 회복되는지 확인");
-                int startDay = outcome.DaysElapsed;
+                int startWeek = outcome.WeeksElapsed;
                 yield return WaitUntil(() => sat.TotalMissingFacilityPenalty <= 0f, 70, "미설치 감점 회복");
-                int weeks = Mathf.CeilToInt((outcome.DaysElapsed - startDay) / 7f);
+                int weeks = outcome.WeeksElapsed - startWeek;
                 Check("다시 지으면 미설치 감점이 주마다 회복되어 0이 됨 (시설당 최대 10% → 5주 이내)",
                     sat.TotalMissingFacilityPenalty <= 0f && weeks <= 5, $"{weeks}주 걸림");
                 Note($"회복 후: 평균 {sat.CurrentAverageSatisfaction:F1}, 좋음 비율 {sat.GoodHousingRatio:P0}");
@@ -704,18 +764,18 @@ namespace InfraTown.Tests.Playtest
             if (sat.GoodHousingRatio < outcome.RequiredGoodRatio)
             {
                 Note($"좋음 비율이 기준({outcome.RequiredGoodRatio:P0})에 못 미침 → 10년이 지나도 승리하지 않아야 함");
-                yield return WaitDays(outcome.VictoryDays + 30);
-                Check("좋음 비율 미달 → 10년이 지나도 계속 플레이", !outcome.IsGameOver, $"{outcome.DaysElapsed}일, 결과 {outcome.Result}");
+                yield return WaitWeeks(outcome.VictoryWeeks + 30);
+                Check("좋음 비율 미달 → 10년이 지나도 계속 플레이", !outcome.IsGameOver, $"{outcome.WeeksElapsed}주, 결과 {outcome.Result}");
                 yield break;
             }
 
             GameResult ended = GameResult.None;
             outcome.OnGameEnded += r => ended = r;
             double t0 = EditorApplication.timeSinceStartup;
-            yield return WaitUntil(() => ended != GameResult.None, outcome.VictoryDays + 60, "해피엔딩");
-            Note($"10년 진행: 실제 {EditorApplication.timeSinceStartup - t0:F0}초, 엔딩 판정 {outcome.DaysElapsed}일 ({TimeManager.Instance.CurrentYear}년 {TimeManager.Instance.CurrentMonth}월 {TimeManager.Instance.CurrentDay}일)");
-            Check("10년 경과 + 조건 충족 → 해피엔딩", ended == GameResult.Victory, $"{ended}, {outcome.DaysElapsed}일째");
-            Check("정확히 3,600일째에 판정", outcome.DaysElapsed == outcome.VictoryDays, $"{outcome.DaysElapsed}일");
+            yield return WaitUntil(() => ended != GameResult.None, outcome.VictoryWeeks + 60, "해피엔딩");
+            Note($"10년 진행: 실제 {EditorApplication.timeSinceStartup - t0:F0}초, 엔딩 판정 {outcome.WeeksElapsed}주 ({TimeManager.Instance.CurrentYear}년 {TimeManager.Instance.CurrentMonth}월 {TimeManager.Instance.CurrentWeek}주차)");
+            Check("10년 경과 + 조건 충족 → 해피엔딩", ended == GameResult.Victory, $"{ended}, {outcome.WeeksElapsed}주째");
+            Check("정확히 480주(10년)째에 판정", outcome.WeeksElapsed == outcome.VictoryWeeks && outcome.VictoryWeeks == 480, $"{outcome.WeeksElapsed}주");
             Note($"10년 뒤: 인구 {PopulationManager.Instance.CurrentPopulation}명, 잔액 {EconomyManager.Instance.CurrentMoney:N0}원, 만족도 {sat.CurrentAverageSatisfaction:F1}, 좋음 {sat.GoodHousingRatio:P0}");
             Shot("04_victory_town", null);
         }
@@ -884,48 +944,48 @@ namespace InfraTown.Tests.Playtest
             while (EditorApplication.timeSinceStartup < end) yield return null;
         }
 
-        private static float _normalSecondsPerDay = -1f;
+        private static float _normalSecondsPerWeek = -1f;
 
-        /// <summary>게임 시간을 하루 1프레임으로 빠르게 돌림 (대기가 끝나면 RestoreSpeed로 원래 속도 복원)</summary>
+        /// <summary>게임 시간을 한 주 1프레임으로 빠르게 돌림 (대기가 끝나면 RestoreSpeed로 원래 속도 복원)</summary>
         private static void FastForward()
         {
             var time = TimeManager.Instance;
-            float current = TestWorld.GetField<float>(time, "secondsPerDay");
-            if (current > 0.001f) _normalSecondsPerDay = current;
-            TestWorld.SetField(time, "secondsPerDay", 0.0001f);
+            float current = TestWorld.GetField<float>(time, "secondsPerWeek");
+            if (current > 0.001f) _normalSecondsPerWeek = current;
+            TestWorld.SetField(time, "secondsPerWeek", 0.0001f);
             if (time.CurrentSpeed == GameSpeed.Pause) time.SetGameSpeed(GameSpeed.Normal);
         }
 
         private static void RestoreSpeed()
         {
-            if (TimeManager.Instance != null && _normalSecondsPerDay > 0f)
-                TestWorld.SetField(TimeManager.Instance, "secondsPerDay", _normalSecondsPerDay);
+            if (TimeManager.Instance != null && _normalSecondsPerWeek > 0f)
+                TestWorld.SetField(TimeManager.Instance, "secondsPerWeek", _normalSecondsPerWeek);
         }
 
-        private static IEnumerator WaitDays(int days)
+        private static IEnumerator WaitWeeks(int weeks)
         {
             FastForward();
             int count = 0;
             Action<int, int, int> handler = (y, m, d) => count++;
             TimeManager.Instance.OnDateChanged += handler;
-            int guard = days * 20 + 200;
-            while (count < days && guard-- > 0) yield return null;
+            int guard = weeks * 20 + 200;
+            while (count < weeks && guard-- > 0) yield return null;
             TimeManager.Instance.OnDateChanged -= handler;
             RestoreSpeed();
-            if (count < days) Fail($"{days}일 대기", $"{count}일만 진행됨");
+            if (count < weeks) Fail($"{weeks}주 대기", $"{count}주만 진행됨");
         }
 
-        private static IEnumerator WaitUntil(Func<bool> condition, int maxDays, string label)
+        private static IEnumerator WaitUntil(Func<bool> condition, int maxWeeks, string label)
         {
             FastForward();
-            int days = 0;
-            Action<int, int, int> handler = (y, m, d) => days++;
+            int weeks = 0;
+            Action<int, int, int> handler = (y, m, w) => weeks++;
             TimeManager.Instance.OnDateChanged += handler;
-            int guard = maxDays * 20 + 200;
-            while (!condition() && days <= maxDays && guard-- > 0) yield return null;
+            int guard = maxWeeks * 20 + 200;
+            while (!condition() && weeks <= maxWeeks && guard-- > 0) yield return null;
             TimeManager.Instance.OnDateChanged -= handler;
             RestoreSpeed();
-            if (!condition()) Fail(label, $"{days}일 진행했지만 조건 미충족");
+            if (!condition()) Fail(label, $"{weeks}주 진행했지만 조건 미충족");
         }
 
         /// <summary>3D 화면 촬영. overlayCanvas를 주면 그 UI도 함께 찍는다 (잠시 카메라 렌더 모드로 바꿨다 되돌림)</summary>

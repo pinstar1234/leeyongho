@@ -11,8 +11,8 @@ using InfraTown.TimeSystem;
 namespace InfraTown.Tests
 {
     /// <summary>
-    /// 일주일 스킵 (사용자 기획 2026-11-19): 누르면 7일이 하루씩 빠르게 지나가고(값 변화가 보이게),
-    /// 대화 등 이벤트가 일어나면 그 시점에서 멈춘다.
+    /// 한 달 스킵 (사용자 기획 2026-11-19, 2026-11-24 주 단위 변경으로 일주일 → 한 달(4주)):
+    /// 누르면 4주가 한 주씩 빠르게 지나가고(값 변화가 보이게), 대화 등 이벤트가 일어나면 그 시점에서 멈춘다.
     /// </summary>
     public class TimeSkipTests
     {
@@ -25,67 +25,82 @@ namespace InfraTown.Tests
         {
             _world = new TestWorld();
             _time = _world.CreateManager<TimeManager>();
-            _time.SkipSecondsPerDay = 0.3f;
+            _time.SkipSecondsPerWeek = 0.3f;
             _log.Clear();
-            _time.OnDateChanged += (y, m, d) => _log.Add($"{m}/{d}");
+            _time.OnDateChanged += (y, m, w) => _log.Add($"{m}/{w}");
             _time.OnSkipEnded += interrupted => _log.Add(interrupted ? "중단" : "완료");
         }
 
         [TearDown]
         public void TearDown() => _world.Dispose();
 
+        private void AssertDate(int month, int week, string message = null)
+        {
+            Assert.AreEqual((month, week), (_time.CurrentMonth, _time.CurrentWeek), message);
+        }
+
         [Test]
-        public void 누르면_일주일이_하루씩_빠르게_지나간다()
+        public void 누르면_한_달이_한_주씩_빠르게_지나간다()
         {
             int started = 0;
-            _time.OnSkipStarted += d => started = d;
-            Assert.IsTrue(_time.StartWeekSkip());
-            Assert.AreEqual(7, started);
+            _time.OnSkipStarted += w => started = w;
+            Assert.IsTrue(_time.StartMonthSkip());
+            Assert.AreEqual(4, started);
             Assert.IsTrue(_time.IsSkipping);
             Assert.IsEmpty(_log, "누른 순간에 한 번에 지나가지 않음");
 
             _time.TickSkip(0.3f);
             CollectionAssert.AreEqual(new[] { "1/2" }, _log);
-            Assert.AreEqual(1, _time.SkipDaysDone);
-            Assert.That(_time.SkipProgress, Is.EqualTo(1f / 7f).Within(0.001f));
+            Assert.AreEqual(1, _time.SkipWeeksDone);
+            Assert.That(_time.SkipProgress, Is.EqualTo(1f / 4f).Within(0.001f));
 
-            _time.TickSkip(0.65f); // 이틀 더 (남는 시간은 다음으로)
-            Assert.AreEqual(3, _time.SkipDaysDone);
+            _time.TickSkip(0.65f); // 두 주 더 (남는 시간은 다음으로)
+            Assert.AreEqual(3, _time.SkipWeeksDone);
 
             _time.TickSkip(10f);
             Assert.IsFalse(_time.IsSkipping);
-            Assert.AreEqual(8, _time.CurrentDay);
-            Assert.AreEqual("완료", _log[_log.Count - 1]);
+            AssertDate(2, 1);
+            CollectionAssert.AreEqual(new[] { "1/2", "1/3", "1/4", "2/1", "완료" }, _log);
         }
 
         [Test]
-        public void 스킵하면_주간_틱이_돌아_인구_등이_바뀐다()
+        public void 예전_이름_StartWeekSkip도_한_달_스킵()
         {
-            int weekly = 0;
-            _time.OnWeeklyTick += () => weekly++;
-            _time.StartWeekSkip();
+            Assert.IsTrue(_time.StartWeekSkip());
             _time.TickSkip(10f);
-            Assert.AreEqual(1, weekly);
+            AssertDate(2, 1);
+        }
+
+        [Test]
+        public void 스킵하면_주간_틱과_월간_틱이_돈다()
+        {
+            int weekly = 0, monthly = 0;
+            _time.OnWeeklyTick += () => weekly++;
+            _time.OnMonthlyTick += () => monthly++;
+            _time.StartMonthSkip();
+            _time.TickSkip(10f);
+            Assert.AreEqual(4, weekly);
+            Assert.AreEqual(1, monthly);
         }
 
         [Test]
         public void 일시정지_배속에서도_스킵할_수_있다()
         {
             _time.SetGameSpeed(GameSpeed.Pause);
-            Assert.IsTrue(_time.StartWeekSkip());
+            Assert.IsTrue(_time.StartMonthSkip());
             _time.TickSkip(10f);
-            Assert.AreEqual(8, _time.CurrentDay);
+            AssertDate(2, 1);
             Assert.AreEqual(GameSpeed.Pause, _time.CurrentSpeed, "배속은 그대로");
         }
 
         [Test]
         public void 스킵_중에_다시_누르면_무시된다()
         {
-            _time.StartWeekSkip();
+            _time.StartMonthSkip();
             Assert.IsFalse(_time.CanSkip);
-            Assert.IsFalse(_time.StartWeekSkip());
+            Assert.IsFalse(_time.StartMonthSkip());
             _time.TickSkip(10f);
-            Assert.AreEqual(8, _time.CurrentDay, "7일만 지나감");
+            AssertDate(2, 1, "4주만 지나감");
         }
 
         [Test]
@@ -94,7 +109,7 @@ namespace InfraTown.Tests
             var source = new object();
             _time.RequestEventPause(source);
             Assert.IsFalse(_time.CanSkip);
-            Assert.IsFalse(_time.StartWeekSkip());
+            Assert.IsFalse(_time.StartMonthSkip());
             _time.ReleaseEventPause(source);
             Assert.IsTrue(_time.CanSkip);
         }
@@ -103,18 +118,18 @@ namespace InfraTown.Tests
         public void 스킵_도중_이벤트가_일어나면_그_시점에서_멈춘다()
         {
             var source = new object();
-            // 3일째 되는 날 대화가 시작됐다고 가정
-            _time.OnDateChanged += (y, m, d) => { if (d == 4) _time.RequestEventPause(source); };
+            // 3주차에 대화가 시작됐다고 가정
+            _time.OnDateChanged += (y, m, w) => { if (w == 3) _time.RequestEventPause(source); };
 
-            _time.StartWeekSkip();
+            _time.StartMonthSkip();
             _time.TickSkip(10f);
 
             Assert.IsFalse(_time.IsSkipping);
-            Assert.AreEqual(4, _time.CurrentDay, "이벤트가 난 날에서 멈춤");
-            CollectionAssert.AreEqual(new[] { "1/2", "1/3", "1/4", "중단" }, _log);
+            AssertDate(1, 3, "이벤트가 난 주에서 멈춤");
+            CollectionAssert.AreEqual(new[] { "1/2", "1/3", "중단" }, _log);
 
             _time.TickSkip(10f);
-            Assert.AreEqual(4, _time.CurrentDay, "남은 날은 지나가지 않음");
+            AssertDate(1, 3, "남은 주는 지나가지 않음");
         }
 
         [Test]
@@ -122,16 +137,16 @@ namespace InfraTown.Tests
         {
             var dialogue = _world.CreateManager<DialogueEventManager>();
             dialogue.OnLineShown += (l, i, n) => { }; // 대화창 UI가 있음
-            _time.OnDateChanged += (y, m, d) =>
+            _time.OnDateChanged += (y, m, w) =>
             {
-                if (d == 3) dialogue.Play(DialogueData.Create("event", true, false, new DialogueLine("주민", "큰일이에요!")));
+                if (w == 3) dialogue.Play(DialogueData.Create("event", true, false, new DialogueLine("주민", "큰일이에요!")));
             };
 
-            _time.StartWeekSkip();
+            _time.StartMonthSkip();
             _time.TickSkip(10f);
 
             Assert.IsFalse(_time.IsSkipping);
-            Assert.AreEqual(3, _time.CurrentDay);
+            AssertDate(1, 3);
             Assert.IsTrue(dialogue.IsPlaying);
         }
 
@@ -139,20 +154,20 @@ namespace InfraTown.Tests
         public void 대화창_UI가_없어서_콘솔로만_나온_대화는_스킵을_멈추지_않는다()
         {
             var dialogue = _world.CreateManager<DialogueEventManager>();
-            _time.OnDateChanged += (y, m, d) =>
+            _time.OnDateChanged += (y, m, w) =>
             {
-                if (d == 3) dialogue.Play(DialogueData.Create("event", true, false, new DialogueLine("주민", "...")));
+                if (w == 3) dialogue.Play(DialogueData.Create("event", true, false, new DialogueLine("주민", "...")));
             };
-            _time.StartWeekSkip();
+            _time.StartMonthSkip();
             _time.TickSkip(10f);
-            Assert.AreEqual(8, _time.CurrentDay);
+            AssertDate(2, 1);
         }
 
         [Test]
         public void 엔딩이_나면_스킵이_멈춘다()
         {
             var outcome = _world.CreateManager<GameOutcomeManager>();
-            _time.StartWeekSkip();
+            _time.StartMonthSkip();
             _time.TickSkip(0.3f);
             TestWorld.Invoke(outcome, "EndGame", GameResult.Defeat);
             Assert.IsFalse(_time.IsSkipping);
@@ -161,34 +176,33 @@ namespace InfraTown.Tests
         [Test]
         public void 취소하면_그_자리에서_멈춘다()
         {
-            _time.StartWeekSkip();
+            _time.StartMonthSkip();
             _time.TickSkip(0.6f);
             _time.CancelSkip();
             Assert.IsFalse(_time.IsSkipping);
-            Assert.AreEqual(3, _time.CurrentDay);
+            AssertDate(1, 3);
             Assert.AreEqual("중단", _log[_log.Count - 1]);
         }
 
         [Test]
-        public void 하루_간격이_0이면_한번에_지나간다()
+        public void 한_주_간격이_0이면_한번에_지나간다()
         {
-            _time.SkipSecondsPerDay = 0f;
-            _time.StartWeekSkip();
+            _time.SkipSecondsPerWeek = 0f;
+            _time.StartMonthSkip();
             Assert.IsFalse(_time.IsSkipping);
-            Assert.AreEqual(8, _time.CurrentDay);
+            AssertDate(2, 1);
         }
 
         [Test]
-        public void 달이_넘어가면_월간_정산도_돈다()
+        public void 달_중간에_스킵해도_4주가_지나간다()
         {
             int monthly = 0;
             _time.OnMonthlyTick += () => monthly++;
-            TestWorld.SetField(_time, "currentDay", 27);
-            _time.StartWeekSkip();
+            TestWorld.SetField(_time, "currentWeek", 3);
+            _time.StartMonthSkip();
             _time.TickSkip(10f);
             Assert.AreEqual(1, monthly);
-            Assert.AreEqual(2, _time.CurrentMonth);
-            Assert.AreEqual(4, _time.CurrentDay);
+            AssertDate(2, 3);
         }
 
         [Test]
@@ -203,7 +217,7 @@ namespace InfraTown.Tests
             loop.RegisterBuilding(house);
             int before = population.CurrentPopulation;
 
-            _time.StartWeekSkip();
+            _time.StartMonthSkip();
             _time.TickSkip(10f);
 
             Assert.Greater(population.CurrentPopulation, before, "주간 틱으로 인구 유입");

@@ -4,6 +4,7 @@ using UnityEngine;
 using InfraTown.Building;
 using InfraTown.Core;
 using InfraTown.Economy;
+using InfraTown.Population;
 using InfraTown.TimeSystem;
 
 namespace InfraTown.Power
@@ -25,6 +26,16 @@ namespace InfraTown.Power
         [Tooltip("게임 시작 시 첫 달 전력을 바로 구매 (끄면 첫 월간 정산 전까지 전력 0)")]
         [SerializeField] private bool purchaseOnStart = true;
 
+        [Header("계절 소비량 (사용자 기획 2026-11-24) — 건물 소비에 더해짐")]
+        [Tooltip("인구 기준 최저 소비량: 인구 100명당 (kW)")]
+        [SerializeField] private float demandPer100Population = 10f;
+
+        [Tooltip("최고 소비량 = 최저 × 이 배율")]
+        [SerializeField] private float peakMultiplier = 2.5f;
+
+        [Tooltip("가장 많이 쓰는 계절 (정반대 계절이 최저)")]
+        [SerializeField] private Season peakSeason = Season.Summer;
+
         [Header("정전 만족도 패널티")]
         [Tooltip("전력이 전혀 없을 때(전면 정전) 마을 전체 만족도 감점")]
         [SerializeField] private float totalBlackoutPenalty = 30f;
@@ -34,7 +45,9 @@ namespace InfraTown.Power
 
         [Header("현재 전력 현황")]
         [SerializeField] private int currentAvailablePower = 0; // 현재 보유 전력
-        [SerializeField] private int currentUsedPower = 0;      // 현재 필요 전력
+        [SerializeField] private int currentUsedPower = 0;      // 현재 필요 전력 (건물 + 인구 계절 소비)
+        [SerializeField] private int buildingPowerUsage = 0;    // 그중 건물 소비
+        [SerializeField] private int seasonalPowerUsage = 0;    // 그중 인구·계절 소비
 
         public int CurrentAvailablePower => currentAvailablePower;
         public int CurrentUsedPower => currentUsedPower;
@@ -46,8 +59,36 @@ namespace InfraTown.Power
         /// <summary>다음 월간 정산에 드는 전력 구매 비용 (목표량 × 단가)</summary>
         public int MonthlyPurchaseCost => targetPurchasedPower * pricePerPowerUnit;
 
-        /// <summary>다음 달 목표량으로 지금 사용량을 감당하지 못하는 양 (0이면 충분)</summary>
-        public int NextMonthShortage => Mathf.Max(0, currentUsedPower - targetPurchasedPower);
+        /// <summary>필요 전력 중 건물이 쓰는 양 (BuildingData.requiredPower 합)</summary>
+        public int BuildingPowerUsage => buildingPowerUsage;
+
+        /// <summary>필요 전력 중 인구·계절에 따른 양</summary>
+        public int SeasonalPowerUsage => seasonalPowerUsage;
+
+        public float DemandPer100Population => demandPer100Population;
+        public float PeakMultiplier => peakMultiplier;
+        public Season PeakSeason => peakSeason;
+
+        /// <summary>그 계절의 인구 기준 소비량 (지금 인구 기준, 건물 소비 제외)</summary>
+        public int GetSeasonalDemand(Season season)
+        {
+            int population = PopulationManager.Instance != null ? PopulationManager.Instance.CurrentPopulation : 0;
+            return SeasonUtil.GetSeasonalDemand(population, demandPer100Population, season, peakSeason, peakMultiplier);
+        }
+
+        /// <summary>지금 인구의 계절 최저 소비량 (겨울)</summary>
+        public int MinSeasonalDemand => GetSeasonalDemand(SeasonUtil.Opposite(peakSeason));
+
+        /// <summary>지금 인구의 계절 최고 소비량 (여름)</summary>
+        public int MaxSeasonalDemand => GetSeasonalDemand(peakSeason);
+
+        /// <summary>다음 달 계절 기준 예상 필요 전력 (건물 + 인구 계절 소비)</summary>
+        public int NextMonthExpectedUsage => buildingPowerUsage + GetSeasonalDemand(TimeManager.Instance != null ? TimeManager.Instance.NextMonthSeason : CurrentSeason);
+
+        /// <summary>다음 달 목표량으로 다음 달 예상 필요 전력(계절 반영)을 감당하지 못하는 양 (0이면 충분)</summary>
+        public int NextMonthShortage => Mathf.Max(0, NextMonthExpectedUsage - targetPurchasedPower);
+
+        private static Season CurrentSeason => TimeManager.Instance != null ? TimeManager.Instance.CurrentSeason : Season.Spring;
 
         /// <summary>필요 전력이 보유 전력보다 많은 상태</summary>
         public bool IsPowerShortage => currentUsedPower > currentAvailablePower;
@@ -65,6 +106,8 @@ namespace InfraTown.Power
         public event Action<int, int> OnTargetPowerChanged; // (다음 달 구매량, 월 구매 비용)
 
         private bool _subscribedToMonthlyTick;
+        private TimeManager _time;
+        private PopulationManager _population;
 
         private void Awake()
         {
@@ -75,11 +118,25 @@ namespace InfraTown.Power
         private void Start()
         {
             // GameLoopManager가 있으면 월 정산 순서(지원금 → 유지비 → 전력 구매)를 그쪽에서 관리
-            if (GameLoopManager.Instance == null && TimeManager.Instance != null)
+            _time = TimeManager.Instance;
+            if (_time != null)
             {
-                TimeManager.Instance.OnMonthlyTick += ProcessMonthlyPowerPurchase;
-                _subscribedToMonthlyTick = true;
+                // 계절이 바뀌면 인구 계절 소비량이 바뀜
+                _time.OnSeasonChanged += HandleSeasonChanged;
+
+                if (GameLoopManager.Instance == null)
+                {
+                    _time.OnMonthlyTick += ProcessMonthlyPowerPurchase;
+                    _subscribedToMonthlyTick = true;
+                }
             }
+
+            // 인구가 바뀌면 인구 계절 소비량이 바뀜
+            _population = PopulationManager.Instance;
+            if (_population != null) _population.OnPopulationChanged += HandlePopulationChanged;
+
+            seasonalPowerUsage = GetSeasonalDemand(CurrentSeason);
+            currentUsedPower = buildingPowerUsage + seasonalPowerUsage;
 
             if (purchaseOnStart)
             {
@@ -89,10 +146,28 @@ namespace InfraTown.Power
 
         private void OnDestroy()
         {
-            if (_subscribedToMonthlyTick && TimeManager.Instance != null)
+            if (_time != null)
             {
-                TimeManager.Instance.OnMonthlyTick -= ProcessMonthlyPowerPurchase;
+                _time.OnSeasonChanged -= HandleSeasonChanged;
+                if (_subscribedToMonthlyTick) _time.OnMonthlyTick -= ProcessMonthlyPowerPurchase;
             }
+            if (_population != null) _population.OnPopulationChanged -= HandlePopulationChanged;
+        }
+
+        private void HandleSeasonChanged(Season season) => RefreshSeasonalUsage();
+
+        private void HandlePopulationChanged(int current, int max) => RefreshSeasonalUsage();
+
+        /// <summary>
+        /// 지금 인구·계절로 인구 계절 소비량을 다시 계산. 바뀌었으면 정전 판정 + OnPowerDataChanged
+        /// </summary>
+        public void RefreshSeasonalUsage()
+        {
+            int seasonal = GetSeasonalDemand(CurrentSeason);
+            if (seasonal == seasonalPowerUsage) return;
+            seasonalPowerUsage = seasonal;
+            currentUsedPower = buildingPowerUsage + seasonalPowerUsage;
+            EvaluatePowerSupply();
         }
 
         /// <summary>
@@ -139,6 +214,8 @@ namespace InfraTown.Power
             if (s == null) return;
             targetPurchasedPower = Mathf.Clamp(s.targetPurchasedPower, 0, Mathf.Max(0, maxPurchasablePower));
             currentAvailablePower = Mathf.Max(0, s.currentAvailablePower);
+            seasonalPowerUsage = GetSeasonalDemand(CurrentSeason);
+            currentUsedPower = buildingPowerUsage + seasonalPowerUsage;
             OnTargetPowerChanged?.Invoke(targetPurchasedPower, MonthlyPurchaseCost);
             EvaluatePowerSupply();
         }
@@ -160,7 +237,9 @@ namespace InfraTown.Power
                 }
             }
 
-            currentUsedPower = totalRequired;
+            buildingPowerUsage = totalRequired;
+            seasonalPowerUsage = GetSeasonalDemand(CurrentSeason);
+            currentUsedPower = buildingPowerUsage + seasonalPowerUsage;
             EvaluatePowerSupply();
         }
 

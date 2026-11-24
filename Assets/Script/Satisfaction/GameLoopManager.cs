@@ -5,6 +5,7 @@ using InfraTown.Satisfaction;
 using InfraTown.Population;
 using InfraTown.Economy;
 using InfraTown.Power;
+using InfraTown.Gas;
 using InfraTown.Services;
 using InfraTown.TimeSystem;
 
@@ -15,6 +16,7 @@ namespace InfraTown.Core
         public static GameLoopManager Instance { get; private set; }
 
         private List<BuildingInstance> _placedBuildings = new List<BuildingInstance>();
+        private GasManager _gas;
 
         /// <summary>현재 맵에 배치된 모든 건물 (읽기 전용)</summary>
         public IReadOnlyList<BuildingInstance> PlacedBuildings => _placedBuildings;
@@ -33,6 +35,12 @@ namespace InfraTown.Core
                 gameObject.AddComponent<GameOutcomeManager>();
             }
 
+            // 가스 매니저도 씬에 없으면 추가 (사용자 기획 2026-11-24)
+            if (GasManager.Instance == null)
+            {
+                gameObject.AddComponent<GasManager>();
+            }
+
             BuildingInstance.OnBuildingDestroyed += HandleBuildingDestroyed;
 
             // TimeManager 틱 이벤트 연동
@@ -47,6 +55,10 @@ namespace InfraTown.Core
             {
                 PowerManager.Instance.OnPowerDataChanged += HandlePowerDataChanged;
             }
+
+            // 가스 보유량·사용량이 바뀌면 가스 부족 감점이 달라지므로 만족도 재계산
+            _gas = GasManager.Instance;
+            if (_gas != null) _gas.OnGasDataChanged += HandleGasDataChanged;
         }
 
         private void OnDestroy()
@@ -63,6 +75,9 @@ namespace InfraTown.Core
             {
                 PowerManager.Instance.OnPowerDataChanged -= HandlePowerDataChanged;
             }
+
+
+            if (_gas != null) _gas.OnGasDataChanged -= HandleGasDataChanged;
         }
 
         public void RegisterBuilding(BuildingInstance building)
@@ -108,6 +123,11 @@ namespace InfraTown.Core
             TriggerSatisfactionUpdate();
         }
 
+        private void HandleGasDataChanged(int used, int available)
+        {
+            TriggerSatisfactionUpdate();
+        }
+
         /// <summary>
         /// 배치된 건물의 월 유지비 합계
         /// </summary>
@@ -125,7 +145,7 @@ namespace InfraTown.Core
         }
 
         /// <summary>
-        /// 1주일(7일) 틱: 인구 갱신 및 만족도 패널티 산출
+        /// 1주 틱: 인구 갱신 및 만족도 패널티 산출
         /// </summary>
         private void HandleWeeklyTick()
         {
@@ -141,7 +161,7 @@ namespace InfraTown.Core
         }
 
         /// <summary>
-        /// 1달(30일) 틱: 지원금 수령 → 유지비 지출 → 다음 달 전력 구매 순서로 정산
+        /// 1달(4주) 틱: 지원금 수령 → 유지비 지출 → 다음 달 전력 구매 → 가스 구매 순서로 정산
         /// (지원금이 먼저 들어와야 전력 구매 자금이 확보되므로 순서를 여기서 보장)
         /// </summary>
         private void HandleMonthlyTick()
@@ -152,6 +172,7 @@ namespace InfraTown.Core
 
             EconomyManager.Instance?.ProcessMonthlySettlement(currentPopulation, GetTotalMaintenanceCost());
             PowerManager.Instance?.ProcessMonthlyPowerPurchase();
+            GasManager.Instance?.ProcessMonthlyGasPurchase();
         }
     }
 }

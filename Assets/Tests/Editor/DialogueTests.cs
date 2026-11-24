@@ -235,7 +235,7 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 나쁨이_경고_일수가_되면_안내원이_경고한다()
+        public void 나쁨이_경고_주수가_되면_안내원이_경고한다()
         {
             var outcome = _world.CreateManager<GameOutcomeManager>();
             Start();
@@ -245,13 +245,15 @@ namespace InfraTown.Tests
             var raise = typeof(GameOutcomeManager).GetField("OnBadStreakChanged",
                 System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
             var handler = (System.Action<int, int>)raise.GetValue(outcome);
-            handler?.Invoke(9, 30);
+            // 기본 경고 시점 4·8·10주 (패배 12주)
+            handler?.Invoke(3, 12);
             Assert.AreEqual(0, _played.Count);
-            handler?.Invoke(10, 30);
+            handler?.Invoke(4, 12);
 
             Assert.AreEqual(1, _played.Count);
             Assert.AreEqual("안내원", _dialogue.CurrentLine.speaker);
-            StringAssert.Contains("20일", _dialogue.GetCurrentText());
+            StringAssert.Contains("4주째", _dialogue.GetCurrentText());
+            StringAssert.Contains("8주 안에", _dialogue.GetCurrentText());
         }
     }
 }

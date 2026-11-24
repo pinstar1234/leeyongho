@@ -38,7 +38,7 @@ namespace InfraTown.EventSystem
     /// <summary>
     /// 게임 상황에 맞춰 DialogueEventManager로 대화를 띄우는 트리거 모음. DialogueEventManager와 같은 오브젝트에 붙인다.
     ///  1) 게임 시작 스토리: introDialogue + 처음부터 해금된 건물의 해금 메시지
-    ///  2) 필수 시설 미설치 불만: 필수 시설이 해금된 뒤 설치하지 않은 날이 30~90일(무작위)이 되면 주민이 불만을 말함
+    ///  2) 필수 시설 미설치 불만: 필수 시설이 해금된 뒤 설치하지 않은 주가 4~12주(1~3달, 무작위)가 되면 주민이 불만을 말함
     ///  3) 필수 시설 설치: 종류별로 처음 설치했을 때 대사
     ///  그 밖에 인구 증가로 새 건물 해금 스토리(기획서 4장), '나쁨' 지속 경고, 엔딩 대화
     /// </summary>
@@ -69,16 +69,16 @@ namespace InfraTown.EventSystem
             new EssentialFacilityDialogue(ServiceType.Police),
         };
 
-        [Tooltip("불만이 나오기까지 최소 일수 (1달 = 30일)")]
-        [SerializeField] private int complaintMinDays = 30;
+        [Tooltip("불만이 나오기까지 최소 주 수 (1달 = 4주)")]
+        [SerializeField] private int complaintMinWeeks = 4;
 
-        [Tooltip("불만이 나오기까지 최대 일수 (3달 = 90일). 시설마다 이 범위에서 무작위로 정해짐")]
-        [SerializeField] private int complaintMaxDays = 90;
+        [Tooltip("불만이 나오기까지 최대 주 수 (3달 = 12주). 시설마다 이 범위에서 무작위로 정해짐")]
+        [SerializeField] private int complaintMaxWeeks = 12;
 
         [Tooltip("불만이 나온 뒤에도 계속 안 지으면 새 무작위 기간 뒤에 다시 불만")]
         [SerializeField] private bool repeatComplaint = true;
 
-        [Tooltip("마을 만족도가 '좋음'이 아닌 날만 센다 (끄면 설치 안 된 날을 모두 셈)")]
+        [Tooltip("마을 만족도가 '좋음'이 아닌 주만 센다 (끄면 설치 안 된 주를 모두 셈)")]
         [SerializeField] private bool countOnlyWhenNotGood = false;
 
         [Tooltip("무작위 기간의 시드 (0 = 매번 다르게)")]
@@ -95,8 +95,8 @@ namespace InfraTown.EventSystem
         [SerializeField] private string warningSpeaker = "안내원";
         [SerializeField] private Sprite warningSpeakerPortrait;
 
-        [Tooltip("'나쁨'이 이 일수째가 되면 경고 (패배 기준은 GameOutcomeManager, 기본 30일)")]
-        [SerializeField] private List<int> badStreakWarningDays = new List<int> { 10, 20, 25 };
+        [Tooltip("'나쁨'이 이 주째가 되면 경고 (패배 기준은 GameOutcomeManager, 기본 12주)")]
+        [SerializeField] private List<int> badStreakWarningWeeks = new List<int> { 4, 8, 10 };
 
         [Header("엔딩")]
         [SerializeField] private DialogueData victoryDialogue;
@@ -122,7 +122,7 @@ namespace InfraTown.EventSystem
 
         private class EssentialState
         {
-            public int missingDays;
+            public int missingWeeks;
             public int threshold = -1; // -1 = 아직 정하지 않음
             public bool firstInstallPlayed;
         }
@@ -141,13 +141,13 @@ namespace InfraTown.EventSystem
 
         private DialogueEventManager Dialogue => DialogueEventManager.Instance;
 
-        public int ComplaintMinDays => complaintMinDays;
-        public int ComplaintMaxDays => complaintMaxDays;
+        public int ComplaintMinWeeks => complaintMinWeeks;
+        public int ComplaintMaxWeeks => complaintMaxWeeks;
 
-        /// <summary>해당 필수 시설이 해금된 뒤 설치 안 된 채 지난 일수 (설치돼 있거나 잠겨 있으면 0)</summary>
-        public int GetMissingDays(ServiceType type) => _essential.TryGetValue(type, out var s) ? s.missingDays : 0;
+        /// <summary>해당 필수 시설이 해금된 뒤 설치 안 된 채 지난 주 수 (설치돼 있거나 잠겨 있으면 0)</summary>
+        public int GetMissingWeeks(ServiceType type) => _essential.TryGetValue(type, out var s) ? s.missingWeeks : 0;
 
-        /// <summary>이번에 불만이 나올 일수 (아직 세기 시작 전이면 -1)</summary>
+        /// <summary>이번에 불만이 나올 주 수 (아직 세기 시작 전이면 -1)</summary>
         public int GetComplaintThreshold(ServiceType type) => _essential.TryGetValue(type, out var s) ? s.threshold : -1;
 
         private void Awake()
@@ -246,7 +246,7 @@ namespace InfraTown.EventSystem
             if (_time == null && TimeManager.Instance != null)
             {
                 _time = TimeManager.Instance;
-                _lastDate = (_time.CurrentYear, _time.CurrentMonth, _time.CurrentDay);
+                _lastDate = (_time.CurrentYear, _time.CurrentMonth, _time.CurrentWeek);
                 _time.OnDateChanged += HandleDateChanged;
             }
 
@@ -290,15 +290,15 @@ namespace InfraTown.EventSystem
 
         private void HandleDateChanged(int year, int month, int day)
         {
-            if (_lastDate == (year, month, day)) return; // TimeManager.Start의 첫 알림 등 같은 날짜는 세지 않음
+            if (_lastDate == (year, month, day)) return; // TimeManager.Start의 첫 알림 등 같은 날짜는 세지 않음 (한 주 단위)
             _lastDate = (year, month, day);
-            ProcessDay();
+            ProcessWeek();
         }
 
         /// <summary>
-        /// 하루 경과 처리: 해금됐는데 설치 안 된 필수 시설의 일수를 세고, 무작위로 정한 기간(30~90일)에 닿으면 불만 대사
+        /// 한 주 경과 처리: 해금됐는데 설치 안 된 필수 시설의 주 수를 세고, 무작위로 정한 기간(4~12주)에 닿으면 불만 대사
         /// </summary>
-        public void ProcessDay()
+        public void ProcessWeek()
         {
             var service = ServiceAccessibilityManager.Instance;
             bool townIsGood = SatisfactionManager.Instance != null && SatisfactionManager.Instance.CurrentState == SatisfactionState.Good;
@@ -311,31 +311,31 @@ namespace InfraTown.EventSystem
                 if (installed || !IsServiceUnlocked(entry.service))
                 {
                     // 지어졌거나 아직 지을 수 없으면 처음부터 다시 셈
-                    state.missingDays = 0;
+                    state.missingWeeks = 0;
                     state.threshold = -1;
                     continue;
                 }
 
                 if (countOnlyWhenNotGood && townIsGood) continue;
 
-                if (state.threshold < 0) state.threshold = RollComplaintDays();
-                state.missingDays++;
+                if (state.threshold < 0) state.threshold = RollComplaintWeeks();
+                state.missingWeeks++;
 
-                if (state.missingDays >= state.threshold)
+                if (state.missingWeeks >= state.threshold)
                 {
                     PlayComplaint(entry);
-                    state.missingDays = 0;
-                    state.threshold = repeatComplaint ? RollComplaintDays() : int.MaxValue;
+                    state.missingWeeks = 0;
+                    state.threshold = repeatComplaint ? RollComplaintWeeks() : int.MaxValue;
                 }
             }
         }
 
-        /// <summary>complaintMinDays ~ complaintMaxDays 사이 무작위 일수</summary>
-        public int RollComplaintDays()
+        /// <summary>complaintMinWeeks ~ complaintMaxWeeks 사이 무작위 주 수</summary>
+        public int RollComplaintWeeks()
         {
             if (_rng == null) _rng = randomSeed == 0 ? new System.Random() : new System.Random(randomSeed);
-            int min = Mathf.Max(1, Mathf.Min(complaintMinDays, complaintMaxDays));
-            int max = Mathf.Max(min, complaintMaxDays);
+            int min = Mathf.Max(1, Mathf.Min(complaintMinWeeks, complaintMaxWeeks));
+            int max = Mathf.Max(min, complaintMaxWeeks);
             return _rng.Next(min, max + 1);
         }
 
@@ -369,7 +369,7 @@ namespace InfraTown.EventSystem
             if (entry == null) return;
 
             var state = GetState(entry.service);
-            state.missingDays = 0;
+            state.missingWeeks = 0;
             state.threshold = -1;
             if (state.firstInstallPlayed) return; // 같은 종류 두 번째 설치부터는 대사 없음
             state.firstInstallPlayed = true;
@@ -399,7 +399,7 @@ namespace InfraTown.EventSystem
                 s.essentials.Add(new InfraTown.Save.EssentialFacilitySaveState
                 {
                     service = (int)pair.Key,
-                    missingDays = pair.Value.missingDays,
+                    missingWeeks = pair.Value.missingWeeks,
                     threshold = pair.Value.threshold,
                     firstInstallPlayed = pair.Value.firstInstallPlayed,
                 });
@@ -436,14 +436,14 @@ namespace InfraTown.EventSystem
             foreach (var e in s.essentials)
             {
                 var state = GetState((ServiceType)e.service);
-                state.missingDays = e.missingDays;
+                state.missingWeeks = e.missingWeeks;
                 state.threshold = e.threshold;
                 state.firstInstallPlayed = e.firstInstallPlayed;
             }
 
-            // 오늘 날짜는 이미 센 것으로 (불러온 직후 날짜 알림을 하루로 세지 않음)
+            // 이번 주는 이미 센 것으로 (불러온 직후 날짜 알림을 한 주로 세지 않음)
             if (TimeManager.Instance != null)
-                _lastDate = (TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentDay);
+                _lastDate = (TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentWeek);
         }
 
         private EssentialState GetState(ServiceType type)
@@ -513,16 +513,16 @@ namespace InfraTown.EventSystem
             Dialogue.Play(DialogueData.Create(dialogueId, true, true, lines.ToArray()));
         }
 
-        private void HandleBadStreakChanged(int days, int limit)
+        private void HandleBadStreakChanged(int weeks, int limit)
         {
-            if (Dialogue == null || !badStreakWarningDays.Contains(days)) return;
+            if (Dialogue == null || !badStreakWarningWeeks.Contains(weeks)) return;
 
-            int left = Mathf.Max(0, limit - days);
+            int left = Mathf.Max(0, limit - weeks);
             var line = new DialogueLine(warningSpeaker,
-                $"주민 불만이 {days}일째 계속되고 있어요. {left}일 안에 나아지지 않으면 마을이 무너집니다.",
-                $"주민들이 {days}일째 화가 나 있어요! {left}일 안에 마을을 고쳐 주세요.",
+                $"주민 불만이 {weeks}주째 계속되고 있어요. {left}주 안에 나아지지 않으면 마을이 무너집니다.",
+                $"주민들이 {weeks}주째 화가 나 있어요! {left}주 안에 마을을 고쳐 주세요.",
                 warningSpeakerPortrait);
-            Dialogue.Play(DialogueData.Create($"warning_bad_{days}_{Time.frameCount}", true, false, line));
+            Dialogue.Play(DialogueData.Create($"warning_bad_{weeks}_{Time.frameCount}", true, false, line));
         }
 
         private void HandleGameEnded(GameResult result)

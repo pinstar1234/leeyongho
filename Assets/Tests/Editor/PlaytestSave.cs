@@ -28,21 +28,21 @@ namespace InfraTown.Tests.Playtest
     {
         private class GameSnapshot
         {
-            public int year, month, day, totalDays, money, subsidy, population, capacity, powerTarget, powerAvailable, powerUsed;
+            public int year, month, week, totalWeeks, money, subsidy, population, capacity, powerTarget, powerAvailable, powerUsed, gasTarget, gasAvailable, gasUsed;
             public float satisfaction, missingPenalty;
-            public int daysElapsed, goodStreak, badStreak;
+            public int weeksElapsed, goodStreak, badStreak;
             public List<string> buildings;
             public int playedDialogues;
             public bool storyStarted, tutorialActive, tutorialCompleted;
-            public int tutorialDay;
+            public int tutorialWeek;
             public string playerName;
             public GameSpeed speed;
 
             public override string ToString() =>
-                $"{year}년 {month}월 {day}일(누적 {totalDays}일), 돈 {money:N0}, 신청 지원금 {subsidy:N0}, 인구 {population}/{capacity}, " +
-                $"전력 {powerUsed}/{powerAvailable}kW(다음 달 {powerTarget}), 만족도 {satisfaction:F2}(미설치 감점 {missingPenalty}), " +
-                $"엔딩 판정 {daysElapsed}일·좋음 {goodStreak}·나쁨 {badStreak}, 건물 {buildings.Count}개, 본 대화 {playedDialogues}개, " +
-                $"튜토리얼 {(tutorialCompleted ? "끝남" : tutorialActive ? $"{tutorialDay}일차" : "시작 전")}, 이름 {playerName}, 배속 {speed}";
+                $"{year}년 {month}월 {week}주차(누적 {totalWeeks}주), 돈 {money:N0}, 신청 지원금 {subsidy:N0}, 인구 {population}/{capacity}, " +
+                $"전력 {powerUsed}/{powerAvailable}kW(다음 달 {powerTarget}), 가스 {gasUsed}/{gasAvailable}(다음 달 {gasTarget}), 만족도 {satisfaction:F2}(미설치 감점 {missingPenalty}), " +
+                $"엔딩 판정 {weeksElapsed}주·좋음 {goodStreak}·나쁨 {badStreak}, 건물 {buildings.Count}개, 본 대화 {playedDialogues}개, " +
+                $"튜토리얼 {(tutorialCompleted ? "끝남" : tutorialActive ? $"{tutorialWeek}주차" : "시작 전")}, 이름 {playerName}, 배속 {speed}";
         }
 
         private static GameSnapshot Snapshot()
@@ -54,8 +54,8 @@ namespace InfraTown.Tests.Playtest
             var triggers = Object.FindObjectOfType<Dlg.DialogueTriggers>();
             return new GameSnapshot
             {
-                year = t.CurrentYear, month = t.CurrentMonth, day = t.CurrentDay,
-                totalDays = TestWorld.GetField<int>(t, "_totalDaysPassed"),
+                year = t.CurrentYear, month = t.CurrentMonth, week = t.CurrentWeek,
+                totalWeeks = t.TotalWeeksPassed,
                 speed = t.CurrentSpeed,
                 money = EconomyManager.Instance.CurrentMoney,
                 subsidy = EconomyManager.Instance.GetRequestedSubsidy(),
@@ -63,10 +63,10 @@ namespace InfraTown.Tests.Playtest
                 capacity = PopulationManager.Instance.MaxPopulationCapacity,
                 powerTarget = PowerManager.Instance.TargetPurchasedPower,
                 powerAvailable = PowerManager.Instance.CurrentAvailablePower,
-                powerUsed = PowerManager.Instance.CurrentUsedPower,
+                powerUsed = PowerManager.Instance.CurrentUsedPower,                gasTarget = InfraTown.Gas.GasManager.Instance.TargetPurchasedGas,                gasAvailable = InfraTown.Gas.GasManager.Instance.CurrentAvailableGas,                gasUsed = InfraTown.Gas.GasManager.Instance.CurrentUsedGas,
                 satisfaction = sat.CurrentAverageSatisfaction,
                 missingPenalty = sat.TotalMissingFacilityPenalty,
-                daysElapsed = outcome.DaysElapsed, goodStreak = outcome.GoodStreakDays, badStreak = outcome.BadStreakDays,
+                weeksElapsed = outcome.WeeksElapsed, goodStreak = outcome.GoodStreakWeeks, badStreak = outcome.BadStreakWeeks,
                 buildings = GameLoopManager.Instance.PlacedBuildings
                     .Where(b => b != null)
                     .Select(b => $"{b.Data.buildingID}@{b.OriginGridPos.x},{b.OriginGridPos.y}/{b.RotationY}")
@@ -75,7 +75,7 @@ namespace InfraTown.Tests.Playtest
                 storyStarted = triggers != null && triggers.StoryStarted,
                 tutorialActive = tutorial != null && tutorial.IsActive,
                 tutorialCompleted = tutorial != null && tutorial.IsCompleted,
-                tutorialDay = tutorial != null ? tutorial.CurrentDay : 0,
+                tutorialWeek = tutorial != null ? tutorial.CurrentWeek : 0,
                 playerName = PlayerProfile.PlayerName,
             };
         }
@@ -86,7 +86,7 @@ namespace InfraTown.Tests.Playtest
             if (Directory.Exists(folder)) Directory.Delete(folder, true);
             SaveSystem.FolderOverrideForTests = folder;
 
-            Section("S-1. 마을을 만들고 며칠 진행");
+            Section("S-1. 마을을 만들고 몇 주 진행");
             PlayerProfile.TrySetPlayerName("민수", out _);
             yield return PlaceHouses();
             yield return PlaceMiddle(withNimby: true);
@@ -100,14 +100,14 @@ namespace InfraTown.Tests.Playtest
             manager.CancelBuildingMode();
 
             EconomyManager.Instance.SetGovernmentSubsidyAmount(15100);
-            PowerManager.Instance.SetTargetPurchasedPower(1230);
-            yield return WaitDays(40); // 월 정산·주간 틱·튜토리얼 진행
+            PowerManager.Instance.SetTargetPurchasedPower(1230);            InfraTown.Gas.GasManager.Instance.SetTargetPurchasedGas(470);
+            yield return WaitWeeks(4); // 월 정산·주간 틱·튜토리얼 진행 (튜토리얼 7주 중간에 저장)
             TimeManager.Instance.SetGameSpeed(GameSpeed.Fast);
             yield return Frames(2);
 
             var before = Snapshot();
             Note($"저장 직전: {before}");
-            Check("저장 전에 진행된 내용이 있음", before.buildings.Count > 30 && before.daysElapsed >= 40 && before.storyStarted, $"건물 {before.buildings.Count}개, {before.daysElapsed}일");
+            Check("저장 전에 진행된 내용이 있음", before.buildings.Count > 30 && before.weeksElapsed >= 5 && before.storyStarted && before.tutorialActive, $"건물 {before.buildings.Count}개, {before.weeksElapsed}주");
 
             // 카메라는 저장하지 않음 → 저장 직전에 옮겨 두고, 이어하기 뒤 씬 기본 위치인지 확인
             var cam = Camera.main;
@@ -118,7 +118,7 @@ namespace InfraTown.Tests.Playtest
             Check("저장 성공", SaveSystem.SaveGame(), SaveSystem.LastError);
             Check("저장 파일 생성", SaveSystem.HasSave(), SaveSystem.GetSavePath());
             var summary = SaveSystem.GetSummary();
-            Note($"저장 요약: {summary?.playerName}, {summary?.year}년 {summary?.month}월 {summary?.day}일, 돈 {summary?.money:N0}, 인구 {summary?.population}, 건물 {summary?.buildingCount}개, {summary?.savedAt}");
+            Note($"저장 요약: {summary?.playerName}, {summary?.year}년 {summary?.month}월 {summary?.week}주차, 돈 {summary?.money:N0}, 인구 {summary?.population}, 건물 {summary?.buildingCount}개, {summary?.savedAt}");
             Check("저장 요약이 지금 상태와 같음", summary != null && summary.money == before.money && summary.population == before.population && summary.buildingCount == before.buildings.Count);
             Shot("s01_before_save", null);
 
@@ -140,20 +140,22 @@ namespace InfraTown.Tests.Playtest
 
             var after = Snapshot();
             Note($"이어하기 직후: {after}");
-            Check("날짜·누적 일수·배속", after.year == before.year && after.month == before.month && after.day == before.day && after.totalDays == before.totalDays && after.speed == before.speed,
-                $"{before.year}/{before.month}/{before.day} → {after.year}/{after.month}/{after.day}, {before.speed} → {after.speed}");
+            Check("날짜·누적 주 수·배속", after.year == before.year && after.month == before.month && after.week == before.week && after.totalWeeks == before.totalWeeks && after.speed == before.speed,
+                $"{before.year}/{before.month}/{before.week} → {after.year}/{after.month}/{after.week}, {before.speed} → {after.speed}");
             Check("돈·신청 지원금", after.money == before.money && after.subsidy == before.subsidy, $"{before.money:N0} → {after.money:N0}");
             Check("인구·수용 인구", after.population == before.population && after.capacity == before.capacity, $"{before.population}/{before.capacity} → {after.population}/{after.capacity}");
             Check("전력 (보유·다음 달 구매량·사용량)", after.powerAvailable == before.powerAvailable && after.powerTarget == before.powerTarget && after.powerUsed == before.powerUsed,
                 $"{before.powerUsed}/{before.powerAvailable}({before.powerTarget}) → {after.powerUsed}/{after.powerAvailable}({after.powerTarget})");
+            Check("가스 (보유·다음 달 구매량·사용량)", after.gasAvailable == before.gasAvailable && after.gasTarget == before.gasTarget && after.gasUsed == before.gasUsed && after.gasTarget == 470,
+                $"{before.gasUsed}/{before.gasAvailable}({before.gasTarget}) → {after.gasUsed}/{after.gasAvailable}({after.gasTarget})");
             Check("만족도·미설치 감점", Mathf.Abs(after.satisfaction - before.satisfaction) < 0.01f && Mathf.Approximately(after.missingPenalty, before.missingPenalty),
                 $"{before.satisfaction:F2} → {after.satisfaction:F2}");
-            Check("엔딩 판정 일수", after.daysElapsed == before.daysElapsed && after.goodStreak == before.goodStreak && after.badStreak == before.badStreak);
+            Check("엔딩 판정 주 수", after.weeksElapsed == before.weeksElapsed && after.goodStreak == before.goodStreak && after.badStreak == before.badStreak);
             Check("건물 종류·위치·회전 전부", after.buildings.SequenceEqual(before.buildings), $"{before.buildings.Count} → {after.buildings.Count}개");
             Check("회전한 건물의 회전도 그대로", after.buildings.Any(b => b.StartsWith("convenience_store@40,20/90")));
             Check("주인공 이름", after.playerName == before.playerName);
             Check("본 대화 기록", after.playedDialogues == before.playedDialogues, $"{before.playedDialogues} → {after.playedDialogues}");
-            Check("튜토리얼 진행", after.tutorialActive == before.tutorialActive && after.tutorialCompleted == before.tutorialCompleted && after.tutorialDay == before.tutorialDay);
+            Check("튜토리얼 진행", after.tutorialActive == before.tutorialActive && after.tutorialCompleted == before.tutorialCompleted && after.tutorialWeek == before.tutorialWeek);
             Check("오프닝이 다시 시작되지 않음 (이야기 이미 시작된 상태)", after.storyStarted && !Dlg.DialogueEventManager.Instance.IsBusy);
 
             var camAfter = Camera.main;
@@ -166,11 +168,11 @@ namespace InfraTown.Tests.Playtest
             Shot("s02_after_continue", null);
 
             Section("S-4. 이어서 플레이");
-            int dayBefore = DayIndex(TimeManager.Instance);
-            int elapsedBefore = GameOutcomeManager.Instance.DaysElapsed;
-            yield return WaitDays(3);
-            Check("시간이 이어서 흐르고 엔딩 판정도 이어서 셈", DayIndex(TimeManager.Instance) - dayBefore == 3 && GameOutcomeManager.Instance.DaysElapsed - elapsedBefore == 3,
-                $"날짜 +{DayIndex(TimeManager.Instance) - dayBefore}, 판정 +{GameOutcomeManager.Instance.DaysElapsed - elapsedBefore}");
+            int weekBefore = WeekIndex(TimeManager.Instance);
+            int elapsedBefore = GameOutcomeManager.Instance.WeeksElapsed;
+            yield return WaitWeeks(3);
+            Check("시간이 이어서 흐르고 엔딩 판정도 이어서 셈", WeekIndex(TimeManager.Instance) - weekBefore == 3 && GameOutcomeManager.Instance.WeeksElapsed - elapsedBefore == 3,
+                $"날짜 +{WeekIndex(TimeManager.Instance) - weekBefore}, 판정 +{GameOutcomeManager.Instance.WeeksElapsed - elapsedBefore}");
             int moneyBefore = EconomyManager.Instance.CurrentMoney;
             Check("불러온 건물(축사 50,30) 자리에는 겹쳐 지을 수 없음", Place("house", 50, 30, null) == null && EconomyManager.Instance.CurrentMoney == moneyBefore);
             var built = Place("house", 55, 10, "after_load_house");
