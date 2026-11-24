@@ -42,6 +42,25 @@ namespace InfraTown.Building
         /// <summary>건물이 설치됐을 때 (연출·효과용)</summary>
         public event Action<BuildingInstance> OnBuildingPlaced;
 
+        /// <summary>건물을 골라 배치 중인지 (미리보기가 마우스를 따라다니는 건설 모드)</summary>
+        public bool IsPlacingBuilding => _selectedBuildingData != null;
+
+        /// <summary>
+        /// 건설 모드가 켜지거나 꺼질 때 (true = 배치 시작, false = 취소·종료). 건물을 바꿔 고를 때는 다시 알리지 않는다.
+        /// 건설 독 UI(BuildDockUI) 등이 구독
+        /// </summary>
+        public event Action<bool> OnPlacementModeChanged;
+
+        private bool _notifiedPlacing;
+
+        /// <summary>배치 상태가 마지막으로 알린 값과 달라졌을 때만 OnPlacementModeChanged 발생</summary>
+        private void NotifyPlacementMode()
+        {
+            if (_notifiedPlacing == IsPlacingBuilding) return;
+            _notifiedPlacing = IsPlacingBuilding;
+            OnPlacementModeChanged?.Invoke(_notifiedPlacing);
+        }
+
         private BuildingData _selectedBuildingData;
         private BuildingData _lastSelectedBuildingData;
         private GameObject _previewInstance;
@@ -207,7 +226,7 @@ namespace InfraTown.Building
                 return;
             }
 
-            CancelBuildingMode();
+            ClearBuildingMode(); // 이전 미리보기 정리 (건물을 바꿔 고를 때 꺼짐→켜짐 알림이 나가지 않도록 알림 없이)
 
             // 다른 건물을 고르면 회전 초기화, 같은 건물을 다시 고르면 직전 회전 유지
             if (data != _lastSelectedBuildingData) CurrentRotationY = 0f;
@@ -225,6 +244,7 @@ namespace InfraTown.Building
 
             _previewRenderers = _previewInstance.GetComponentsInChildren<MeshRenderer>();
             SetPreviewMaterial(validPreviewMaterial);
+            NotifyPlacementMode();
         }
 
         /// <summary>
@@ -358,6 +378,12 @@ namespace InfraTown.Building
         }
 
         public void CancelBuildingMode()
+        {
+            ClearBuildingMode();
+            NotifyPlacementMode();
+        }
+
+        private void ClearBuildingMode()
         {
             _selectedBuildingData = null;
             if (_previewInstance != null)
