@@ -179,13 +179,14 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 돈이_모자라면_가스를_사지_못한다()
+        public void 돈이_모자라면_가진_돈만큼만_가스를_산다()
         {
             var economy = _world.CreateManager<EconomyManager>();
-            economy.ApplySaveState(new EconomySaveState { money = 100 });
+            economy.ApplySaveState(new EconomySaveState { money = 105 }); // 단가 10원 → 목표 100 중 10만, 5원 남음
             var gas = _world.CreateManager<GasManager>(callStart: true);
-            Assert.AreEqual(0, gas.CurrentAvailableGas);
-            Assert.AreEqual(100, economy.CurrentMoney);
+            Assert.AreEqual(10, gas.CurrentAvailableGas);
+            Assert.AreEqual(90, gas.LastPurchaseShortfall);
+            Assert.AreEqual(5, economy.CurrentMoney);
         }
 
         [Test]

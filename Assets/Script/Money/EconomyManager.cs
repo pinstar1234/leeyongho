@@ -129,6 +129,19 @@ namespace InfraTown.Economy
         }
 
         /// <summary>
+        /// 가진 돈 안에서 최대 maxUnits개까지 단가 pricePerUnit으로 구매하고 산 개수를 돌려준다 (전력·가스 부분 구매, 사용자 기획 2026-11-24).
+        /// 돈이 모자라면 살 수 있는 만큼만 사고, 전혀 못 사면 0
+        /// </summary>
+        public int BuyUnits(int maxUnits, int pricePerUnit)
+        {
+            if (maxUnits <= 0) return 0;
+            if (pricePerUnit <= 0) return maxUnits;
+            int units = Mathf.Min(maxUnits, CurrentMoney / pricePerUnit);
+            if (units > 0) TrySpendMoney(units * pricePerUnit);
+            return units;
+        }
+
+        /// <summary>
         /// 자금 추가 (수입)
         /// </summary>
         public void AddMoney(int amount)

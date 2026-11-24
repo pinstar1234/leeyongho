@@ -107,6 +107,9 @@ namespace InfraTown.Testing
                 ("Season_YearCyclePowerGas", Season_YearCyclePowerGas),
                 ("Power_BlackoutPenalty", Power_BlackoutPenalty),
                 ("Gas_ShortagePenalty", Gas_ShortagePenalty),
+                ("Settlement_WarningTwoWeeksBefore", Settlement_WarningTwoWeeksBefore),
+                ("Settlement_PartialPurchasePowerFirst", Settlement_PartialPurchasePowerFirst),
+                ("Power_PolesOffOuterFirst", Power_PolesOffOuterFirst),
                 ("Build_RandomPlacementSeed", Build_RandomPlacementSeed),
                 ("Save_FiveSlotsWrite", Save_FiveSlotsWrite),
                 ("Save_ContinueChosenSlot", Save_ContinueChosenSlot),
@@ -691,6 +694,132 @@ namespace InfraTown.Testing
             gas.ProcessMonthlyGasPurchase();
             yield return Frames(1);
             Expect(Mathf.Abs(Satisfaction - before) < 0.01f, $"가스 회복 후 만족도 {Satisfaction:F1} (원래 {before:F1})");
+        }
+
+        // ───────────────────────── 4-1. 정산 예보·부분 구매·전봇대 정전 순서 (사용자 기획 2026-11-24) ─────────────────────────
+
+        private IEnumerator Settlement_WarningTwoWeeksBefore()
+        {
+            var eco = EconomyManager.Instance;
+            var power = PowerManager.Instance;
+            var gas = GasManager.Instance;
+            var forecast = SettlementForecaster.Instance;
+            if (!Expect(forecast != null, "SettlementForecaster 없음 (GameLoopManager가 추가해야 함)")) yield break;
+            int subsidy = eco.GetRequestedSubsidy(), powerTarget = power.TargetPurchasedPower, gasTarget = gas.TargetPurchasedGas;
+            int warnings = 0;
+            Action<bool> onWarning = on => { if (on) warnings++; };
+            forecast.OnWarningChanged += onWarning;
+            try
+            {
+                AdvanceToNextMonth(); // 1주차
+                // 흑자 기준: 지원금 최대, 전력·가스 구매 0 → 나갈 돈 = 유지비
+                eco.SetGovernmentSubsidyAmount(eco.GetMaxEligibleSubsidy());
+                power.SetTargetPurchasedPower(0);
+                gas.SetTargetPurchasedGas(0);
+                if (!Expect(!forecast.IsDeficit, $"유지비 {forecast.ExpectedMaintenance:N0}원이 지원금 {forecast.ExpectedSubsidy:N0}원보다 많아 검사 불가")) yield break;
+
+                power.SetTargetPurchasedPower(power.MaxPurchasablePower); // 플레이어가 구매량을 크게 잡아 적자 (전력 20,000 + 가스 20,000원)
+                gas.SetTargetPurchasedGas(gas.MaxPurchasableGas);
+                Expect(forecast.IsDeficit, $"적자가 아님 (지원금 {forecast.ExpectedSubsidy:N0}, 나갈 돈 {forecast.ExpectedOutgoing:N0})");
+                Expect(!forecast.IsWarning, $"{TimeM.CurrentWeek}주차(정산 {forecast.WeeksUntilSettlement}주 전)에 벌써 경고");
+                AdvanceWeek(); // 2주차
+                Expect(!forecast.IsWarning, $"{TimeM.CurrentWeek}주차(정산 {forecast.WeeksUntilSettlement}주 전)에 벌써 경고");
+                AdvanceWeek(); // 3주차 = 정산 2주 전
+                Expect(forecast.IsWarning && warnings == 1, $"{TimeM.CurrentWeek}주차(정산 {forecast.WeeksUntilSettlement}주 전) 경고 {forecast.IsWarning}, 알림 {warnings}번");
+                power.SetTargetPurchasedPower(0); // 플레이어가 슬라이더로 고침
+                gas.SetTargetPurchasedGas(0);
+                Expect(!forecast.IsWarning, $"구매량을 줄였는데 경고 유지 (지원금 {forecast.ExpectedSubsidy:N0}, 나갈 돈 {forecast.ExpectedOutgoing:N0})");
+            }
+            finally
+            {
+                forecast.OnWarningChanged -= onWarning;
+                eco.SetGovernmentSubsidyAmount(subsidy);
+                power.SetTargetPurchasedPower(powerTarget);
+                gas.SetTargetPurchasedGas(gasTarget);
+            }
+        }
+
+        private IEnumerator Settlement_PartialPurchasePowerFirst()
+        {
+            var eco = EconomyManager.Instance;
+            var power = PowerManager.Instance;
+            var gas = GasManager.Instance;
+            var forecast = SettlementForecaster.Instance;
+            int money = eco.CurrentMoney, subsidy = eco.GetRequestedSubsidy();
+            int powerTarget = power.TargetPurchasedPower, gasTarget = gas.TargetPurchasedGas;
+
+            while (TimeM.CurrentWeek != TimeManager.WeeksPerMonth) AdvanceWeek();
+            power.SetTargetPurchasedPower(1000); // 10,000원
+            gas.SetTargetPurchasedGas(500);      // 5,000원
+            int maintenance = GameLoopManager.Instance.GetTotalMaintenanceCost();
+            // 지원금 0, 잔액 = 유지비 + 전력 10,000 + 가스 2,000 → 전력은 다 사고 가스는 200만
+            eco.ApplySaveState(new EconomySaveState { money = maintenance + 12000, requestedSubsidy = 0 });
+            Expect(forecast == null || (forecast.ExpectedPurchasedPower == 1000 && forecast.ExpectedPurchasedGas == 200),
+                $"예보 전력 {forecast?.ExpectedPurchasedPower}, 가스 {forecast?.ExpectedPurchasedGas} (1000/200)");
+            AdvanceWeek(); // 정산
+            Expect(power.CurrentAvailablePower == 1000, $"전력 {power.CurrentAvailablePower} (1000 — 전력 먼저)");
+            Expect(gas.CurrentAvailableGas == 200 && gas.LastPurchaseShortfall == 300, $"가스 {gas.CurrentAvailableGas}, 못 산 양 {gas.LastPurchaseShortfall} (200/300)");
+            Expect(eco.CurrentMoney == 0, $"잔액 {eco.CurrentMoney:N0}");
+
+            // 전력도 다 못 사는 경우: 잔액 = 유지비 + 7,005 → 전력 700, 가스 0
+            while (TimeM.CurrentWeek != TimeManager.WeeksPerMonth) AdvanceWeek();
+            maintenance = GameLoopManager.Instance.GetTotalMaintenanceCost();
+            eco.ApplySaveState(new EconomySaveState { money = maintenance + 7005, requestedSubsidy = 0 });
+            AdvanceWeek();
+            Expect(power.CurrentAvailablePower == 700 && power.LastPurchaseShortfall == 300, $"전력 {power.CurrentAvailablePower}, 못 산 양 {power.LastPurchaseShortfall} (700/300)");
+            Expect(gas.CurrentAvailableGas == 0, $"가스 {gas.CurrentAvailableGas} (0)");
+            Expect(eco.CurrentMoney == 5, $"잔액 {eco.CurrentMoney:N0} (5)");
+
+            // 원래대로
+            eco.ApplySaveState(new EconomySaveState { money = money, requestedSubsidy = subsidy });
+            power.SetTargetPurchasedPower(Math.Max(powerTarget, 1000));
+            gas.SetTargetPurchasedGas(Math.Max(gasTarget, 500));
+            power.ProcessMonthlyPowerPurchase();
+            gas.ProcessMonthlyGasPurchase();
+            eco.ApplySaveState(new EconomySaveState { money = money, requestedSubsidy = subsidy });
+            yield return Frames(1);
+        }
+
+        private IEnumerator Power_PolesOffOuterFirst()
+        {
+            var power = PowerManager.Instance;
+            float perPoleBefore = power.ShortagePercentPerPole;
+            var field = typeof(PowerManager).GetField("currentAvailablePower", AnyInstance);
+            int availableBefore = power.CurrentAvailablePower;
+            var xs = new[] { 40, 44, 48, 52, 56 };
+            var poles = xs.Select(x => Place("power_pole", x, 20)).ToList();
+            try
+            {
+                if (!Expect(poles.All(p => p != null), "전신주 5개를 짓지 못함")) yield break;
+                yield return Frames(1);
+                bool On(int i) => poles[i].GetComponent<UtilityPoleInstance>().IsPowered;
+                int used = power.CurrentUsedPower;
+                if (!Expect(used >= 50, $"필요 전력 {used}kW가 너무 적음")) yield break;
+
+                field.SetValue(power, used - used / 10); // 약 10% 부족
+                power.ShortagePercentPerPole = 5f;        // 다시 판정 → 2개
+                Expect(power.BlackoutPoleCount == 2, $"부족 {power.ShortagePercent:F2}%에 꺼진 전봇대 {power.BlackoutPoleCount}개 (2)");
+                Expect(!On(0) && !On(4) && On(1) && On(2) && On(3), $"외곽(x=40, 56)부터 꺼져야 함: {string.Join(",", xs.Select((x, i) => $"{x}:{(On(i) ? "O" : "X")}"))}");
+
+                power.ShortagePercentPerPole = 5f; // 같은 상태로 다시 판정해도 같은 결과
+                Expect(!On(0) && !On(4) && On(2), "다시 판정했더니 다른 전봇대가 꺼짐");
+
+                field.SetValue(power, used - used / 5); // 약 20% 부족 → 4개, 중앙만 남음
+                power.ShortagePercentPerPole = 5f;
+                Expect(power.BlackoutPoleCount == 4 && On(2) && !On(1) && !On(3), $"부족 {power.ShortagePercent:F2}%: 중앙(x=48)만 남아야 함, 꺼짐 {power.BlackoutPoleCount}개");
+
+                field.SetValue(power, used - used / 10);
+                power.ShortagePercentPerPole = 2f; // 10% ÷ 2% = 5개 (전부)
+                Expect(power.BlackoutPoleCount == 5, $"2%일 때 꺼진 전봇대 {power.BlackoutPoleCount}개 (5)");
+            }
+            finally
+            {
+                field.SetValue(power, availableBefore);
+                power.ShortagePercentPerPole = perPoleBefore;
+                foreach (var p in poles) Demolish(p);
+            }
+            yield return Frames(1);
+            Expect(!power.HasPowerGrid, "전신주 철거 후에도 전력망 있음");
         }
 
         // ───────────────────────── 5. 무작위 배치 (seed) ─────────────────────────

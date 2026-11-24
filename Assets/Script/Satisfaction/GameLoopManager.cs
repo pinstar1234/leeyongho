@@ -41,6 +41,12 @@ namespace InfraTown.Core
                 gameObject.AddComponent<GasManager>();
             }
 
+            // 정산 2주 전 적자 경고도 씬에 없으면 추가 (사용자 기획 2026-11-24, 가스 매니저 뒤에 추가해야 가스 비용을 구독함)
+            if (SettlementForecaster.Instance == null)
+            {
+                gameObject.AddComponent<SettlementForecaster>();
+            }
+
             BuildingInstance.OnBuildingDestroyed += HandleBuildingDestroyed;
 
             // TimeManager 틱 이벤트 연동
@@ -162,7 +168,8 @@ namespace InfraTown.Core
 
         /// <summary>
         /// 1달(4주) 틱: 지원금 수령 → 유지비 지출 → 다음 달 전력 구매 → 가스 구매 순서로 정산
-        /// (지원금이 먼저 들어와야 전력 구매 자금이 확보되므로 순서를 여기서 보장)
+        /// (지원금이 먼저 들어와야 전력 구매 자금이 확보되므로 순서를 여기서 보장).
+        /// 돈이 모자라면 전력을 정한 양까지 살 수 있는 만큼 먼저 사고, 남은 돈으로 가스를 산다 (사용자 기획 2026-11-24)
         /// </summary>
         private void HandleMonthlyTick()
         {

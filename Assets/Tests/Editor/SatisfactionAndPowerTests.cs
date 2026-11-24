@@ -180,12 +180,22 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 돈이_부족하면_전력을_구매하지_못한다()
+        public void 돈이_부족하면_가진_돈만큼만_전력을_구매한다()
         {
-            _economy.TrySpendMoney(9000);
+            _economy.TrySpendMoney(9000); // 잔액 1,000원 → 목표 200kW 중 100kW만
+            MonthlyPurchase();
+            Assert.AreEqual(100, _power.CurrentAvailablePower);
+            Assert.AreEqual(100, _power.LastPurchaseShortfall);
+            Assert.AreEqual(0, _economy.CurrentMoney);
+        }
+
+        [Test]
+        public void 돈이_전혀_없으면_전력을_구매하지_못한다()
+        {
+            _economy.TrySpendMoney(10000);
             MonthlyPurchase();
             Assert.AreEqual(0, _power.CurrentAvailablePower);
-            Assert.AreEqual(1000, _economy.CurrentMoney);
+            Assert.AreEqual(200, _power.LastPurchaseShortfall);
         }
 
         [Test]

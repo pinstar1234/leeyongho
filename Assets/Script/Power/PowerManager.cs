@@ -43,6 +43,10 @@ namespace InfraTown.Power
         [Tooltip("전봇대 망이 있을 때, 전기가 들어오지 않는 주택 1채의 만족도 감점")]
         [SerializeField] private float unpoweredHousingPenalty = 15f;
 
+        [Header("전봇대 정전 (사용자 기획 2026-11-24) — 외곽부터 중앙으로 꺼짐")]
+        [Tooltip("필요 전력 대비 부족 비율이 이 %만큼 늘 때마다 전봇대가 1개씩 더 꺼진다 (부족하면 최소 1개, 전력 0이면 전부). 밸런스 후보 2~5%")]
+        [SerializeField] private float shortagePercentPerPole = 5f;
+
         [Header("현재 전력 현황")]
         [SerializeField] private int currentAvailablePower = 0; // 현재 보유 전력
         [SerializeField] private int currentUsedPower = 0;      // 현재 필요 전력 (건물 + 인구 계절 소비)
@@ -99,8 +103,46 @@ namespace InfraTown.Power
         private List<UtilityPoleInstance> _allPoles = new List<UtilityPoleInstance>();
         private List<UtilityPoleInstance> _blackedOutPoles = new List<UtilityPoleInstance>();
 
-        /// <summary>현재 정전된 전봇대 목록 (연출용)</summary>
+        /// <summary>현재 정전된 전봇대 목록 (꺼진 순서 = 외곽부터, 연출용)</summary>
         public IReadOnlyList<UtilityPoleInstance> BlackedOutPoles => _blackedOutPoles;
+
+        /// <summary>부족 비율 몇 %마다 전봇대 1개가 꺼지는지 (밸런스 조정·테스트용, 바꾸면 바로 다시 판정)</summary>
+        public float ShortagePercentPerPole
+        {
+            get => shortagePercentPerPole;
+            set { shortagePercentPerPole = Mathf.Max(0.01f, value); EvaluatePowerSupply(); }
+        }
+
+        /// <summary>필요 전력 대비 부족한 비율 (%) — (필요 − 보유) / 필요 × 100, 부족하지 않으면 0</summary>
+        public float ShortagePercent => IsPowerShortage && currentUsedPower > 0
+            ? (currentUsedPower - currentAvailablePower) * 100f / currentUsedPower
+            : 0f;
+
+        /// <summary>
+        /// 지금 꺼져야 하는 전봇대 수: 부족 비율 ÷ shortagePercentPerPole (올림, 최소 1). 전력 0이면 전부, 부족하지 않으면 0
+        /// </summary>
+        public int BlackoutPoleCount
+        {
+            get
+            {
+                int poles = CountPoles();
+                if (!IsPowerShortage || poles == 0) return 0;
+                if (currentAvailablePower <= 0) return poles;
+                float per = Mathf.Max(0.01f, shortagePercentPerPole);
+                int count = Mathf.CeilToInt(ShortagePercent / per - 0.0001f); // 10% ÷ 2% = 5개 (부동소수 오차로 6이 되지 않게)
+                return Mathf.Clamp(count, 1, poles);
+            }
+        }
+
+        /// <summary>월 구매 때 돈이 모자라 사지 못한 전력 (kW, 0이면 다 삼)</summary>
+        public int LastPurchaseShortfall { get; private set; }
+
+        /// <summary>다음 달 구매량을 최대치 대비 비율 0~1로 (슬라이더를 비율로 쓸 때)</summary>
+        public float TargetPurchaseRatio => maxPurchasablePower > 0 ? (float)targetPurchasedPower / maxPurchasablePower : 0f;
+
+        /// <summary>다음 달 구매량을 최대치 대비 비율 0~1로 정함 (purchaseStep 단위로 맞춤)</summary>
+        public void SetTargetPurchaseRatio(float ratio) =>
+            SetTargetPurchasedPower(Mathf.RoundToInt(Mathf.Clamp01(ratio) * Mathf.Max(0, maxPurchasablePower)));
 
         public event Action<int, int> OnPowerDataChanged; // (사용 전력, 보유 전력)
         public event Action<int, int> OnTargetPowerChanged; // (다음 달 구매량, 월 구매 비용)
@@ -186,15 +228,19 @@ namespace InfraTown.Power
         }
 
         /// <summary>
-        /// 이번 달 전력 구매 (목표량 × 단가). 자금이 부족하면 구매 실패 → 보유 전력 0
+        /// 이번 달 전력 구매 (목표량 × 단가). 자금이 모자라면 가진 돈으로 살 수 있는 만큼만 산다 (사용자 기획 2026-11-24, 예전엔 전부 아니면 0).
+        /// 월 정산 순서상 가스보다 먼저 사므로, 남은 돈이 가스 구매로 넘어간다
         /// </summary>
         public void ProcessMonthlyPowerPurchase()
         {
-            int totalCost = targetPurchasedPower * pricePerPowerUnit;
-
             if (EconomyManager.Instance != null)
             {
-                currentAvailablePower = EconomyManager.Instance.TrySpendMoney(totalCost) ? targetPurchasedPower : 0;
+                currentAvailablePower = EconomyManager.Instance.BuyUnits(targetPurchasedPower, pricePerPowerUnit);
+                LastPurchaseShortfall = targetPurchasedPower - currentAvailablePower;
+                if (LastPurchaseShortfall > 0)
+                {
+                    Debug.LogWarning($"[PowerManager] 자금 부족으로 전력 {currentAvailablePower}/{targetPurchasedPower} kW만 구매했습니다.");
+                }
             }
 
             EvaluatePowerSupply();
@@ -247,24 +293,60 @@ namespace InfraTown.Power
         {
             RestoreAllPoles();
 
-            if (IsPowerShortage && _allPoles.Count > 0)
+            // 무작위가 아니라 외곽(전봇대들의 중심에서 먼 것)부터 부족 비율만큼 끈다 (사용자 기획 2026-11-24).
+            // 같은 상태면 항상 같은 전봇대가 꺼지므로 재계산·저장/불러오기에도 결과가 같다
+            int blackoutCount = BlackoutPoleCount;
+            if (blackoutCount > 0)
             {
-                int blackoutCount = UnityEngine.Random.Range(1, Mathf.Min(3, _allPoles.Count + 1));
-                List<UtilityPoleInstance> tempPool = new List<UtilityPoleInstance>(_allPoles);
-
-                for (int i = 0; i < blackoutCount; i++)
+                var order = GetBlackoutOrder();
+                for (int i = 0; i < blackoutCount && i < order.Count; i++)
                 {
-                    if (tempPool.Count == 0) break;
-                    int randomIndex = UnityEngine.Random.Range(0, tempPool.Count);
-                    UtilityPoleInstance targetPole = tempPool[randomIndex];
-
-                    targetPole.SetPowerState(false);
-                    _blackedOutPoles.Add(targetPole);
-                    tempPool.RemoveAt(randomIndex);
+                    order[i].SetPowerState(false);
+                    _blackedOutPoles.Add(order[i]);
                 }
             }
 
             OnPowerDataChanged?.Invoke(currentUsedPower, currentAvailablePower);
+        }
+
+        /// <summary>
+        /// 정전될 순서의 전봇대 목록: 모든 전봇대 중심(평균 위치)에서 먼 외곽부터 → 중앙 순.
+        /// 거리가 같으면 y가 작은 것, 그다음 x가 작은 것부터 (항상 같은 순서)
+        /// </summary>
+        public List<UtilityPoleInstance> GetBlackoutOrder()
+        {
+            var poles = new List<UtilityPoleInstance>();
+            foreach (var pole in _allPoles) if (pole != null) poles.Add(pole);
+            if (poles.Count <= 1) return poles;
+
+            // 정수로 정확히 비교: 전봇대 중심을 반 칸 단위(2x + 크기)로 두고, 평균 대신 합계와 개수를 곱해 비교한다
+            long n = poles.Count, sumX = 0, sumY = 0;
+            foreach (var p in poles) { var c = DoubledCenter(p); sumX += c.x; sumY += c.y; }
+
+            long DistanceSq(UtilityPoleInstance p)
+            {
+                var c = DoubledCenter(p);
+                long dx = n * c.x - sumX, dy = n * c.y - sumY;
+                return dx * dx + dy * dy;
+            }
+
+            poles.Sort((a, b) =>
+            {
+                int byDistance = DistanceSq(b).CompareTo(DistanceSq(a)); // 먼 것 먼저
+                if (byDistance != 0) return byDistance;
+                int byY = a.GridPos.y.CompareTo(b.GridPos.y);
+                return byY != 0 ? byY : a.GridPos.x.CompareTo(b.GridPos.x);
+            });
+            return poles;
+        }
+
+        private static Vector2Int DoubledCenter(UtilityPoleInstance pole) => pole.GridPos * 2 + pole.GridSize;
+
+        private int CountPoles()
+        {
+            int count = 0;
+            foreach (var pole in _allPoles) if (pole != null) count++;
+            return count;
         }
 
         private void RestoreAllPoles()

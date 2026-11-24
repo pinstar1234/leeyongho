@@ -156,16 +156,30 @@ namespace InfraTown.Gas
             NotifyChanged();
         }
 
+        /// <summary>월 구매 때 돈이 모자라 사지 못한 가스 (0이면 다 삼)</summary>
+        public int LastPurchaseShortfall { get; private set; }
+
+        /// <summary>다음 달 구매량을 최대치 대비 비율 0~1로 (슬라이더를 비율로 쓸 때)</summary>
+        public float TargetPurchaseRatio => maxPurchasableGas > 0 ? (float)targetPurchasedGas / maxPurchasableGas : 0f;
+
+        /// <summary>다음 달 구매량을 최대치 대비 비율 0~1로 정함 (purchaseStep 단위로 맞춤)</summary>
+        public void SetTargetPurchaseRatio(float ratio) =>
+            SetTargetPurchasedGas(Mathf.RoundToInt(Mathf.Clamp01(ratio) * Mathf.Max(0, maxPurchasableGas)));
+
         /// <summary>
-        /// 이번 달 가스 구매 (목표량 × 단가). 자금이 부족하면 구매 실패 → 보유량 0
+        /// 이번 달 가스 구매 (목표량 × 단가). 자금이 모자라면 남은 돈으로 살 수 있는 만큼만 산다 (사용자 기획 2026-11-24, 예전엔 전부 아니면 0).
+        /// 월 정산에서는 전력을 먼저 산 뒤 남은 돈으로 산다
         /// </summary>
         public void ProcessMonthlyGasPurchase()
         {
-            int totalCost = targetPurchasedGas * pricePerGasUnit;
-
             if (EconomyManager.Instance != null)
             {
-                currentAvailableGas = EconomyManager.Instance.TrySpendMoney(totalCost) ? targetPurchasedGas : 0;
+                currentAvailableGas = EconomyManager.Instance.BuyUnits(targetPurchasedGas, pricePerGasUnit);
+                LastPurchaseShortfall = targetPurchasedGas - currentAvailableGas;
+                if (LastPurchaseShortfall > 0)
+                {
+                    Debug.LogWarning($"[GasManager] 자금 부족으로 가스 {currentAvailableGas}/{targetPurchasedGas}만 구매했습니다.");
+                }
             }
 
             RecalculateGasUsage(false);
