@@ -17,13 +17,15 @@ InfraTown — 접근성(주민이 병원·소방서·경찰·편의시설에 얼
 | 팀원 1 | UI 제작 | `*UI.cs`, `BuildingUIManager.cs`, `BuildingSlotUI.cs`, `Assets/Script/UI/`, Canvas/UI 프리팹 |
 | 팀원 2 | 에셋 적용, 이펙트 등 디자인 | 씬(`.unity`), 프리팹, 머티리얼, 폰트, 스프라이트, `Assets/Plugins/`(DOTween) |
 
-- **기능(게임 로직) 코드만 수정한다.** 매니저, 데이터, 인스턴스, 그리드, 시간, 테스트용 스크립트(`SystemTestManager`, `GridTestObserver`)가 여기에 해당한다.
+- **기능(게임 로직) 코드만 생성·수정한다.** 매니저, 데이터, 인스턴스, 그리드, 시간, 테스트용 스크립트(`SystemTestManager`, `GridTestObserver`)가 여기에 해당한다.
 - 그 외 파일(UI 스크립트, 씬, 프리팹, 에셋, 프로젝트 설정)의 변경이 꼭 필요하면 **최소 2번 이상 사용자에게 확인을 받은 뒤** 변경한다. 한 번의 동의로 진행하지 않는다.
 - 기능 코드는 팀원이 UI/연출에서 가져다 쓸 수 있게 **열어둔다**: 상태는 `public` getter 프로퍼티, 상태 변화는 `public event`, 조정 수치는 `[SerializeField]`로 인스펙터에 노출. 기존 public API(메서드 이름·시그니처·이벤트)는 UI 스크립트가 의존하므로 바꾸면 사용처를 먼저 확인하고 사용자에게 알린다.
 
 ## 테스트 후 커밋
 
-커밋 전에 항상 테스트(단위 테스트 + 빌드 테스트, 아래)를 실행하고, 실패하면 커밋하지 않는다.
+**순서 (사용자 지침 2026-11-24)**: 코드를 만들거나 고치면 ① 컴파일 + 단위 테스트(`run-tests.ps1`, 컴파일 에러도 여기서 잡힘) → ② 통과했을 때만 빌드 테스트(`run-build-test.ps1`, 새 기능 `-Change feature` 10회 / 기존 기능 수정 `-Change fix` 3회, 회차별 로그 전부 수집) 순서로 진행한다. 하나라도 실패하면 커밋하지 않는다.
+- 테스트는 **`park1-test` 브랜치를 `Park1`에서 새로 만들어** 그 위에서 돌리고, 통과한 변경만 `Park1`에 반영한다.
+- Unity 라이선스 활성화가 필요한 방식(GameCI 등 CI 라이선스, 클라우드 빌드)은 이미 불가능한 것으로 확인됐다. 테스트는 항상 사용자 Windows PC의 PowerShell 스크립트(`Tools/*.ps1`)로 자동 실행한다. 이 저장소를 Linux 클라우드 컨테이너에서 열었으면 Unity·PowerShell이 없으므로 테스트를 돌렸다고 보고하지 말고, 사용자 PC에서 돌릴 명령을 안내한다.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1                       # EditMode 전체
@@ -98,6 +100,7 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 
 ## Git
 
-- 원격: `pinstar1234/leeyongho`, 기본 브랜치 `main`. 각자 브랜치(사용자: `Park1`)에서 작업 → `Merge` 브랜치 → `main`으로 PR.
+- 원격: `pinstar1234/leeyongho`, 기본 브랜치 `main`. 각자 브랜치(사용자: `Park1`)에서 작업 → `Merge` 브랜치 → `main`으로 PR. 테스트용 브랜치는 `park1-test`(위 참고).
+- **커밋과 푸시는 매번 하기 전에 사용자에게 물어보고** 허락을 받은 뒤 진행한다.
 - 씬·프리팹은 YAML 병합 충돌이 잦으므로 담당자가 아닌 씬/프리팹을 커밋에 포함하지 않는다.
 - `.csproj`, `.sln`, `Library/`, `Temp/`, `Logs/`, `UserSettings/`는 Unity가 생성하는 파일로 커밋하지 않는다.
