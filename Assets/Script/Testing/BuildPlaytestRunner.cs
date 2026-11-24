@@ -717,6 +717,8 @@ namespace InfraTown.Testing
                 power.SetTargetPurchasedPower(0);
                 gas.SetTargetPurchasedGas(0);
                 if (!Expect(!forecast.IsDeficit, $"유지비 {forecast.ExpectedMaintenance:N0}원이 지원금 {forecast.ExpectedSubsidy:N0}원보다 많아 검사 불가")) yield break;
+                // 다음 달로 넘어가는 동안(이전 달 3·4주차) 앞 검사들이 남긴 적자 설정으로 켜진 경고는 세지 않는다
+                warnings = 0;
 
                 power.SetTargetPurchasedPower(power.MaxPurchasablePower); // 플레이어가 구매량을 크게 잡아 적자 (전력 20,000 + 가스 20,000원)
                 gas.SetTargetPurchasedGas(gas.MaxPurchasableGas);

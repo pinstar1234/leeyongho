@@ -5,7 +5,12 @@
 #   powershell -ExecutionPolicy Bypass -File Tools/run-build-test.ps1 -Change fix       # 기존 기능 수정: 3회
 #   powershell -ExecutionPolicy Bypass -File Tools/run-build-test.ps1 -SkipBuild -Repeat 1 -Seed 71499   # 한 회차 재현
 #
-# 결과: Logs/BuildTest/report.txt (전체 로그), run_<회차>.txt(원본 결과), player_<회차>.log(플레이어 로그), build.log
+# 결과 (실행할 때마다 새 폴더, 사용자 요청 2026-11-24):
+#   Builds/BuildTestResults/<yyyyMMdd_HHmmss>/
+#     summary.txt      전체 요약 (PASS/FAIL, 회차 통과 수, 실패한 검사·seed, 재현 명령, 회차별 상세)
+#     build.log        Unity 빌드 로그 (-SkipBuild면 없음)
+#     run01/ run02/ …  회차별: run.txt(이 회차 O/X 상세), result.txt(게임이 쓴 원본), player.log(플레이어 로그)
+#   가장 최근 요약은 Logs/BuildTest/report.txt에도 복사한다.
 # 빌드: Logs/BuildTest/Player/InfraTown.exe (테스트 전용 빌드 — INFRATOWN_BUILD_TEST 정의, Build Settings는 바꾸지 않음)
 # 에디터가 프로젝트를 열고 있으면 run-tests.ps1처럼 %LOCALAPPDATA%\InfraTownTestProject 미러에서 빌드한다.
 # 종료 코드: 0 = 모든 회차 통과, 2 = 실패한 회차 있음, 1 = 빌드·실행 불가
@@ -33,7 +38,23 @@ if ($Repeat -le 0) { $Repeat = if ($Change -eq "feature") { 10 } else { 3 } }
 if ($Seed -le 0) { $Seed = Get-Random -Minimum 10000 -Maximum 90000 }
 $group = "gameplay/" + [System.IO.Path]::GetFileNameWithoutExtension(($Scenes -split ";")[0].Trim())
 
+# 실행마다 새 결과 폴더: Builds/BuildTestResults/<실행 시각>/run01, run02, ..., summary.txt
+$startedAt = Get-Date
+$stamp = $startedAt.ToString("yyyyMMdd_HHmmss")
+$resultDir = Join-Path $root "Builds/BuildTestResults/$stamp"
+
 New-Item -ItemType Directory -Force $outDir | Out-Null
+New-Item -ItemType Directory -Force $resultDir | Out-Null
+
+# 어떤 코드로 돌렸는지 요약에 남김 (git이 없으면 생략)
+$gitInfo = ""
+try {
+    $branch = (& git -C $root rev-parse --abbrev-ref HEAD 2>$null)
+    $commit = (& git -C $root rev-parse --short HEAD 2>$null)   # 커밋 제목은 콘솔 인코딩에 따라 한글이 깨질 수 있어 해시만
+    if ($branch) { $gitInfo = "$branch / $commit" }
+} catch { $gitInfo = "" }
+
+$utf8Bom = New-Object System.Text.UTF8Encoding($true)
 
 # ───────────────────────── 1. 빌드 ─────────────────────────
 if (-not $SkipBuild) {
@@ -60,7 +81,7 @@ if (-not $SkipBuild) {
         Where-Object { $_.CommandLine -like "*$version*VBCSCompiler.dll*" -and -not (Get-Process -Id $_.ParentProcessId -ErrorAction SilentlyContinue) } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-    $buildLog = Join-Path $outDir "build.log"
+    $buildLog = Join-Path $resultDir "build.log"
     $buildArgs = @(
         "-batchmode", "-quit",
         "-projectPath", "`"$projectPath`"",
@@ -96,11 +117,26 @@ elseif (-not (Test-Path $exe)) {
 }
 
 # ───────────────────────── 2. 반복 실행 ─────────────────────────
+function Format-RunDetail($r) {
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add(("== {0} 회차 (seed {1}) {2} ==" -f $r.Index, $r.Seed, $(if ($r.Ok) { "PASS" } else { "FAIL" })))
+    $lines.Add(("[{0}] {1}  {2}/{3} 통과  (seed {4}, {5:F1}초)" -f $(if ($r.Ok) { "PASS" } else { "FAIL" }), $group, $r.Passed, $r.Total, $r.Seed, $r.Seconds))
+    if ($r.Problem) { $lines.Add("  ! $($r.Problem)") }
+    foreach ($t in $r.Tests) {
+        if ($t.Pass) { $lines.Add(("  O {0} ({1}초)" -f $t.Name, $t.Seconds)) }
+        else { $lines.Add(("  X {0} - {1} ({2}초)" -f $t.Name, $t.Message, $t.Seconds)) }
+    }
+    return $lines
+}
+
 $runs = @()
 for ($i = 1; $i -le $Repeat; $i++) {
     $s = $Seed + $i - 1
-    $resultFile = Join-Path $outDir "run_$i.txt"
-    $playerLog = Join-Path $outDir "player_$i.log"
+    $runName = "run{0:D2}" -f $i
+    $runDir = Join-Path $resultDir $runName
+    New-Item -ItemType Directory -Force $runDir | Out-Null
+    $resultFile = Join-Path $runDir "result.txt"
+    $playerLog = Join-Path $runDir "player.log"
     if (Test-Path $resultFile) { Remove-Item $resultFile -Force }
 
     Write-Host ("[{0}/{1}] seed {2} 실행 중 ..." -f $i, $Repeat, $s)
@@ -123,14 +159,21 @@ for ($i = 1; $i -le $Repeat; $i++) {
 
     $problem = $null
     if ($timedOut) { $problem = "시간 초과 ($RunTimeoutMinutes 분) - 마지막 검사 다음에서 멈춤" }
-    elseif (-not $ended) { $problem = "게임이 테스트를 끝내지 못하고 종료됨 (exit code $($proc.ExitCode)) - player_$i.log 확인" }
+    elseif (-not $ended) { $problem = "게임이 테스트를 끝내지 못하고 종료됨 (exit code $($proc.ExitCode)) - $runName/player.log 확인" }
 
     $passed = @($tests | Where-Object { $_.Pass }).Count
-    $runs += [pscustomobject]@{
+    $run = [pscustomobject]@{
         Index = $i; Seed = $s; Tests = $tests; Passed = $passed; Total = $tests.Count
         Ok = ($null -eq $problem -and $passed -eq $tests.Count -and $tests.Count -gt 0)
-        Problem = $problem; Seconds = $runSeconds
+        Problem = $problem; Seconds = $runSeconds; Name = $runName
     }
+    $runs += $run
+
+    # 회차 폴더에 이 회차 상세 (회차가 끝날 때마다 바로 써서, 중간에 멈춰도 앞 회차 결과가 남음)
+    $runLines = @(Format-RunDetail $run)
+    $runLines += ""
+    $runLines += "재현: powershell -ExecutionPolicy Bypass -File `"Tools/run-build-test.ps1`" -SkipBuild -Repeat 1 -Seed $s"
+    [System.IO.File]::WriteAllLines((Join-Path $runDir "run.txt"), [string[]]$runLines, $utf8Bom)
     $color = if ($runs[-1].Ok) { "Green" } else { "Red" }
     Write-Host ("        {0}/{1} 통과 ({2:F1}초){3}" -f $passed, $tests.Count, $runSeconds, $(if ($problem) { " - $problem" } else { "" })) -ForegroundColor $color
 }
@@ -140,6 +183,14 @@ $okRuns = @($runs | Where-Object { $_.Ok }).Count
 $allOk = $okRuns -eq $Repeat
 $sb = New-Object System.Collections.Generic.List[string]
 $sb.Add(("== 빌드 플레이 테스트 {0} ({1}, {2}): {3}/{4} 회 통과 ==" -f $(if ($allOk) { "PASS" } else { "FAIL" }), $group, $modeName, $okRuns, $Repeat))
+$sb.Add(("실행: {0} ~ {1}   결과 폴더: Builds/BuildTestResults/{2}" -f $startedAt.ToString("yyyy-MM-dd HH:mm:ss"), (Get-Date).ToString("HH:mm:ss"), $stamp))
+if ($gitInfo) { $sb.Add("코드: $gitInfo") }
+$sb.Add(("빌드: {0}" -f $(if ($SkipBuild) { "생략 (-SkipBuild, 이전 빌드 사용)" } else { "새로 빌드 (build.log)" })))
+$sb.Add("")
+$sb.Add(("-- 회차별 결과 --"))
+foreach ($r in $runs) {
+    $sb.Add(("  {0}  {1}  seed {2}  {3}/{4} 통과{5}" -f $r.Name, $(if ($r.Ok) { "PASS" } else { "FAIL" }), $r.Seed, $r.Passed, $r.Total, $(if ($r.Problem) { " - " + $r.Problem } else { "" })))
+}
 $sb.Add("")
 $sb.Add(("-- 실패한 검사 (실패 횟수/{0}) --" -f $Repeat))
 
@@ -166,19 +217,15 @@ $sb.Add("재현: powershell -ExecutionPolicy Bypass -File `"Tools/run-build-test
 
 foreach ($r in $runs) {
     $sb.Add("")
-    $sb.Add(("-- {0} 회차 상세{1} --" -f $r.Index, $(if ($r.Ok) { "" } else { " (실패)" })))
-    $sb.Add(("== {0} 회차 (seed {1}) {2} ==" -f $r.Index, $r.Seed, $(if ($r.Ok) { "PASS" } else { "FAIL" })))
-    $sb.Add(("[{0}] {1}  {2}/{3} 통과  (seed {4}, {5:F1}초)" -f $(if ($r.Ok) { "PASS" } else { "FAIL" }), $group, $r.Passed, $r.Total, $r.Seed, $r.Seconds))
-    if ($r.Problem) { $sb.Add("  ! $($r.Problem)") }
-    foreach ($t in $r.Tests) {
-        if ($t.Pass) { $sb.Add(("  O {0} ({1}초)" -f $t.Name, $t.Seconds)) }
-        else { $sb.Add(("  X {0} - {1} ({2}초)" -f $t.Name, $t.Message, $t.Seconds)) }
-    }
+    $sb.Add(("-- {0} 회차 상세{1} ({2}/) --" -f $r.Index, $(if ($r.Ok) { "" } else { " (실패)" }), $r.Name))
+    foreach ($line in (Format-RunDetail $r)) { $sb.Add($line) }
 }
 
-$report = Join-Path $outDir "report.txt"
-[System.IO.File]::WriteAllLines($report, $sb, (New-Object System.Text.UTF8Encoding($true)))
+$summary = Join-Path $resultDir "summary.txt"
+[System.IO.File]::WriteAllLines($summary, $sb, $utf8Bom)
+Copy-Item $summary (Join-Path $outDir "report.txt") -Force   # 가장 최근 요약 (예전 경로)
 Write-Host ""
-$sb | Select-Object -First (6 + $order.Count) | ForEach-Object { Write-Host $_ }
-Write-Host "전체 로그: $report"
+$sb | Select-Object -First (10 + $Repeat + $order.Count) | ForEach-Object { Write-Host $_ }
+Write-Host "결과 폴더: $resultDir"
+Write-Host "요약: $summary"
 if ($allOk) { exit 0 } else { exit 2 }
