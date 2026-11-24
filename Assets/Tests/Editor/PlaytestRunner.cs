@@ -319,11 +319,11 @@ namespace InfraTown.Tests.Playtest
             var keys = new List<string>();
             void P(string id, int x, int y, string key) { Place(id, x, y, key); keys.Add(key); }
 
+            LayTownRoads(); // 배드엔딩 뒤 재건할 때는 도로도 다시 — 시설보다 먼저 깔아야 도로 접근 조건을 통과
             P("village_hall", 2, 2, "hall");
             P("convenience_store", 9, 2, "store");
             P("bus_stop", 16, 2, "bus");
             P("senior_center", 23, 2, "senior");
-            LayTownRoads(); // 배드엔딩 뒤 재건할 때는 도로도 다시
             // 사용자 결정 2026-11-24: 전봇대 범위 밖 건물은 전기가 꺼지므로 기준 마을 전체를 덮는 전봇대 4개 (반경 4) — 도로 위에 세움
             P("power_pole", 4, 1, "pole_a");
             P("power_pole", 13, 1, "pole_b");

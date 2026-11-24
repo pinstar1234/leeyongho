@@ -1,4 +1,4 @@
-# InfraTown automated playtest: opens a scene (default "Assets/Scenes/1park2.unity", -Scene to change)
+﻿# InfraTown automated playtest: opens a scene (default "Assets/Scenes/1park2.unity", -Scene to change)
 # in play mode (batch mode, with graphics)
 # and runs the scenario in Assets/Tests/Editor/PlaytestRunner.cs.
 #

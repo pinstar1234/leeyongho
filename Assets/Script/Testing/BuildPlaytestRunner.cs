@@ -901,7 +901,7 @@ namespace InfraTown.Testing
                     var off = all.Where(p => !p.IsPowered).ToList();
                     if (power.BlackoutPoleCount != expected || off.Count != expected) return $"부족 {power.ShortagePercent:F2}%: 꺼진 전봇대 {off.Count}개 (계산 {power.BlackoutPoleCount}, 예상 {expected})";
                     if (!order.Take(expected).All(p => !p.IsPowered)) return "정전 순서 앞쪽이 아닌 전봇대가 꺼짐";
-                    float cx = all.Average(p => p.GridPos.x), cy = all.Average(p => p.GridPos.y);
+                    float cx = (float)all.Average(p => p.GridPos.x), cy = (float)all.Average(p => p.GridPos.y);
                     float D(UtilityPoleInstance p) => (p.GridPos.x - cx) * (p.GridPos.x - cx) + (p.GridPos.y - cy) * (p.GridPos.y - cy);
                     var on = all.Where(p => p.IsPowered).ToList();
                     if (on.Count > 0 && off.Count > 0 && off.Min(D) + 0.01f < on.Max(D)) return $"켜진 전봇대보다 중앙에 가까운 전봇대가 꺼짐 (꺼진 최소 {off.Min(D):F1}, 켜진 최대 {on.Max(D):F1})";
