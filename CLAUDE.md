@@ -23,7 +23,7 @@ InfraTown — 접근성(주민이 병원·소방서·경찰·편의시설에 얼
 
 ## 테스트 후 커밋
 
-커밋 전에 항상 테스트를 실행하고, 실패하면 커밋하지 않는다.
+커밋 전에 항상 테스트(단위 테스트 + 빌드 테스트, 아래)를 실행하고, 실패하면 커밋하지 않는다.
 
 ```bash
 powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1                       # EditMode 전체
@@ -39,6 +39,7 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 - 종료 코드 199 + 로그에 `IPC channel to LicensingClient doesn't exist`면 Unity 라이선스 클라이언트 연결 실패(코드와 무관). 두 스크립트가 한 번 자동 재시도한다. 에디터가 닫혀 있어도 사용 중인 프로젝트의 Library를 건드리지 않으려면 `-ForceCopy`를 붙인다.
 - `dotnet build`는 이 PC에 .NET SDK가 없어 사용할 수 없다.
 - **자동 플레이 테스트**: `powershell -ExecutionPolicy Bypass -File Tools/run-playtest.ps1 [-Scene "Assets/Scenes/2Park 1.unity"]` — 기본 `1park2.unity`를 배치 모드 플레이로 열어 `Assets/Tests/Editor/PlaytestRunner.cs` 시나리오(부팅 → 중간 단계 마을(평균 만족도 84±1.5% 검사) → 완성된 마을 → 종합 현황 UI 값·지원금 슬라이더·건물 정보 UI → 월 정산 → 한 달 스킵 → 계절별 전력·가스 사용량(1년) → 전신주 → 철거(코드·UI 버튼) → 배드엔딩 → 엔딩 판정 재시작 후 10년 해피엔딩)를 돌린다. 씬에 없는 매니저·건물 목록은 플레이 직전 메모리에서만 채우고 보고서 맨 위에 적는다(씬 저장 안 함). 결과 `Logs/Playtest/report.md` + 스크린샷 PNG(종합 현황 UI 포함), 콘솔 에러는 실패, 폰트 누락 글자는 UI 경고로 집계. 기능을 바꾸면 단위 테스트와 함께 이것도 돌린다(약 3~5분, 대부분 임포트). `-Mode rotation`은 10년 진행 없이 건물 100개를 Q/E 무작위 회전으로 설치 → 미리보기·설치 회전/위치/점유 칸 일치 확인 → 전부 철거(코드·Destroy 절반씩)를 3회 반복한다(원래 회전이 들어간 테스트 프리팹을 플레이 중에만 만들어 사용). `-Mode dialogue`(`PlaytestDialogue.cs`)는 대화창 UI가 아직 없어서 플레이 중에만 메모리로 임시 대화창·카툰 컷 화면을 만들어(초상화는 `Assets/Image`를 메모리에서만 연결, 주인공 이름 '민수') 사용자가 만든 `Start.asset`과 테스트 대화로 시간 정지, 글자 출력, 넘기기(`Advance` — 실제 Enter·마우스 입력은 배치 모드라 못 넣음), 다 나와도 멈춤, 오른쪽 초상화 밝게/회색, `{player}`, Auto 1초, Skip 버튼(`onClick`), 카툰 컷 → 대화, 한 달 스킵 도중 대화 시 멈춤을 확인하고 `d01~d11` 스크린샷을 남긴다.
+- **빌드 테스트 (사용자 요청 2026-11-24, 기능을 바꿀 때마다 단위·자동 플레이 테스트와 함께 진행)**: `powershell -ExecutionPolicy Bypass -File Tools/run-build-test.ps1 -Change feature`(새 기능 추가 → **10회**) / `-Change fix`(기존 기능 수정 → **3회**). 실제 Windows 플레이어(`Logs/BuildTest/Player/InfraTown.exe`, 기본 씬 `1park2`만, `-Scenes`로 변경)를 `Assets/Tests/Editor/BuildTestBuilder.cs`로 빌드하고(테스트 빌드에만 `INFRATOWN_BUILD_TEST` 정의, Build Settings는 그대로, 약 1분), 빌드된 게임을 `-batchmode -nographics -infratownTest -infratownSeed <seed>`로 회차마다 seed를 1씩 올려 실행한다. 게임 안의 `Assets/Script/Testing/BuildPlaytestRunner.cs`(일반 빌드에는 안 들어감, 에디터에서는 컴파일만)가 35개 검사(시작 상태, 실시간 1주·배속·일시정지·한 달 스킵, 건설·잠김·겹침·돈 부족·Q/E 회전·철거, 인구 유입·해금, 중간 단계 84%, 필수 시설, 전력(건물+계절)·전신주·월 정산·구매량 다음 달 적용·가스, 1년 계절 순환, 정전·가스 부족 감점, seed 무작위 배치, 저장 → 실제 `ContinueGame` 씬 다시 열기 → 상태 비교, 배드엔딩 12주, 해피엔딩 480주, 콘솔 에러 없음)를 돌린다. **모든 회차의 로그**를 `Logs/BuildTest/report.txt`(맨 위 PASS/FAIL·회차 통과 수, 실패한 검사와 실패 횟수·seed, 재현 명령, 회차별 상세 O/X·이유·초)에 남기고, 원본은 `run_<회차>.txt`, 플레이어 로그는 `player_<회차>.log`, 빌드 로그는 `build.log`. 재현: `-SkipBuild -Repeat 1 -Seed <seed>`. 종료 코드 0 = 전부 통과, 2 = 실패 회차 있음, 1 = 빌드·실행 불가. 검사를 추가하면 `BuildPlaytestRunner`의 `tests` 목록에 넣는다. 사용자에게 결과를 보고할 때 로그 요약(실패한 검사·회차 수)을 함께 보여준다.
 - 사람이 하는 동작 확인은 플레이 모드에서 `SystemTestManager` 단축키(1: 종합 현황 UI, 3: 강제 정전, 4: 전력 복구, 5: 월 정산 강제 실행)로 한다. 플레이 테스트는 사용자가 해야 하므로 무엇을 확인할지 구체적으로 안내한다.
 - 빌드 씬 순서: `Title` → `2park` (`ProjectSettings/EditorBuildSettings.asset`). 나머지 씬(`1park`, `1park2`, `1Park 2`, `2Park 1`, `SampleScene`)은 팀원별 작업/테스트 씬.
 
