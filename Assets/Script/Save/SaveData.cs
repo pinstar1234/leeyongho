@@ -49,6 +49,8 @@ namespace InfraTown.Save
     {
         public int money;
         public int requestedSubsidy;
+        public int desiredSubsidy;        // 플레이어가 슬라이더로 정한 금액 (인구가 줄어 깎여도 기억, 사용자 기획 2026-11-24)
+        public bool followMaxSubsidy;     // 최대치로 정해 둬서 인구가 늘면 최대치를 따라가는지
         public int lastMonthlyIncome;
         public int lastMaintenancePaid;
         public int lastUnpaidMaintenance;
@@ -89,6 +91,7 @@ namespace InfraTown.Save
         public int goodStreakWeeks;
         public int badStreakWeeks;
         public int result; // GameResult
+        public bool freePlay; // 해피엔딩 뒤 '계속하기'를 골라 배드엔딩 조건 없이 이어서 하는 중 (사용자 기획 2026-11-24)
     }
 
     [Serializable]

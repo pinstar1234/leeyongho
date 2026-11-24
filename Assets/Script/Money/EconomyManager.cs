@@ -14,7 +14,20 @@ namespace InfraTown.Economy
 
         public int CurrentMoney { get; private set; }
 
-        private int _requestedSubsidyAmount = 15000; // 기본 신청 지원금 (기본 15,000원)
+        private int _requestedSubsidyAmount = 15000; // 이번 정산에 신청된 지원금 = 플레이어가 정한 금액을 지금 최대치로 자른 값 (기본 15,000원)
+
+        // 신청 지원금 회복 (사용자 기획 2026-11-24): 인구가 줄어 최대치가 줄면 신청액도 줄지만(의도),
+        // 플레이어가 정한 금액은 기억해 뒀다가 인구가 다시 늘면 그 금액까지 되돌린다.
+        // 슬라이더를 최대치에 뒀으면(_followMaxSubsidy) 인구가 늘어 최대치가 커질 때 계속 최대치를 따라간다
+        private int _desiredSubsidyAmount = 15000;
+        private bool _followMaxSubsidy;
+        private bool _notifyingSubsidy; // 알림을 받은 UI가 슬라이더 최대치를 줄이며 되부른 Set 호출은 플레이어 입력이 아니므로 무시
+
+        /// <summary>플레이어가 슬라이더로 정한 신청 지원금 (최대치가 줄어 깎여도 기억하는 값)</summary>
+        public int DesiredSubsidyAmount => _desiredSubsidyAmount;
+
+        /// <summary>신청 지원금을 최대치로 정해 둬서 인구가 늘면 최대치를 따라가는지</summary>
+        public bool IsSubsidyFollowingMax => _followMaxSubsidy;
 
         public event Action<int, int> OnMoneyChanged; // (현재 잔액, 변동액)
         public event Action<int, int> OnSubsidyAmountChanged; // (신청 지원금, 최대 지원 가능액)
@@ -59,21 +72,33 @@ namespace InfraTown.Economy
         {
             int maxEligible = 15000 + (currentPopulation * 50);
 
-            // 현재 신청 지원금이 최대 한도를 넘지 않도록 조정
-            _requestedSubsidyAmount = Mathf.Clamp(_requestedSubsidyAmount, 0, maxEligible);
+            // 최대치를 따라가면 최대치, 아니면 정한 금액을 최대 한도로 자름 (인구가 다시 늘면 정한 금액까지 회복)
+            _requestedSubsidyAmount = _followMaxSubsidy ? maxEligible : Mathf.Clamp(_desiredSubsidyAmount, 0, maxEligible);
 
-            OnSubsidyAmountChanged?.Invoke(_requestedSubsidyAmount, maxEligible);
+            NotifySubsidy(maxEligible);
         }
 
         /// <summary>
-        /// 플레이어가 UI Slider를 통해 직접 설정한 수령 지원금 지정
+        /// 플레이어가 UI Slider를 통해 직접 설정한 수령 지원금 지정.
+        /// 최대치로 정하면 이후 인구가 늘어 최대치가 커질 때 계속 따라간다
         /// </summary>
         public void SetGovernmentSubsidyAmount(int amount)
         {
+            if (_notifyingSubsidy) return; // 슬라이더 최대치가 줄며 생긴 되부름 (플레이어 입력 아님)
+
             int maxEligible = GetMaxEligibleSubsidy();
             _requestedSubsidyAmount = Mathf.Clamp(amount, 0, maxEligible);
+            _desiredSubsidyAmount = _requestedSubsidyAmount;
+            _followMaxSubsidy = _requestedSubsidyAmount >= maxEligible;
 
-            OnSubsidyAmountChanged?.Invoke(_requestedSubsidyAmount, maxEligible);
+            NotifySubsidy(maxEligible);
+        }
+
+        private void NotifySubsidy(int maxEligible)
+        {
+            _notifyingSubsidy = true;
+            try { OnSubsidyAmountChanged?.Invoke(_requestedSubsidyAmount, maxEligible); }
+            finally { _notifyingSubsidy = false; }
         }
 
         public int GetRequestedSubsidy() => _requestedSubsidyAmount;
@@ -84,6 +109,8 @@ namespace InfraTown.Economy
         {
             money = CurrentMoney,
             requestedSubsidy = _requestedSubsidyAmount,
+            desiredSubsidy = _desiredSubsidyAmount,
+            followMaxSubsidy = _followMaxSubsidy,
             lastMonthlyIncome = LastMonthlyIncome,
             lastMaintenancePaid = LastMaintenancePaid,
             lastUnpaidMaintenance = LastUnpaidMaintenance,
@@ -95,6 +122,9 @@ namespace InfraTown.Economy
             if (s == null) return;
             CurrentMoney = Mathf.Max(0, s.money);
             _requestedSubsidyAmount = Mathf.Max(0, s.requestedSubsidy);
+            // 신청액은 정한 금액을 자른 값이라 정한 금액 ≥ 신청액 (이 필드가 없던 저장 파일은 0 → 신청액으로)
+            _desiredSubsidyAmount = Mathf.Max(_requestedSubsidyAmount, s.desiredSubsidy);
+            _followMaxSubsidy = s.followMaxSubsidy;
             LastMonthlyIncome = s.lastMonthlyIncome;
             LastMaintenancePaid = s.lastMaintenancePaid;
             LastUnpaidMaintenance = s.lastUnpaidMaintenance;

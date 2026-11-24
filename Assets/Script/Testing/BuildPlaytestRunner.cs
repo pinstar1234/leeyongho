@@ -1135,6 +1135,19 @@ namespace InfraTown.Testing
             Expect(ended == GameResult.Defeat, $"결과 {ended} ({weeks}주 진행)");
             Expect(weeks == 12 && lastBad == 12, $"{weeks}주 만에 배드엔딩, 나쁨 연속 {lastBad}주 (12주여야 함)");
             Expect(TimeM.IsEventPaused, "엔딩 후 시간이 멈추지 않음");
+
+            // 배드엔딩 = 게임 오버: 건설·철거 불가 (사용자 기획 2026-11-24)
+            Expect(outcome.IsGameOver && !outcome.CanModifyTown, "배드엔딩인데 게임 오버가 아님");
+            Expect(PlaceWithRoad("house", 50, 36) == null && BuildingManager.Instance.LastPlacementError == BuildingManager.GameOverPlacementError,
+                $"게임 오버 뒤 건설됨 (이유: {BuildingManager.Instance.LastPlacementError})");
+            var house = GameLoopManager.Instance.PlacedBuildings.FirstOrDefault(b => b != null && b.Data.category == BuildingType.Housing);
+            if (Expect(house != null, "철거를 확인할 주택이 없음"))
+            {
+                int count = GameLoopManager.Instance.PlacedBuildings.Count;
+                house.DestroyBuilding();
+                yield return Frames(1);
+                Expect(house != null && GameLoopManager.Instance.PlacedBuildings.Count == count, "게임 오버 뒤 철거됨");
+            }
         }
 
         private IEnumerator Outcome_VictoryAt480Weeks()
@@ -1169,6 +1182,16 @@ namespace InfraTown.Testing
             outcome.OnGameEnded -= onEnd;
             Expect(ended == GameResult.Victory, $"결과 {ended} ({outcome.WeeksElapsed}주, 좋음 {SatisfactionManager.Instance.GoodHousingRatio:P0})");
             Expect(outcome.WeeksElapsed == 480 && outcome.VictoryWeeks == 480, $"{outcome.WeeksElapsed}주째 판정 (480주여야 함)");
+
+            // 해피엔딩 = 게임 오버 아님 → 끝내기/계속하기 선택 대기, 계속하기면 배드엔딩 조건 없이 이어서 (사용자 기획 2026-11-24)
+            Expect(!outcome.IsGameOver && outcome.IsVictoryChoicePending && TimeM.IsEventPaused, "해피엔딩 뒤 선택 대기 상태가 아님");
+            Expect(outcome.ContinueAfterVictory() && outcome.IsFreePlay && !TimeM.IsEventPaused, "계속하기를 골라도 시간이 흐르지 않음");
+            int weeksBefore = outcome.WeeksElapsed;
+            for (int i = 0; i < 15; i++) AdvanceWeek();
+            Expect(outcome.Result == GameResult.Victory && outcome.BadStreakWeeks == 0 && outcome.WeeksElapsed == weeksBefore + 15 && !TimeM.IsEventPaused,
+                $"계속하기 뒤 15주: 결과 {outcome.Result}, 나쁨 {outcome.BadStreakWeeks}주, 경과 {outcome.WeeksElapsed - weeksBefore}주, 정지 {TimeM.IsEventPaused}");
+            var extra = PlaceWithRoad("house", 50, 36);
+            Expect(extra != null, $"계속하기 뒤 건설 안 됨 ({BuildingManager.Instance.LastPlacementError})");
         }
 
         // ───────────────────────── 8. 콘솔 ─────────────────────────

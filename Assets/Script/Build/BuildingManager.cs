@@ -238,6 +238,13 @@ namespace InfraTown.Building
         {
             if (data == null) return;
 
+            // 0. 배드엔딩(게임 오버) 뒤에는 건설 불가 (사용자 기획 2026-11-24)
+            if (!GameOutcomeManager.CanModifyTownNow)
+            {
+                RejectPlacement(data, new Vector2Int(-1, -1), GameOverPlacementError);
+                return;
+            }
+
             // 1. 현재 인구수 기반 해금 검증
             if (!IsBuildingUnlocked(data))
             {
@@ -344,12 +351,20 @@ namespace InfraTown.Building
 
         // ─── 설치 조건 (사용자 기획 2026-11-24: 도로 접근, 도로 위 전신주) ───
 
+        /// <summary>배드엔딩(게임 오버) 뒤 설치를 시도했을 때의 안내 문구</summary>
+        public const string GameOverPlacementError = "게임이 끝나 더 이상 건설할 수 없습니다.";
+
         /// <summary>
         /// 그 칸에 이 건물을 지금 지을 수 있는지: 맵 안 + 겹치지 않음(전신주는 도로 위 허용) + 도로 접근 + 자금.
         /// 해금 여부는 따로(IsBuildingUnlocked). 못 지으면 reason에 이유
         /// </summary>
         public bool CanPlaceAt(BuildingData data, Vector2Int gridPos, out string reason)
         {
+            if (!GameOutcomeManager.CanModifyTownNow)
+            {
+                reason = GameOverPlacementError;
+                return false;
+            }
             if (!IsAreaFree(data, gridPos, out reason)) return false;
             if (!HasRoadAccess(data, gridPos))
             {

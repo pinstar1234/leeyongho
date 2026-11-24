@@ -731,6 +731,14 @@ namespace InfraTown.Tests.Playtest
             yield return WaitUntil(() => ended != GameResult.None, 40, "배드엔딩");
             Check("나쁨 12주(3달) 연속 → 배드엔딩", ended == GameResult.Defeat && lastBad == 12, $"{ended}, 나쁨 {lastBad}주");
             Check("엔딩 후 시간 정지", TimeManager.Instance.IsEventPaused);
+            // 사용자 기획 2026-11-24: 배드엔딩 = 게임 오버 → 건설·철거 불가
+            Check("배드엔딩 뒤 건설 불가 (게임 오버)", outcome.IsGameOver && Place("road", 45, 35, null) == null
+                && BuildingManager.Instance.LastPlacementError == BuildingManager.GameOverPlacementError, BuildingManager.Instance.LastPlacementError);
+            var someHouse = Placed.FirstOrDefault(kv => kv.Key.StartsWith("house") && kv.Value != null).Value;
+            int placedCount = GameLoopManager.Instance.PlacedBuildings.Count;
+            someHouse?.DestroyBuilding();
+            yield return Frames(1);
+            Check("배드엔딩 뒤 철거 불가", someHouse != null && GameLoopManager.Instance.PlacedBuildings.Count == placedCount);
             TimeManager.Instance.OnWeeklyTick -= countWeek;
             // 12주 동안 매주 주간 틱 → 지나간 주 수만큼 2%씩, 시설당 최대 10%
             float expectedPerFacility = Mathf.Min(weeks * 2f, 10f);
@@ -798,6 +806,14 @@ namespace InfraTown.Tests.Playtest
             Check("정확히 480주(10년)째에 판정", outcome.WeeksElapsed == outcome.VictoryWeeks && outcome.VictoryWeeks == 480, $"{outcome.WeeksElapsed}주");
             Note($"10년 뒤: 인구 {PopulationManager.Instance.CurrentPopulation}명, 잔액 {EconomyManager.Instance.CurrentMoney:N0}원, 만족도 {sat.CurrentAverageSatisfaction:F1}, 좋음 {sat.GoodHousingRatio:P0}");
             Shot("04_victory_town", null);
+
+            // 사용자 기획 2026-11-24: 해피엔딩은 게임 오버가 아니고 끝내기/계속하기 선택 → 계속하기면 배드엔딩 조건 없이 이어서
+            Check("해피엔딩 = 게임 오버 아님, 선택 대기 (시간 정지)", !outcome.IsGameOver && outcome.IsVictoryChoicePending && TimeManager.Instance.IsEventPaused);
+            Check("계속하기 → 시간이 다시 흐름", outcome.ContinueAfterVictory() && outcome.IsFreePlay && !TimeManager.Instance.IsEventPaused);
+            int freeStart = outcome.WeeksElapsed;
+            yield return WaitWeeks(8);
+            Check("계속하기 뒤 8주: 엔딩 판정 없이 계속", outcome.Result == GameResult.Victory && outcome.BadStreakWeeks == 0 && outcome.WeeksElapsed >= freeStart + 8,
+                $"결과 {outcome.Result}, 경과 {outcome.WeeksElapsed - freeStart}주");
         }
 
         // ───────────────────────── 회전 모드 (-playtestMode rotation) ─────────────────────────

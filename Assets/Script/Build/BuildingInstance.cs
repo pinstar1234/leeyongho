@@ -32,6 +32,9 @@ namespace InfraTown.Building
             // 건설 모드 중에는 건물 정보 창을 띄우지 않음 (설치 클릭이 옆 건물 클릭으로 처리되지 않도록)
             if (BuildingManager.Instance != null && BuildingManager.Instance.IsBuildMode) return;
 
+            // 배드엔딩(게임 오버) 뒤에는 건물 정보 창(철거 버튼)을 띄우지 않음 (사용자 기획 2026-11-24)
+            if (!InfraTown.Core.GameOutcomeManager.CanModifyTownNow) return;
+
             if (InfraTown.UI.BuildingUIManager.Instance != null)
             {
                 InfraTown.UI.BuildingUIManager.Instance.OnBuildingClicked(this);
@@ -54,8 +57,17 @@ namespace InfraTown.Building
         //    }
         //}
 
+        /// <summary>
+        /// 철거. 배드엔딩(게임 오버) 뒤에는 철거하지 않는다 (사용자 기획 2026-11-24, GameOutcomeManager.CanModifyTown).
+        /// 세이브 복원 중(SaveSystem.IsApplying)에는 씬에 있던 건물을 바꾸기 위해 항상 철거
+        /// </summary>
         public void DestroyBuilding()
         {
+            if (!InfraTown.Core.GameOutcomeManager.CanModifyTownNow && !InfraTown.Save.SaveSystem.IsApplying)
+            {
+                Debug.LogWarning($"[BuildingInstance] 게임이 끝나 '{(Data != null ? Data.buildingName : name)}'을(를) 철거할 수 없습니다.");
+                return;
+            }
             NotifyDestroyed();
             Destroy(gameObject);
         }
