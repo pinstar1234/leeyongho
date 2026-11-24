@@ -420,21 +420,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 073b1c2c156545509b7e009f97f5fb80, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  introDialogue: {fileID: 0}
+  askPlayerNameAtStart: 1
+  openingCutscene: {fileID: 0}
+  introDialogue: {fileID: 11400000, guid: 7a5a292f1f85688499cc11eef48c875c, type: 2}
   showInitialUnlockStories: 1
   essentialDialogues:
   - service: 1
-    missingDialogue: {fileID: 0}
-    installedDialogue: {fileID: 0}
+    missingDialogue: {fileID: 11400000, guid: 06cf302677f052345895cd91a6bf0395, type: 2}
+    installedDialogue: {fileID: 11400000, guid: 47db5d2b649a45a46bada1ef523319cc, type: 2}
+    missingCutscene: {fileID: 0}
+    installedCutscene: {fileID: 0}
   - service: 4
-    missingDialogue: {fileID: 0}
-    installedDialogue: {fileID: 0}
+    missingDialogue: {fileID: 11400000, guid: 5db982b456211f948abf9d2e67cd4b39, type: 2}
+    installedDialogue: {fileID: 11400000, guid: 2718d49eb04c7504c9bfb0b713c6f4e7, type: 2}
+    missingCutscene: {fileID: 0}
+    installedCutscene: {fileID: 0}
   - service: 2
-    missingDialogue: {fileID: 0}
-    installedDialogue: {fileID: 0}
+    missingDialogue: {fileID: 11400000, guid: a5be38eda60578d428d0890619734377, type: 2}
+    installedDialogue: {fileID: 11400000, guid: b7e185e543ce5624086d7251c329af48, type: 2}
+    missingCutscene: {fileID: 0}
+    installedCutscene: {fileID: 0}
   - service: 0
-    missingDialogue: {fileID: 0}
-    installedDialogue: {fileID: 0}
+    missingDialogue: {fileID: 11400000, guid: 7d3f797a47b73f845bbfcd8d826db76f, type: 2}
+    installedDialogue: {fileID: 11400000, guid: 7f05ad3d85bb5a84eac5e2eff31262a8, type: 2}
+    missingCutscene: {fileID: 0}
+    installedCutscene: {fileID: 0}
   complaintMinDays: 30
   complaintMaxDays: 90
   repeatComplaint: 1
@@ -447,8 +457,8 @@ MonoBehaviour:
   warningSpeaker: "\uC548\uB0B4\uC6D0"
   warningSpeakerPortrait: {fileID: 0}
   badStreakWarningDays: 0a0000001400000019000000
-  victoryDialogue: {fileID: 0}
-  defeatDialogue: {fileID: 0}
+  victoryDialogue: {fileID: 11400000, guid: d27da34983bd740468aa20f7e097ce72, type: 2}
+  defeatDialogue: {fileID: 11400000, guid: 46795c0e7ca0743408688f533c9ee7a1, type: 2}
 --- !u!114 &73417817
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -462,6 +472,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   useEasyText: 0
+  protagonistName: "\uC8FC\uC778\uACF5"
+  protagonistPortrait: {fileID: 0}
+  characters:
+  - name: "\uC8FC\uBBFC"
+    portrait: {fileID: 0}
+  - name: "\uBE44\uC11C"
+    portrait: {fileID: 0}
+  - name: "\uC774\uC7A5\uB2D8"
+    portrait: {fileID: 0}
+  - name: "\uC548\uB0B4\uC6D0"
+    portrait: {fileID: 0}
 --- !u!4 &73417818
 Transform:
   m_ObjectHideFlags: 0
@@ -838,6 +859,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   goodThreshold: 71
   badThreshold: 30
+  penalizedServices: 01000000040000000200000000000000
+  missingFacilityPenaltyPerWeek: 2
+  maxMissingFacilityPenalty: 10
+  missingFacilityRecoveryPerWeek: 2
 --- !u!1 &201092698
 GameObject:
   m_ObjectHideFlags: 0

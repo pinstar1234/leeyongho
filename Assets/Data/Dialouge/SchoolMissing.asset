@@ -12,7 +12,72 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a4abce92d2f04c46950ccacf447658a7, type: 3}
   m_Name: SchoolMissing
   m_EditorClassIdentifier: 
-  dialogueId: 
-  lines: []
+  dialogueId: "\uD559\uAD50 X"
+  cutsceneBefore: {fileID: 0}
+  lines:
+  - speaker: "\uBE44\uC11C"
+    portrait: {fileID: 0}
+    side: 2
+    text: "\uAF2C\uB9C8\uAC00 \uD558\uACE0 \uC2F6\uC740 \uB9D0\uC774 \uC788\uB2E4\uACE0
+      \uD569\uB2C8\uB2E4"
+    easyText: 
+  - speaker: "\uB9C8\uC744 \uAF2C\uB9C8"
+    portrait: {fileID: 21300000, guid: 27d7e8099909fac4c93a97b7917fba69, type: 3}
+    side: 2
+    text: "\uC548\uB155\uD558\uC138\uC694, \uC544\uC800\uC528"
+    easyText: 
+  - speaker: "\uC8FC\uC778\uACF5"
+    portrait: {fileID: 0}
+    side: 0
+    text: "\uC548\uB155? \uBB34\uC2A8 \uC77C\uC774\uB2C8?"
+    easyText: 
+  - speaker: "\uB9C8\uC744 \uAF2C\uB9C8"
+    portrait: {fileID: 21300000, guid: 27d7e8099909fac4c93a97b7917fba69, type: 3}
+    side: 2
+    text: "\uC544\uC800\uC528\uB294 \uBB50 \uD558\uB294 \uC0AC\uB78C\uC774\uC5D0\uC694?"
+    easyText: 
+  - speaker: "\uC8FC\uC778\uACF5"
+    portrait: {fileID: 0}
+    side: 0
+    text: "\uC774\uB7F0\uC800\uB7F0 \uAC74\uBB3C\uB4E4 \uB9CC\uB4DC\uB294 \uC0AC\uB78C\uC774\uB780\uB2E4"
+    easyText: 
+  - speaker: "\uB9C8\uC744 \uAF2C\uB9C8"
+    portrait: {fileID: 21300000, guid: 27d7e8099909fac4c93a97b7917fba69, type: 3}
+    side: 2
+    text: "\uADF8\uB7FC \uC544\uC800\uC528\uAC00 \uC800\uB7F0 \uAC74\uBB3C\uB4E4\uB3C4
+      \uB2E4 \uB9CC\uB4E0\uAC70\uC5D0\uC694?"
+    easyText: 
+  - speaker: "\uB9C8\uC744 \uAF2C\uB9C8"
+    portrait: {fileID: 21300000, guid: 27d7e8099909fac4c93a97b7917fba69, type: 3}
+    side: 2
+    text: "\uADF8\uB7FC \uD559\uAD50\uB3C4 \uB9CC\uB4E4\uC5B4\uC8FC\uC138\uC694"
+    easyText: 
+  - speaker: "\uC8FC\uC778\uACF5"
+    portrait: {fileID: 0}
+    side: 0
+    text: "\uD559\uAD50? \uC5EC\uAE30 \uD559\uAD50\uAC00 \uC5C6\uC5C8\uB098?"
+    easyText: 
+  - speaker: "\uB9C8\uC744 \uAF2C\uB9C8"
+    portrait: {fileID: 21300000, guid: 27d7e8099909fac4c93a97b7917fba69, type: 3}
+    side: 2
+    text: "\uB124, \uB9E4\uC77C \uD559\uAD50 \uAC00\uB294\uB370 \uB108\uBB34 \uBA40\uC5B4\uC694"
+    easyText: 
+  - speaker: "\uC8FC\uC778\uACF5"
+    portrait: {fileID: 0}
+    side: 0
+    text: "\uADF8\uB798 \uC54C\uC558\uB2E4\n\uC870\uB9CC\uAC04 \uB9CC\uB4E4\uC5B4\uC904\uAC8C"
+    easyText: 
+  - speaker: "\uBE44\uC11C"
+    portrait: {fileID: 0}
+    side: 2
+    text: "\uC774 \uAF2C\uB9C8 \uB9D0\uACE0\uB3C4 \uD559\uAD50\uAC00 \uC5C6\uC5B4\uC11C
+      \uC0AC\uB78C\uB4E4\uC758 \uBD88\uB9CC\uC774 \uC0DD\uAE30\uACE0 \uC788\uC2B5\uB2C8\uB2E4"
+    easyText: 
+  - speaker: "\uBE44\uC11C"
+    portrait: {fileID: 0}
+    side: 2
+    text: "\uD559\uAD50\uB97C \uC9C0\uC5B4\uC11C \uBD88\uB9CC\uC744 \uD574\uC18C\uD574\uC8FC\uC2DC\uAE38
+      \uBC14\uB78D\uB2C8\uB2E4"
+    easyText: 
   pauseGame: 1
   playOnce: 1
