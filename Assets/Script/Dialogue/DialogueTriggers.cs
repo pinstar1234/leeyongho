@@ -211,7 +211,8 @@ namespace InfraTown.EventSystem
 
         private void TrySubscribe()
         {
-            if (!_initialized && _firstUpdateDone && BuildingManager.Instance != null)
+            // 이어하기로 열린 씬이면 저장 데이터가 적용될 때까지 오프닝·이름 입력을 시작하지 않음
+            if (!_initialized && _firstUpdateDone && BuildingManager.Instance != null && !InfraTown.Save.SaveSystem.HasPendingLoad)
             {
                 _initialized = true;
                 _initialUnlocked = BuildingManager.Instance.GetUnlockedBuildings();
@@ -385,6 +386,64 @@ namespace InfraTown.EventSystem
             var (text, easy) = DefaultInstalled(entry.service);
             Dialogue.Play(DialogueData.Create($"installed_{entry.service}", true, true,
                 new DialogueLine(unlockSpeaker, text, easy, unlockSpeakerPortrait)), entry.installedCutscene);
+        }
+
+        // ───────────────── 세이브 ─────────────────
+
+        public InfraTown.Save.DialogueTriggerSaveState GetSaveState()
+        {
+            var s = new InfraTown.Save.DialogueTriggerSaveState { storyStarted = StoryStarted };
+            foreach (var d in _knownUnlocked) if (d != null) s.knownUnlockedBuildingIds.Add(d.buildingID);
+            foreach (var pair in _essential)
+            {
+                s.essentials.Add(new InfraTown.Save.EssentialFacilitySaveState
+                {
+                    service = (int)pair.Key,
+                    missingDays = pair.Value.missingDays,
+                    threshold = pair.Value.threshold,
+                    firstInstallPlayed = pair.Value.firstInstallPlayed,
+                });
+            }
+            return s;
+        }
+
+        /// <summary>
+        /// 이어하기: 이미 본 오프닝은 다시 시작하지 않고, 해금 안내·필수 시설 불만/설치 대사 진행을 저장 시점으로 되돌림.
+        /// 저장할 때 아직 이야기가 시작되기 전(이름 입력 대기 등)이었으면 처음처럼 시작한다
+        /// </summary>
+        public void ApplySaveState(InfraTown.Save.DialogueTriggerSaveState s)
+        {
+            if (s == null || !s.storyStarted) return;
+
+            if (IsWaitingForPlayerName)
+            {
+                IsWaitingForPlayerName = false;
+                TimeManager.Instance?.ReleaseEventPause(this);
+            }
+            _initialized = true;
+            StoryStarted = true;
+
+            _knownUnlocked.Clear();
+            if (BuildingManager.Instance != null)
+            {
+                foreach (var id in s.knownUnlockedBuildingIds)
+                {
+                    var d = BuildingManager.Instance.FindBuildingData(id);
+                    if (d != null) _knownUnlocked.Add(d);
+                }
+            }
+
+            foreach (var e in s.essentials)
+            {
+                var state = GetState((ServiceType)e.service);
+                state.missingDays = e.missingDays;
+                state.threshold = e.threshold;
+                state.firstInstallPlayed = e.firstInstallPlayed;
+            }
+
+            // 오늘 날짜는 이미 센 것으로 (불러온 직후 날짜 알림을 하루로 세지 않음)
+            if (TimeManager.Instance != null)
+                _lastDate = (TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentDay);
         }
 
         private EssentialState GetState(ServiceType type)

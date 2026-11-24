@@ -125,6 +125,24 @@ namespace InfraTown.Power
             EvaluatePowerSupply();
         }
 
+        // ─── 세이브 ───
+
+        public InfraTown.Save.PowerSaveState GetSaveState() => new InfraTown.Save.PowerSaveState
+        {
+            targetPurchasedPower = targetPurchasedPower,
+            currentAvailablePower = currentAvailablePower,
+        };
+
+        /// <summary>저장된 이번 달 보유 전력·다음 달 구매량으로 되돌림 (사용량은 건물에서 다시 계산, 시작 시 구매는 덮어씀)</summary>
+        public void ApplySaveState(InfraTown.Save.PowerSaveState s)
+        {
+            if (s == null) return;
+            targetPurchasedPower = Mathf.Clamp(s.targetPurchasedPower, 0, Mathf.Max(0, maxPurchasablePower));
+            currentAvailablePower = Mathf.Max(0, s.currentAvailablePower);
+            OnTargetPowerChanged?.Invoke(targetPurchasedPower, MonthlyPurchaseCost);
+            EvaluatePowerSupply();
+        }
+
         public void RecalculatePowerUsage(IReadOnlyList<BuildingInstance> allBuildings)
         {
             int totalRequired = 0;

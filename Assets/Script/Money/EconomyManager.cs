@@ -78,6 +78,30 @@ namespace InfraTown.Economy
 
         public int GetRequestedSubsidy() => _requestedSubsidyAmount;
 
+        // ─── 세이브 ───
+
+        public InfraTown.Save.EconomySaveState GetSaveState() => new InfraTown.Save.EconomySaveState
+        {
+            money = CurrentMoney,
+            requestedSubsidy = _requestedSubsidyAmount,
+            lastMonthlyIncome = LastMonthlyIncome,
+            lastMaintenancePaid = LastMaintenancePaid,
+            lastUnpaidMaintenance = LastUnpaidMaintenance,
+        };
+
+        /// <summary>저장된 잔액·신청 지원금으로 되돌림 (인구를 먼저 되돌린 뒤 호출해야 지원금 한도가 맞음)</summary>
+        public void ApplySaveState(InfraTown.Save.EconomySaveState s)
+        {
+            if (s == null) return;
+            CurrentMoney = Mathf.Max(0, s.money);
+            _requestedSubsidyAmount = Mathf.Max(0, s.requestedSubsidy);
+            LastMonthlyIncome = s.lastMonthlyIncome;
+            LastMaintenancePaid = s.lastMaintenancePaid;
+            LastUnpaidMaintenance = s.lastUnpaidMaintenance;
+            OnMoneyChanged?.Invoke(CurrentMoney, 0);
+            UpdateGovernmentSubsidyLimit();
+        }
+
         /// <summary>
         /// 인구수에 따라 자동으로 계산되는 최대 수령 가능 지원금 (기본 15,000원 + 인구당 50원)
         /// </summary>

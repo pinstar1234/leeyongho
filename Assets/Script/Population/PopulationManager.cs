@@ -160,6 +160,20 @@ namespace InfraTown.Population
             EconomyManager.Instance?.UpdateGovernmentSubsidyLimit(currentPopulation);
         }
 
+        // ─── 세이브 ───
+
+        public InfraTown.Save.PopulationSaveState GetSaveState() =>
+            new InfraTown.Save.PopulationSaveState { currentPopulation = currentPopulation };
+
+        /// <summary>저장된 인구로 되돌림 (수용 인구는 건물에서 다시 계산되므로 건물을 먼저 되돌린 뒤 호출). 초과 인구 상태도 그대로 유지</summary>
+        public void ApplySaveState(InfraTown.Save.PopulationSaveState s)
+        {
+            if (s == null) return;
+            currentPopulation = Mathf.Max(0, s.currentPopulation);
+            OnPopulationChanged?.Invoke(currentPopulation, maxPopulationCapacity);
+            EconomyManager.Instance?.UpdateGovernmentSubsidyLimit(currentPopulation);
+        }
+
         /// <summary>
         /// 한계 인구 초과율에 따른 만족도 감점 수치 반환
         /// </summary>

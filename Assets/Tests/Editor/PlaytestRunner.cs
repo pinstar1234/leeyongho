@@ -172,6 +172,12 @@ namespace InfraTown.Tests.Playtest
             yield return Frames(3);
             yield return BootChecks();
 
+            if (SessionState.GetString(ModeKey, "full") == "save")
+            {
+                yield return SaveScenario(); // PlaytestSave.cs
+                yield break;
+            }
+
             if (SessionState.GetString(ModeKey, "full") == "dialogue")
             {
                 yield return DialogueScenario(); // PlaytestDialogue.cs

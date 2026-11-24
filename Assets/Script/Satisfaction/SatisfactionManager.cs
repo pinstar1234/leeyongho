@@ -109,6 +109,32 @@ namespace InfraTown.Satisfaction
             }
         }
 
+        // ─── 세이브 ───
+
+        public InfraTown.Save.SatisfactionSaveState GetSaveState()
+        {
+            var s = new InfraTown.Save.SatisfactionSaveState();
+            foreach (var pair in _missingFacilityPenalties)
+            {
+                s.missingPenaltyServices.Add((int)pair.Key);
+                s.missingPenaltyValues.Add(pair.Value);
+            }
+            return s;
+        }
+
+        /// <summary>필수 시설 미설치 누적 감점을 되돌림 (나머지 만족도는 건물에서 다시 계산)</summary>
+        public void ApplySaveState(InfraTown.Save.SatisfactionSaveState s)
+        {
+            if (s == null) return;
+            _missingFacilityPenalties.Clear();
+            for (int i = 0; i < s.missingPenaltyServices.Count && i < s.missingPenaltyValues.Count; i++)
+            {
+                float value = Mathf.Clamp(s.missingPenaltyValues[i], 0f, maxMissingFacilityPenalty);
+                if (value > 0f) _missingFacilityPenalties[(ServiceType)s.missingPenaltyServices[i]] = value;
+            }
+            OnMissingFacilityPenaltyChanged?.Invoke(TotalMissingFacilityPenalty);
+        }
+
         private void Awake()
         {
             if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }

@@ -200,6 +200,28 @@ namespace InfraTown.Core
             if (source != null) _graceSources.Remove(source);
         }
 
+        // ─── 세이브 ───
+
+        public InfraTown.Save.OutcomeSaveState GetSaveState() => new InfraTown.Save.OutcomeSaveState
+        {
+            daysElapsed = DaysElapsed, goodStreakDays = GoodStreakDays, badStreakDays = BadStreakDays, result = (int)Result,
+        };
+
+        /// <summary>경과 일수·연속 일수·엔딩 결과를 되돌림. 오늘 날짜는 이미 센 것으로 둔다 (불러온 직후 하루로 세지 않음)</summary>
+        public void ApplySaveState(InfraTown.Save.OutcomeSaveState s)
+        {
+            if (s == null) return;
+            DaysElapsed = Mathf.Max(0, s.daysElapsed);
+            GoodStreakDays = Mathf.Max(0, s.goodStreakDays);
+            BadStreakDays = Mathf.Max(0, s.badStreakDays);
+            Result = (GameResult)s.result;
+            if (TimeManager.Instance != null)
+                _lastDate = (TimeManager.Instance.CurrentYear, TimeManager.Instance.CurrentMonth, TimeManager.Instance.CurrentDay);
+            if (IsGameOver) TimeManager.Instance?.RequestEventPause(this); // 끝난 판이면 계속 멈춤
+            OnBadStreakChanged?.Invoke(BadStreakDays, defeatBadStreakDays);
+            OnDayEvaluated?.Invoke();
+        }
+
         private static int CurrentPopulation =>
             PopulationManager.Instance != null ? PopulationManager.Instance.CurrentPopulation : 0;
 

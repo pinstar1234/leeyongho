@@ -164,6 +164,35 @@ namespace InfraTown.EventSystem
         }
 
         /// <summary>튜토리얼 건너뛰기 (이미 대기열에 들어간 대화는 그대로 나옴)</summary>
+        // ─── 세이브 ───
+
+        public InfraTown.Save.TutorialSaveState GetSaveState()
+        {
+            var s = new InfraTown.Save.TutorialSaveState { active = IsActive, completed = IsCompleted, currentDay = CurrentDay };
+            foreach (var step in _triggered) if (step != null) s.triggeredStepIds.Add(step.stepId);
+            return s;
+        }
+
+        /// <summary>
+        /// 튜토리얼 진행을 저장 시점으로 되돌림. 진행 중이면 그 일차부터 이어서(이미 나온 단계는 다시 안 나옴), 끝났으면 끝난 상태로
+        /// </summary>
+        public void ApplySaveState(InfraTown.Save.TutorialSaveState s)
+        {
+            if (s == null) return;
+            Unsubscribe();
+            _triggered.Clear();
+            foreach (var id in s.triggeredStepIds)
+            {
+                var step = FindStep(id);
+                if (step != null) _triggered.Add(step);
+            }
+            CurrentStep = null;
+            CurrentDay = Mathf.Max(0, s.currentDay);
+            IsCompleted = s.completed;
+            IsActive = s.active && !s.completed;
+            if (IsActive) Subscribe(); // 오늘 날짜를 기준으로 다음 날부터 셈
+        }
+
         public void SkipTutorial()
         {
             if (IsCompleted) return;

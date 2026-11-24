@@ -159,6 +159,36 @@ namespace InfraTown.TimeSystem
             OnDateChanged?.Invoke(currentYear, currentMonth, currentDay);
         }
 
+        // ─── 세이브 ───
+
+        public InfraTown.Save.TimeSaveState GetSaveState() => new InfraTown.Save.TimeSaveState
+        {
+            year = currentYear, month = currentMonth, day = currentDay,
+            totalDaysPassed = _totalDaysPassed, dayTimer = _dayTimer, speed = (int)currentSpeed,
+        };
+
+        /// <summary>저장된 날짜·배속으로 되돌림 (알림은 NotifyStateRestored에서 한 번에)</summary>
+        public void ApplySaveState(InfraTown.Save.TimeSaveState s)
+        {
+            if (s == null) return;
+            if (IsSkipping) CancelSkip();
+            currentYear = Mathf.Max(1, s.year);
+            currentMonth = Mathf.Clamp(s.month, 1, 12);
+            currentDay = Mathf.Clamp(s.day, 1, 30);
+            _totalDaysPassed = Mathf.Max(0, s.totalDaysPassed);
+            _dayTimer = Mathf.Max(0f, s.dayTimer);
+            currentSpeed = (GameSpeed)Mathf.Clamp(s.speed, 0, 3);
+            ApplyTimeScale();
+        }
+
+        /// <summary>불러오기가 끝난 뒤 날짜·배속 UI가 갱신되도록 알림</summary>
+        public void NotifyStateRestored()
+        {
+            ApplyTimeScale();
+            OnDateChanged?.Invoke(currentYear, currentMonth, currentDay);
+            OnSpeedChanged?.Invoke(currentSpeed);
+        }
+
         /// <summary>
         /// 일주일 스킵 시작 (skipDays일). 일시정지(배속 0) 중에도 가능. 시작하지 못하면 false
         /// </summary>

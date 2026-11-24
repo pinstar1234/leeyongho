@@ -118,12 +118,15 @@ namespace InfraTown.Building
         /// 설치 시 실제로 쓰일 회전 = 플레이어 Y 회전 × 프리팹에 설정된 원래 회전.
         /// 미리보기와 설치 모두 이 값을 쓰므로 보이는 모습 그대로 설치된다
         /// </summary>
-        public Quaternion GetPlacementRotation(BuildingData data)
+        public Quaternion GetPlacementRotation(BuildingData data) => GetPlacementRotation(data, CurrentRotationY);
+
+        /// <summary>지정한 Y 회전으로 설치할 때의 회전 (세이브 복원 등)</summary>
+        public Quaternion GetPlacementRotation(BuildingData data, float rotationY)
         {
             Quaternion prefabRotation = data != null && data.buildingPrefab != null
                 ? data.buildingPrefab.transform.rotation
                 : Quaternion.identity;
-            return Quaternion.Euler(0f, CurrentRotationY, 0f) * prefabRotation;
+            return Quaternion.Euler(0f, rotationY, 0f) * prefabRotation;
         }
 
         private void ApplyPreviewRotation()
@@ -310,30 +313,76 @@ namespace InfraTown.Building
                     return;
                 }
 
-                Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
-                // 미리보기와 같은 회전으로 생성 (예전에는 Quaternion.identity라 프리팹 회전이 사라졌음)
-                GameObject buildingObj = Instantiate(_selectedBuildingData.buildingPrefab, spawnPos, GetPlacementRotation(_selectedBuildingData));
-
-                BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
-                instance.Init(_selectedBuildingData, gridPos, CurrentRotationY);
-
-                // 전신주 데이터면 전력 연결 컴포넌트 부착 (프리팹 수정 없이 동작)
-                if (_selectedBuildingData.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
-                {
-                    buildingObj.AddComponent<InfraTown.Power.UtilityPoleInstance>();
-                }
-
-                for (int x = gridPos.x; x < gridPos.x + size.x; x++)
-                {
-                    for (int z = gridPos.y; z < gridPos.y + size.y; z++)
-                    {
-                        _occupiedGrid[x, z] = instance;
-                    }
-                }
-
-                GameLoopManager.Instance?.RegisterBuilding(instance);
+                BuildingInstance instance = SpawnBuilding(_selectedBuildingData, gridPos, CurrentRotationY);
                 OnBuildingPlaced?.Invoke(instance);
             }
+        }
+
+        /// <summary>
+        /// 건물 생성 + 점유 칸 등록 + 게임 루프 등록 (설치와 세이브 복원이 같이 씀). 검사·비용·OnBuildingPlaced는 부르는 쪽에서
+        /// </summary>
+        private BuildingInstance SpawnBuilding(BuildingData data, Vector2Int gridPos, float rotationY)
+        {
+            Vector2Int size = data.GridSize;
+            Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
+            // 미리보기와 같은 회전으로 생성 (예전에는 Quaternion.identity라 프리팹 회전이 사라졌음)
+            GameObject buildingObj = Instantiate(data.buildingPrefab, spawnPos, GetPlacementRotation(data, rotationY));
+
+            BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
+            instance.Init(data, gridPos, rotationY);
+
+            // 전신주 데이터면 전력 연결 컴포넌트 부착 (프리팹 수정 없이 동작)
+            if (data.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
+            {
+                buildingObj.AddComponent<InfraTown.Power.UtilityPoleInstance>();
+            }
+
+            for (int x = gridPos.x; x < gridPos.x + size.x; x++)
+            {
+                for (int z = gridPos.y; z < gridPos.y + size.y; z++)
+                {
+                    _occupiedGrid[x, z] = instance;
+                }
+            }
+
+            GameLoopManager.Instance?.RegisterBuilding(instance);
+            return instance;
+        }
+
+        // ─── 세이브 ───
+
+        /// <summary>건물 ID(없으면 이름)로 등록된 건물 데이터 찾기</summary>
+        public BuildingData FindBuildingData(string buildingID, string buildingName = null)
+        {
+            if (buildingDatabase == null) return null;
+            if (!string.IsNullOrEmpty(buildingID))
+            {
+                foreach (var d in buildingDatabase) if (d != null && d.buildingID == buildingID) return d;
+            }
+            if (!string.IsNullOrEmpty(buildingName))
+            {
+                foreach (var d in buildingDatabase) if (d != null && d.buildingName == buildingName) return d;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 저장된 건물 되살리기: 돈·해금 검사 없이 그 자리에 그 회전으로 생성. 칸을 벗어나거나 겹치면 null.
+        /// 설치 대사·튜토리얼이 나오지 않도록 OnBuildingPlaced는 보내지 않는다
+        /// </summary>
+        public BuildingInstance RestoreBuilding(BuildingData data, Vector2Int gridPos, float rotationY)
+        {
+            if (data == null || data.buildingPrefab == null) return null;
+            Vector2Int size = data.GridSize;
+            if (gridPos.x < 0 || gridPos.y < 0 || gridPos.x + size.x > 60 || gridPos.y + size.y > 40) return null;
+            for (int x = gridPos.x; x < gridPos.x + size.x; x++)
+            {
+                for (int z = gridPos.y; z < gridPos.y + size.y; z++)
+                {
+                    if (_occupiedGrid[x, z] != null) return null;
+                }
+            }
+            return SpawnBuilding(data, gridPos, Mathf.Repeat(rotationY, 360f));
         }
 
         private bool CanPlaceBuilding(int startX, int startZ, int sizeX, int sizeZ)
