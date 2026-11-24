@@ -115,15 +115,15 @@ namespace InfraTown.Tests.Playtest
             if (cam != null) cam.transform.position = sceneCamPos + new Vector3(37f, 11f, -9f);
 
             Section("S-2. 저장");
-            Check("저장 성공", SaveSystem.SaveGame(), SaveSystem.LastError);
-            Check("저장 파일 생성", SaveSystem.HasSave(), SaveSystem.GetSavePath());
-            var summary = SaveSystem.GetSummary();
+            Check("2번 슬롯에 저장 성공", SaveSystem.SaveGame(2), SaveSystem.LastError);
+            Check("2번 슬롯 저장 파일 생성 (다른 슬롯은 비어 있음)", SaveSystem.HasSave(2) && !SaveSystem.HasSave(1) && SaveSystem.CurrentSlot == 2, SaveSystem.GetSavePath(2));
+            var summary = SaveSystem.GetSummary(2);
             Note($"저장 요약: {summary?.playerName}, {summary?.year}년 {summary?.month}월 {summary?.week}주차, 돈 {summary?.money:N0}, 인구 {summary?.population}, 건물 {summary?.buildingCount}개, {summary?.savedAt}");
             Check("저장 요약이 지금 상태와 같음", summary != null && summary.money == before.money && summary.population == before.population && summary.buildingCount == before.buildings.Count);
             Shot("s01_before_save", null);
 
             Section("S-3. 씬을 새로 열고 이어하기");
-            var data = SaveSystem.LoadData();
+            var data = SaveSystem.LoadData(2);
             Check("저장 파일 읽기", data != null, SaveSystem.LastError);
             if (data == null) yield break;
             Note($"저장 파일 크기 {new FileInfo(SaveSystem.GetSavePath()).Length / 1024f:F1}KB, 씬 '{data.sceneName}'");

@@ -139,6 +139,7 @@ namespace InfraTown.Save
     [Serializable]
     public class SaveSummary
     {
+        public int slot; // 1~5
         public string savedAt;
         public string sceneName;
         public string playerName;
@@ -146,5 +147,21 @@ namespace InfraTown.Save
         public int money;
         public int population;
         public int buildingCount;
+    }
+
+    /// <summary>
+    /// 저장·불러오기 화면의 슬롯 한 칸 (사용자 기획 2026-11-24: 슬롯 5개).
+    /// isEmpty면 빈 슬롯, isBroken이면 파일은 있지만 읽을 수 없음(error에 이유), 아니면 summary에 내용.
+    /// </summary>
+    [Serializable]
+    public class SaveSlotInfo
+    {
+        public int slot;          // 1~5
+        public bool isEmpty;
+        public bool isBroken;
+        public string error;
+        public SaveSummary summary;
+        public bool isCurrent;    // 지금 진행 중인 게임의 슬롯 (마지막으로 저장했거나 불러온 슬롯)
+        public bool isLatest;     // 가장 최근에 저장한 슬롯
     }
 }

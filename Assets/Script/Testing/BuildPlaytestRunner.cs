@@ -108,8 +108,8 @@ namespace InfraTown.Testing
                 ("Power_BlackoutPenalty", Power_BlackoutPenalty),
                 ("Gas_ShortagePenalty", Gas_ShortagePenalty),
                 ("Build_RandomPlacementSeed", Build_RandomPlacementSeed),
-                ("Save_WritesFile", Save_WritesFile),
-                ("Save_ContinueRestoresState", Save_ContinueRestoresState),
+                ("Save_FiveSlotsWrite", Save_FiveSlotsWrite),
+                ("Save_ContinueChosenSlot", Save_ContinueChosenSlot),
                 ("Save_PlayContinuesAfterLoad", Save_PlayContinuesAfterLoad),
                 ("Outcome_DefeatAfter12BadWeeks", Outcome_DefeatAfter12BadWeeks),
                 ("Outcome_VictoryAt480Weeks", Outcome_VictoryAt480Weeks),
@@ -771,26 +771,52 @@ namespace InfraTown.Testing
 
         private Snapshot _beforeSave;
 
-        private IEnumerator Save_WritesFile()
+        /// <summary>불러올 슬롯 (seed마다 2~4번 중 하나)</summary>
+        private int LoadSlot => 2 + _seed % 3;
+
+        private static void DeleteAllSlots()
+        {
+            for (int s = 1; s <= SaveSystem.SlotCount; s++) if (SaveSystem.HasSave(s)) SaveSystem.DeleteSave(s);
+        }
+
+        private IEnumerator Save_FiveSlotsWrite()
         {
             SaveSystem.FolderOverrideForTests = Path.Combine(Application.temporaryCachePath, $"BuildTestSaves_{_seed}");
-            SaveSystem.DeleteSave();
+            DeleteAllSlots();
+            Expect(!SaveSystem.HasAnySave() && SaveSystem.GetLatestSlot() == 0, "지운 뒤에도 저장이 남아 있음");
             Place("convenience_store", 40, 20, 270f); // 회전한 건물도 저장
             EconomyManager.Instance.SetGovernmentSubsidyAmount(15100);
             yield return Frames(1);
+
+            // 불러올 슬롯에 지금 상태를, 1번·5번 슬롯에는 돈이 다른 상태를 저장 (슬롯끼리 섞이지 않는지)
+            var eco = EconomyManager.Instance;
             _beforeSave = Snapshot.Take();
-            Expect(SaveSystem.SaveGame(), $"저장 실패: {SaveSystem.LastError}");
-            Expect(SaveSystem.HasSave(), "저장 파일이 없음");
-            var summary = SaveSystem.GetSummary();
-            Expect(summary != null && summary.money == _beforeSave.money && summary.population == _beforeSave.population && summary.buildingCount == _beforeSave.buildings,
-                summary == null ? $"요약 없음: {SaveSystem.LastError}" : $"요약 돈 {summary.money} 인구 {summary.population} 건물 {summary.buildingCount}");
+            Expect(SaveSystem.SaveGame(LoadSlot), $"{LoadSlot}번 슬롯 저장 실패: {SaveSystem.LastError}");
+            Expect(SaveSystem.CurrentSlot == LoadSlot, $"저장한 뒤 현재 슬롯 {SaveSystem.CurrentSlot} ({LoadSlot}이어야 함)");
+            eco.AddMoney(1111);
+            Expect(SaveSystem.SaveGame(1), $"1번 슬롯 저장 실패: {SaveSystem.LastError}");
+            eco.AddMoney(1111);
+            Expect(SaveSystem.SaveGame(5), $"5번 슬롯 저장 실패: {SaveSystem.LastError}");
+            eco.TrySpendMoney(2222);
+            Expect(!SaveSystem.SaveGame(6), "없는 6번 슬롯에 저장됨");
+
+            var slots = SaveSystem.GetAllSlots();
+            if (!Expect(slots.Length == 5, $"슬롯 {slots.Length}칸")) yield break;
+            string filled = string.Join(",", slots.Where(s => !s.isEmpty).Select(s => s.slot));
+            Expect(filled == string.Join(",", new[] { 1, LoadSlot, 5 }.OrderBy(x => x)), $"저장된 슬롯 {filled}");
+            var chosen = slots[LoadSlot - 1].summary;
+            Expect(chosen != null && chosen.slot == LoadSlot && chosen.money == _beforeSave.money && chosen.population == _beforeSave.population && chosen.buildingCount == _beforeSave.buildings,
+                chosen == null ? $"{LoadSlot}번 요약 없음" : $"{LoadSlot}번 요약 돈 {chosen.money} 인구 {chosen.population} 건물 {chosen.buildingCount}");
+            Expect(slots[0].summary != null && slots[0].summary.money == _beforeSave.money + 1111, $"1번 슬롯 돈 {slots[0].summary?.money}");
+            Expect(slots[4].summary != null && slots[4].summary.money == _beforeSave.money + 2222, $"5번 슬롯 돈 {slots[4].summary?.money}");
+            Expect(slots[4].isCurrent && SaveSystem.CurrentSlot == 5, $"마지막 저장 뒤 현재 슬롯 {SaveSystem.CurrentSlot}");
         }
 
-        private IEnumerator Save_ContinueRestoresState()
+        private IEnumerator Save_ContinueChosenSlot()
         {
             if (!Expect(_beforeSave != null, "저장 단계가 먼저 실패함")) yield break;
             var oldLoop = GameLoopManager.Instance;
-            if (!Expect(SaveSystem.ContinueGame(), $"이어하기 실패: {SaveSystem.LastError}")) yield break;
+            if (!Expect(SaveSystem.ContinueGame(LoadSlot), $"{LoadSlot}번 슬롯 불러오기 실패: {SaveSystem.LastError}")) yield break;
             float deadline = Time.realtimeSinceStartup + 30f;
             while ((SaveSystem.HasPendingLoad || GameLoopManager.Instance == null || GameLoopManager.Instance == oldLoop) && Time.realtimeSinceStartup < deadline)
                 yield return null;
@@ -799,7 +825,8 @@ namespace InfraTown.Testing
             if (!Expect(!SaveSystem.HasPendingLoad && GameLoopManager.Instance != oldLoop, "새 씬에서 저장 데이터가 적용되지 않음")) yield break;
             var after = Snapshot.Take();
             string diff = _beforeSave.Diff(after);
-            Expect(diff.Length == 0, $"이어하기 후 달라짐: {diff}");
+            Expect(diff.Length == 0, $"{LoadSlot}번 슬롯을 불러온 뒤 달라짐: {diff}");
+            Expect(SaveSystem.CurrentSlot == LoadSlot, $"불러온 뒤 현재 슬롯 {SaveSystem.CurrentSlot} ({LoadSlot}이어야 함)");
             Expect(EconomyManager.Instance.GetRequestedSubsidy() == 15100, $"신청 지원금 {EconomyManager.Instance.GetRequestedSubsidy()}");
             var triggers = FindObjectOfType<DialogueTriggers>();
             Expect(triggers != null && triggers.StoryStarted, "이어하기 후 이야기 상태가 처음으로 돌아감");
@@ -818,7 +845,9 @@ namespace InfraTown.Testing
             Expect(house != null, "이어서 건물을 짓지 못함");
             Demolish(house);
             yield return Frames(1);
-            SaveSystem.DeleteSave();
+            Expect(SaveSystem.SaveGame(), "슬롯을 생략한 저장 실패");
+            Expect(SaveSystem.GetLatestSlot() == LoadSlot, $"슬롯 생략 저장이 {SaveSystem.GetLatestSlot()}번에 됨 (불러온 {LoadSlot}번이어야 함)");
+            DeleteAllSlots();
         }
 
         // ───────────────────────── 7. 엔딩 ─────────────────────────

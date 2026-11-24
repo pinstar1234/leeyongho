@@ -49,6 +49,7 @@ namespace InfraTown.Tests
         {
             _folder = Path.Combine(Path.GetTempPath(), "InfraTownSaveTests_" + System.Guid.NewGuid().ToString("N"));
             SaveSystem.FolderOverrideForTests = _folder;
+            SaveSystem.SetCurrentSlot(1);
             SaveSystem.ClearPendingLoad();
             _prefab = GameObject.CreatePrimitive(PrimitiveType.Cube);
             _world = new TestWorld();
@@ -298,7 +299,7 @@ namespace InfraTown.Tests
             Assert.AreEqual(123457, SaveSystem.LoadData().economy.money);
             Assert.IsFalse(File.Exists(SaveSystem.GetSavePath() + ".tmp"));
 
-            Assert.IsTrue(SaveSystem.DeleteSave());
+            Assert.IsTrue(SaveSystem.DeleteSave(1));
             Assert.IsFalse(SaveSystem.HasSave());
         }
 
@@ -384,6 +385,128 @@ namespace InfraTown.Tests
             var reopened = SaveThenReopen();
             Assert.AreEqual(GameResult.Victory, reopened.outcome.Result);
             Assert.IsTrue(reopened.time.IsEventPaused);
+        }
+
+        // ── 슬롯 5개 (사용자 기획 2026-11-24) ──
+
+        [Test]
+        public void 슬롯은_1번부터_5번까지_5개다()
+        {
+            Assert.AreEqual(5, SaveSystem.SlotCount);
+            Assert.IsFalse(SaveSystem.IsValidSlot(0));
+            Assert.IsTrue(SaveSystem.IsValidSlot(1));
+            Assert.IsTrue(SaveSystem.IsValidSlot(5));
+            Assert.IsFalse(SaveSystem.IsValidSlot(6));
+            Assert.AreEqual(1, SaveSystem.CurrentSlot, "처음 현재 슬롯은 1번");
+        }
+
+        [Test]
+        public void 고른_슬롯에_따로따로_저장되고_고른_슬롯이_불러와진다()
+        {
+            var m = NewScene();
+            MakeProgress(m);
+            for (int slot = 1; slot <= 5; slot++)
+            {
+                m.economy.ApplySaveState(new EconomySaveState { money = slot * 1000 });
+                Assert.IsTrue(SaveSystem.SaveGame(slot), SaveSystem.LastError);
+            }
+            for (int slot = 1; slot <= 5; slot++)
+            {
+                Assert.IsTrue(File.Exists(Path.Combine(_folder, $"save_{slot}.json")));
+                Assert.AreEqual(slot * 1000, SaveSystem.LoadData(slot).economy.money, $"{slot}번 슬롯");
+            }
+
+            // 3번 슬롯을 골라 불러오면 3번 슬롯 내용
+            CleanupWorld();
+            _world = new TestWorld();
+            var reopened = NewScene();
+            SaveSystem.ApplySaveData(SaveSystem.LoadData(3));
+            Assert.AreEqual(3000, reopened.economy.CurrentMoney);
+        }
+
+        [Test]
+        public void 저장하거나_불러온_슬롯이_현재_슬롯이_되고_생략하면_현재_슬롯을_쓴다()
+        {
+            var m = NewScene();
+            MakeProgress(m);
+            int changed = -1;
+            System.Action<int> onChanged = s => changed = s;
+            SaveSystem.OnCurrentSlotChanged += onChanged;
+            try
+            {
+                Assert.IsTrue(SaveSystem.SaveGame(4));
+                Assert.AreEqual(4, SaveSystem.CurrentSlot);
+                Assert.AreEqual(4, changed);
+
+                m.economy.ApplySaveState(new EconomySaveState { money = 777 });
+                Assert.IsTrue(SaveSystem.SaveGame(), "슬롯 생략 = 현재 슬롯(4번)");
+                Assert.AreEqual(777, SaveSystem.LoadData(4).economy.money);
+                Assert.IsFalse(SaveSystem.HasSave(1), "1번에는 저장하지 않음");
+                Assert.AreEqual(4, SaveSystem.GetSummary().slot);
+            }
+            finally { SaveSystem.OnCurrentSlotChanged -= onChanged; }
+        }
+
+        [Test]
+        public void 범위_밖_슬롯은_저장_불러오기_지우기를_하지_않는다()
+        {
+            var m = NewScene();
+            MakeProgress(m);
+            UnityEngine.TestTools.LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("슬롯은 1~5번"));
+            Assert.IsFalse(SaveSystem.SaveGame(6));
+            StringAssert.Contains("1~5번", SaveSystem.LastError);
+            Assert.IsNull(SaveSystem.LoadData(-1));
+            Assert.IsFalse(SaveSystem.DeleteSave(0), "지우기는 슬롯 번호를 꼭 줘야 함");
+            Assert.IsFalse(SaveSystem.ContinueGame(9));
+            Assert.IsFalse(SaveSystem.SetCurrentSlot(6));
+            Assert.AreEqual(1, SaveSystem.CurrentSlot);
+            Assert.IsFalse(SaveSystem.HasAnySave());
+        }
+
+        [Test]
+        public void 슬롯_목록은_빈_슬롯_깨진_파일_요약을_5칸으로_보여준다()
+        {
+            var m = NewScene();
+            MakeProgress(m);
+            Assert.IsTrue(SaveSystem.SaveGame(2));
+            Assert.IsTrue(SaveSystem.SaveGame(5));
+            File.WriteAllText(SaveSystem.GetSavePath(4), "{ 깨진 파일");
+            File.SetLastWriteTimeUtc(SaveSystem.GetSavePath(2), System.DateTime.UtcNow.AddMinutes(-10));
+            File.SetLastWriteTimeUtc(SaveSystem.GetSavePath(4), System.DateTime.UtcNow.AddMinutes(-20));
+            File.SetLastWriteTimeUtc(SaveSystem.GetSavePath(5), System.DateTime.UtcNow.AddMinutes(-5));
+
+            var slots = SaveSystem.GetAllSlots(); // 깨진 파일이 있어도 콘솔 에러 없음
+            Assert.AreEqual(5, slots.Length);
+            CollectionAssert.AreEqual(new[] { 1, 2, 3, 4, 5 }, slots.Select(s => s.slot));
+            Assert.IsTrue(slots[0].isEmpty && slots[2].isEmpty);
+            Assert.IsTrue(slots[3].isBroken && !slots[3].isEmpty && slots[3].summary == null);
+            Assert.IsNotEmpty(slots[3].error);
+            Assert.AreEqual("민수", slots[1].summary.playerName);
+            Assert.AreEqual((2, 2), (slots[1].slot, slots[1].summary.slot));
+            Assert.AreEqual((2, 3, 3), (slots[4].summary.year, slots[4].summary.month, slots[4].summary.week));
+            Assert.IsTrue(slots[4].isCurrent, "마지막으로 저장한 5번이 현재 슬롯");
+            Assert.IsTrue(slots[4].isLatest && !slots[1].isLatest, "가장 최근에 저장한 슬롯");
+            Assert.AreEqual(5, SaveSystem.GetLatestSlot());
+            Assert.IsTrue(SaveSystem.HasAnySave());
+        }
+
+        [Test]
+        public void 슬롯을_지우면_그_슬롯만_비고_저장이_없으면_이어하기를_하지_않는다()
+        {
+            var m = NewScene();
+            MakeProgress(m);
+            Assert.IsTrue(SaveSystem.SaveGame(1));
+            Assert.IsTrue(SaveSystem.SaveGame(3));
+            Assert.IsTrue(SaveSystem.DeleteSave(3));
+            Assert.IsFalse(SaveSystem.HasSave(3));
+            Assert.IsTrue(SaveSystem.HasSave(1));
+            Assert.IsFalse(SaveSystem.DeleteSave(3), "이미 빈 슬롯");
+            Assert.AreEqual(1, SaveSystem.GetLatestSlot());
+
+            Assert.IsTrue(SaveSystem.DeleteSave(1));
+            Assert.AreEqual(0, SaveSystem.GetLatestSlot());
+            Assert.IsFalse(SaveSystem.ContinueLatest());
+            Assert.IsNotEmpty(SaveSystem.LastError);
         }
     }
 }
