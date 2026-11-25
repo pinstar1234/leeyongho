@@ -9,7 +9,13 @@ namespace InfraTown.TimeSystem
     {
         [Header("UI Text Component")]
         [SerializeField] private TextMeshProUGUI dateText; // 예: "1년차 1월 3주차"
+        [SerializeField] private TextMeshProUGUI yearText;
         [SerializeField] private TextMeshProUGUI seasonText;
+        [SerializeField] private Image[] weekIndicators;
+
+        private static readonly Color CurrentWeekColor = new Color32(89, 112, 82, 255);
+        private static readonly Color PastWeekColor = new Color32(150, 170, 131, 255);
+        private static readonly Color UpcomingWeekColor = new Color32(232, 223, 202, 255);
 
         [Header("Season Badge")]
         [SerializeField] private Image seasonBadgeBackground;
@@ -93,11 +99,28 @@ namespace InfraTown.TimeSystem
 
         private void UpdateDateUI(int year, int month, int week)
         {
+            if (yearText != null)
+                yearText.text = $"{year}년차";
             if (dateText != null)
-            {
-                dateText.text = $"{year}년차 {month}월 {week}주차"; // 시간이 주 단위로 바뀜 (2026-11-24): 세 번째 값은 이번 달 몇 주차(1~4) 
-            }
+                dateText.text = yearText != null ? $"{month}월 {week}주차" : $"{year}년차 {month}월 {week}주차";
+
             UpdateSeasonBadge(SeasonUtil.FromMonth(month));
+            UpdateWeekIndicators(week);
+        }
+
+        private void UpdateWeekIndicators(int currentWeek)
+        {
+            if (weekIndicators == null) return;
+
+            for (int i = 0; i < weekIndicators.Length; i++)
+            {
+                if (weekIndicators[i] == null) continue;
+
+                int week = i + 1;
+                weekIndicators[i].color = week == currentWeek
+                    ? CurrentWeekColor
+                    : week < currentWeek ? PastWeekColor : UpcomingWeekColor;
+            }
         }
 
         private void UpdateSeasonBadge(Season season)

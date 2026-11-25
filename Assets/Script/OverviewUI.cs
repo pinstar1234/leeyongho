@@ -52,10 +52,14 @@ namespace InfraTown.UI
         [SerializeField] private TextMeshProUGUI fireStationTimeText;
         [SerializeField] private TextMeshProUGUI convenienceTimeText;
 
+        [SerializeField] private bool separateMetricLabels;
+        [SerializeField] private Color warningColor = new Color32(255, 102, 102, 255);
+
         [Header("전체 현황 탭")]
         [SerializeField] private Button[] overviewTabs;
         [SerializeField] private GameObject[] overviewPages;
         [SerializeField] private RectTransform selectedTabUnderline;
+        [SerializeField] private Sprite selectedTabSprite;
         [SerializeField] private Color selectedTabColor = new Color32(62, 104, 83, 255);
         [SerializeField] private Color tabColor = new Color32(44, 67, 87, 255);
 
@@ -115,6 +119,8 @@ namespace InfraTown.UI
                 pages[i].SetActive(active);
                 if (buttons[i].targetGraphic != null)
                     buttons[i].targetGraphic.color = active ? selectedTabColor : tabColor;
+                if (selectedTabSprite != null && buttons[i].image != null)
+                    buttons[i].image.overrideSprite = active ? selectedTabSprite : null;
             }
 
             if (selectedTabUnderline != null)
@@ -254,7 +260,7 @@ namespace InfraTown.UI
 
             if (powerText != null)
             {
-                powerText.text = $"전기 수급: {power.CurrentUsedPower} / {power.CurrentAvailablePower} kW";
+                powerText.text = FormatMetric("전기 수급", $"{power.CurrentUsedPower} / {power.CurrentAvailablePower} kW");
             }
 
             if (powerSlider != null)
@@ -267,8 +273,11 @@ namespace InfraTown.UI
 
             if (powerPurchaseText != null)
             {
-                string shortage = power.NextMonthShortage > 0 ? $"\n<color=#FF6666>다음 달 {power.NextMonthShortage} kW 부족</color>" : "";
-                powerPurchaseText.text = $"다음 달 전력 구매: {power.TargetPurchasedPower} kW (월 {power.MonthlyPurchaseCost:N0} 원){shortage}";
+                string shortage = power.NextMonthShortage > 0
+                    ? "\n" + FormatWarning($"다음 달 {power.NextMonthShortage} kW 부족")
+                    : "";
+                powerPurchaseText.text = FormatMetric("다음 달 전력 구매",
+                    $"{power.TargetPurchasedPower} kW (월 {power.MonthlyPurchaseCost:N0} 원){shortage}");
             }
         }
 
@@ -288,8 +297,9 @@ namespace InfraTown.UI
             if (gasPurchaseText != null)
             {
                 string shortage = _gas.NextMonthShortage > 0
-                    ? $"\n<color=#FF6666>다음 달 {_gas.NextMonthShortage:N0} 부족</color>" : "";
-                gasPurchaseText.text = $"다음 달 가스 구매: {_gas.TargetPurchasedGas:N0} (월 {_gas.MonthlyPurchaseCost:N0} 원){shortage}";
+                    ? "\n" + FormatWarning($"다음 달 {_gas.NextMonthShortage:N0} 부족") : "";
+                gasPurchaseText.text = FormatMetric("다음 달 가스 구매",
+                    $"{_gas.TargetPurchasedGas:N0} (월 {_gas.MonthlyPurchaseCost:N0} 원){shortage}");
             }
         }
 
@@ -302,7 +312,8 @@ namespace InfraTown.UI
         {
             if (populationText != null)
             {
-                populationText.text = $"인구 현황: {current}명 / 한계: {maxCapacity}명";
+                string capacityLabel = separateMetricLabels ? "한계" : "한계:";
+                populationText.text = FormatMetric("인구 현황", $"{current}명 / {capacityLabel} {maxCapacity}명");
             }
         }
 
@@ -318,7 +329,8 @@ namespace InfraTown.UI
 
             if (subsidyText != null)
             {
-                subsidyText.text = $"신청 지원금: {requested:N0} 원 / 최대: {maxEligible:N0} 원";
+                string maximumLabel = separateMetricLabels ? "최대" : "최대:";
+                subsidyText.text = FormatMetric("신청 지원금", $"{requested:N0} 원 / {maximumLabel} {maxEligible:N0} 원");
             }
         }
 
@@ -332,7 +344,7 @@ namespace InfraTown.UI
         {
             if (satisfactionText != null)
             {
-                satisfactionText.text = $"현재 만족도: {Mathf.RoundToInt(score)}%";
+                satisfactionText.text = FormatMetric("현재 만족도", $"{Mathf.RoundToInt(score)}%");
             }
 
         }
@@ -347,31 +359,40 @@ namespace InfraTown.UI
 
             if (patrolCountText != null)
             {
-                patrolCountText.text = mgr.HasPoliceStation
-                    ? $"경찰 하루 순찰: {mgr.DailyPolicePatrolCount} 회"
-                    : "경찰 하루 순찰: 0 회 (경찰서 없음)";
+                patrolCountText.text = FormatMetric("경찰 하루 순찰", mgr.HasPoliceStation
+                    ? $"{mgr.DailyPolicePatrolCount} 회"
+                    : "0 회 (경찰서 없음)");
             }
 
             if (hospitalTimeText != null)
             {
-                hospitalTimeText.text = mgr.HasHospital
-                    ? $"병원 접근 시간: {mgr.HospitalAccessTime:F1} 분"
-                    : "병원 접근 시간: 미설치 (위험)";
+                hospitalTimeText.text = FormatMetric("병원 접근 시간", mgr.HasHospital
+                    ? $"{mgr.HospitalAccessTime:F1} 분"
+                    : MissingServiceStatus());
             }
 
             if (fireStationTimeText != null)
             {
-                fireStationTimeText.text = mgr.HasFireStation
-                    ? $"소방서 접근 시간: {mgr.FireStationAccessTime:F1} 분"
-                    : "소방서 접근 시간: 미설치 (위험)";
+                fireStationTimeText.text = FormatMetric("소방서 접근 시간", mgr.HasFireStation
+                    ? $"{mgr.FireStationAccessTime:F1} 분"
+                    : MissingServiceStatus());
             }
 
             if (convenienceTimeText != null)
             {
-                convenienceTimeText.text = mgr.HasConvenienceStore
-                    ? $"편의시설 접근 시간: {mgr.ConvenienceAccessTime:F1} 분"
-                    : "편의시설 접근 시간: 미설치";
+                convenienceTimeText.text = FormatMetric("편의시설 접근 시간", mgr.HasConvenienceStore
+                    ? $"{mgr.ConvenienceAccessTime:F1} 분"
+                    : "미설치");
             }
         }
+
+        private string FormatMetric(string label, string value) =>
+            separateMetricLabels ? value : $"{label}: {value}";
+
+        private string MissingServiceStatus() =>
+            separateMetricLabels ? FormatWarning("미설치 (위험)") : "미설치 (위험)";
+
+        private string FormatWarning(string message) =>
+            $"<color=#{ColorUtility.ToHtmlStringRGB(warningColor)}>{message}</color>";
     }
 }
