@@ -38,6 +38,13 @@ namespace InfraTown.UI
         [SerializeField] private Button btnNimbys;     // 혐오시설[cite: 18]
         [SerializeField] private Button btnHousing;    // 주택시설[cite: 18]
 
+        [Tooltip("인프라(도로·전신주) 버튼. 비워 두면 게임 시작 때 주택 버튼을 복제해 줄 끝에 자동으로 만든다 (2026-11-25, 도로 접근 규칙 때문에 필요)")]
+        [SerializeField] private Button btnInfrastructure;
+        [SerializeField] private string infrastructureLabel = "인프라시설";
+
+        /// <summary>인프라(도로·전신주) 카테고리 버튼 (씬에 없으면 자동으로 만든 복제 버튼)</summary>
+        public Button InfrastructureButton => btnInfrastructure;
+
         [Header("Sub Buttons (크기 선택 버튼)")]
         [SerializeField] private Button smallButton;   // Small (1x1)[cite: 18]
         [SerializeField] private Button mediumButton;  // Medium (2x2)[cite: 18]
@@ -99,11 +106,66 @@ namespace InfraTown.UI
             if (btnNimbys != null) btnNimbys.onClick.AddListener(() => OnClickCategoryMainButton(btnNimbys, BuildingType.Nimbys)); //[cite: 18]
             if (btnHousing != null) btnHousing.onClick.AddListener(() => OnClickCategoryMainButton(btnHousing, BuildingType.Housing)); //[cite: 18]
 
+            // 인프라(도로·전신주): 건물은 도로에 맞닿아야 지어지므로 도로를 고를 버튼이 꼭 있어야 한다
+            if (btnInfrastructure == null) btnInfrastructure = CreateInfrastructureButton();
+            if (btnInfrastructure != null) btnInfrastructure.onClick.AddListener(() => OnClickCategoryMainButton(btnInfrastructure, BuildingType.Infrastructure));
+
             // 크기 서브 버튼 이벤트
             if (cancelButton != null) cancelButton.onClick.AddListener(CloseBuildMenu); //[cite: 18]
             if (smallButton != null) smallButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Small)); //[cite: 18]
             if (mediumButton != null) mediumButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Medium)); //[cite: 18]
             if (largeButton != null) largeButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Large)); //[cite: 18]
+        }
+
+        /// <summary>
+        /// 씬에 인프라 버튼이 없을 때 기존 카테고리 버튼(주택 → 불쾌 → 필수 → 편의 순으로 있는 것)을 복제해
+        /// 같은 줄 오른쪽 끝(버튼 간격만큼 옆)에 만든다. 글자는 infrastructureLabel, 글자 말고 붙은 표시 아이콘은 숨긴다.
+        /// 씬 파일은 바꾸지 않는다 (플레이 중에만 생김)
+        /// </summary>
+        private Button CreateInfrastructureButton()
+        {
+            var categoryButtons = new List<Button>();
+            foreach (var b in new[] { btnFacility, btnEssential, btnNimbys, btnHousing }) if (b != null) categoryButtons.Add(b);
+            if (categoryButtons.Count == 0) return null;
+
+            Button template = btnHousing != null ? btnHousing : categoryButtons[categoryButtons.Count - 1];
+            var templateRect = template.GetComponent<RectTransform>();
+            Button clone = Instantiate(template, template.transform.parent);
+            clone.name = "InfrastructureButton (auto)";
+            clone.onClick.RemoveAllListeners();
+            clone.interactable = true;
+
+            // 위치: 같은 부모·같은 줄에 있는 카테고리 버튼 중 가장 오른쪽 + 버튼 간격
+            var cloneRect = clone.GetComponent<RectTransform>();
+            if (cloneRect != null && templateRect != null)
+            {
+                var xs = new List<float>();
+                foreach (var b in categoryButtons)
+                {
+                    var rt = b.GetComponent<RectTransform>();
+                    if (rt != null && rt.parent == templateRect.parent && Mathf.Abs(rt.anchoredPosition.y - templateRect.anchoredPosition.y) < 1f)
+                        xs.Add(rt.anchoredPosition.x);
+                }
+                xs.Sort();
+                float spacing = templateRect.rect.width + 16f;
+                for (int i = 1; i < xs.Count; i++)
+                {
+                    float gap = xs[i] - xs[i - 1];
+                    if (gap > 1f && gap < spacing) spacing = gap;
+                }
+                float rightmost = xs.Count > 0 ? xs[xs.Count - 1] : templateRect.anchoredPosition.x;
+                cloneRect.anchoredPosition = new Vector2(rightmost + spacing, templateRect.anchoredPosition.y);
+                clone.transform.SetSiblingIndex(template.transform.GetSiblingIndex() + 1);
+            }
+
+            // 글자는 '인프라시설'로, 주택 표시 아이콘 같은 다른 자식은 숨김
+            var label = clone.GetComponentInChildren<TMP_Text>(true);
+            if (label != null) label.text = infrastructureLabel;
+            foreach (Transform child in clone.transform)
+            {
+                if (label == null || (child != label.transform && !label.transform.IsChildOf(child))) child.gameObject.SetActive(false);
+            }
+            return clone;
         }
 
         private void Start()
@@ -437,6 +499,7 @@ namespace InfraTown.UI
                 BuildingType.Facility => "편의 시설",
                 BuildingType.Nimbys => "불쾌 시설",
                 BuildingType.Housing => "주택",
+                BuildingType.Infrastructure => "인프라",
                 _ => "미분류"
             };
         }

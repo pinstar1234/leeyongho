@@ -514,6 +514,67 @@ namespace InfraTown.Tests.Playtest
             Check("[정보] 버튼 → 정보 패널에 건물 데이터 표시", ui.txtBuildingName == null || shown.Contains("병원"), shown);
             ui.CloseAllUI();
             yield return RealSeconds(0.5f);
+
+            yield return InfrastructureButtonCheck(ui);
+        }
+
+        /// <summary>
+        /// 인프라(도로·전신주) 버튼 (2026-11-25): 건물은 도로에 맞닿아야 지어지므로 UI로 도로를 고를 수 있어야 한다.
+        /// 씬에 버튼이 없으면 BuildingUIManager가 주택 버튼을 복제해 줄 끝에 만든다
+        /// </summary>
+        private static IEnumerator InfrastructureButtonCheck(BuildingUIManager ui)
+        {
+            var btn = ui.InfrastructureButton;
+            Check("[인프라] 버튼이 있음 (씬에 없으면 자동 생성)", btn != null);
+            if (btn == null) yield break;
+            var label = btn.GetComponentInChildren<TMP_Text>(true);
+            Note($"[인프라] 버튼 '{btn.name}', 글자 '{label?.text}', 위치 {btn.GetComponent<RectTransform>()?.anchoredPosition}");
+            Check("[인프라] 버튼이 켜져 있고 누를 수 있음", btn.gameObject.activeInHierarchy && btn.interactable);
+            Check("[인프라] 버튼 글자", label == null || label.text.Contains("인프라"), label?.text);
+
+            // 다른 카테고리 버튼과 겹치지 않음
+            var rect = btn.GetComponent<RectTransform>();
+            bool overlaps = false;
+            foreach (var field in new[] { "btnFacility", "btnEssential", "btnNimbys", "btnHousing" })
+            {
+                var other = TestWorld.GetField<Button>(ui, field);
+                if (other == null || other == btn || rect == null) continue;
+                var o = other.GetComponent<RectTransform>();
+                if (o.parent == rect.parent && Mathf.Abs(o.anchoredPosition.y - rect.anchoredPosition.y) < 1f
+                    && Mathf.Abs(o.anchoredPosition.x - rect.anchoredPosition.x) < rect.rect.width) overlaps = true;
+            }
+            Check("[인프라] 버튼이 다른 카테고리 버튼과 겹치지 않음", !overlaps);
+
+            // 누르면 도로·전신주를 고를 수 있어야 함
+            btn.onClick.Invoke();
+            yield return Frames(2);
+            if (!TestWorld.GetField<bool>(ui, "showCatalogOnCategoryClick"))
+            {
+                var small = TestWorld.GetField<Button>(ui, "smallButton");
+                Check("[인프라] 크기 메뉴에서 소형(도로·전신주) 선택 가능", small == null || small.interactable);
+                small?.onClick.Invoke();
+                yield return Frames(2);
+            }
+            var container = TestWorld.GetField<Transform>(ui, "buildingSlotContainer");
+            var ids = new List<string>();
+            if (container != null)
+            {
+                foreach (var slot in container.GetComponentsInChildren<BuildingSlotUI>())
+                {
+                    var data = TestWorld.GetField<BuildingData>(slot, "buildingData");
+                    if (data != null && slot.gameObject.activeSelf) ids.Add(data.buildingID);
+                }
+            }
+            Note($"[인프라] 목록: {string.Join(", ", ids)}");
+            var buildCanvas = btn.GetComponentInParent<Canvas>();
+            if (buildCanvas != null)
+            {
+                yield return RealSeconds(0.8f); // 슬롯 팝업 연출이 끝난 뒤 촬영
+                Shot("02b_build_ui_infrastructure", buildCanvas.rootCanvas);
+            }
+            Check("[인프라] 목록에 도로와 전신주가 있음", container == null || (ids.Contains("road") && ids.Contains("power_pole")), string.Join(", ", ids));
+            ui.CloseAllUI();
+            yield return RealSeconds(0.5f);
         }
 
         private static IEnumerator MonthlySettlementCheck()

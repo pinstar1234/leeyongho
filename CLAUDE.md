@@ -60,7 +60,7 @@ powershell -ExecutionPolicy Bypass -File Tools/run-tests.ps1 -Filter EconomyTest
 - `Assets/Data/Build/House|Small|Medium.asset`은 초기 테스트용 데이터.
 - `1park2.unity`에는 `BuildingManager`가 두 개(GridManager 오브젝트, BuildingManager 오브젝트) 있고 둘 다 13종이 등록되어 있다. 이제 중복 쪽은 컴포넌트만 제거되므로 그리드는 안전하지만, 어느 쪽이 남는지는 실행마다 다를 수 있어 팀원 2와 하나로 정리하는 게 좋다.
 - 분류 `Infrastructure`(도로·전신주)는 기획서 4장 '인프라'. `isPowerPole` 데이터는 배치 시 `UtilityPoleInstance`가 자동으로 붙는다.
-- 현재 건설 UI(`BuildingUIManager`, 팀원 1)는 `GetBuildingDataByCategoryAndSize`로 분류+크기당 1개만 고를 수 있고 Infrastructure 버튼이 없다. 목록형 UI용 API: `GetBuildingsByCategory`, `GetUnlockedBuildings`, `AllBuildingData`.
+- 건설 UI(`BuildingUIManager`, 팀원 1, Jinyu12 병합 후)는 카테고리 버튼 → 목록(`showCatalogOnCategoryClick`, `2Park 1`) 또는 크기 메뉴(`1park2`)로 고른다. **인프라(도로·전신주) 버튼(2026-11-25, 사용자 2회 확인 후 추가)**: 건물은 도로에 맞닿아야 지어지므로 꼭 필요한데 씬에 없어서, `btnInfrastructure`가 비어 있으면 게임 시작 때 주택 버튼을 복제해 같은 줄 오른쪽 끝(버튼 간격만큼 옆)에 '인프라시설' 버튼을 만든다(씬 파일 변경 없음, `InfrastructureButton`). 팀원이 씬에 진짜 버튼을 만들어 연결하면 복제하지 않는다. 자동 플레이 테스트가 버튼 위치·겹침·목록(도로·전신주)을 확인하고 `02b_build_ui_infrastructure.png`를 남긴다. `1park2`의 예전 UI는 목록 패널이 연결돼 있지 않아 어느 분류든 목록이 뜨지 않는다. 목록형 UI용 API: `GetBuildingsByCategory`, `GetBuildingsByCategoryAndSize`, `GetUnlockedBuildings`, `AllBuildingData`.
 
 **흐름.**
 1. `LightweightGridManager` — 60x40, 타일 2m. 오브젝트 없이 Y=0 평면 레이캐스트로 마우스 좌표를 계산해 `OnGridHoverChanged`/`OnGridClicked` 발생. (`GridManager`는 타일 오브젝트를 생성하는 이전 방식)
