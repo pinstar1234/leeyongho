@@ -21,11 +21,24 @@ namespace InfraTown.UI
             }
         }
 
+        private readonly struct ForegroundPatch
+        {
+            public readonly RectInt Original;
+            public readonly RectInt Tile;
+
+            public ForegroundPatch(int x, int y, int width, int height, int atlasX, int atlasY)
+            {
+                Original = new RectInt(x, y, width, height);
+                Tile = new RectInt(atlasX, atlasY, width, height);
+            }
+        }
+
         // Artwork-space positions and matching entries in the alpha-padded atlas.
         private static readonly Actor Train = new Actor(682, 476, 309, 65, 4, 4, 74);
         private static readonly Actor Van = new Actor(841, 590, 65, 49, 456, 4, 60);
         private static readonly Actor Truck = new Actor(1142, 688, 125, 77, 320, 4, 90);
         private static readonly Actor Tractor = new Actor(266, 772, 164, 127, 536, 4, 136);
+        private static readonly Actor Airplane = new Actor(1256, 96, 211, 57, 710, 4, 64);
         private static readonly Actor[] Cattle =
         {
             new Actor(80, 753, 70, 45, 4, 155, 214),
@@ -35,7 +48,18 @@ namespace InfraTown.UI
             new Actor(310, 736, 58, 44, 276, 155, 214)
         };
 
+        // The original roadside silhouettes are drawn over road traffic for foreground occlusion.
+        private static readonly ForegroundPatch[] RoadsideTrees =
+        {
+            new ForegroundPatch(971, 654, 88, 123, 710, 143),
+            new ForegroundPatch(1083, 734, 81, 98, 809, 143),
+            new ForegroundPatch(1158, 752, 176, 124, 4, 280),
+            new ForegroundPatch(1308, 762, 193, 130, 188, 280),
+            new ForegroundPatch(1492, 822, 66, 68, 390, 280)
+        };
+
         private static readonly RectInt GroundShadow = new RectInt(346, 203, 60, 22);
+        private static readonly RectInt AirplaneTrail = new RectInt(710, 125, 108, 12);
 
         private float _startTime;
 
@@ -61,8 +85,11 @@ namespace InfraTown.UI
             DrawCleanPlate(mesh, rect, Van);
             DrawCleanPlate(mesh, rect, Truck);
             DrawCleanPlate(mesh, rect, Tractor);
+            DrawCleanPlate(mesh, rect, Airplane);
             foreach (Actor cow in Cattle)
                 DrawCleanPlate(mesh, rect, cow);
+
+            DrawAirplane(mesh, rect, seconds);
 
             float trainPhase = Mathf.Repeat(seconds / 22f + 0.36f, 1f);
             float trainOffset = Mathf.Lerp(156f, -280f, trainPhase);
@@ -74,7 +101,22 @@ namespace InfraTown.UI
             DrawVehicle(mesh, rect, Truck, Mathf.Repeat(seconds / 15f + 0.37f, 1f),
                 new Vector2(1055f, 677f), new Vector2(1465f, 820f), 0.86f, 1.16f);
 
+            foreach (ForegroundPatch tree in RoadsideTrees)
+                DrawTile(mesh, rect, tree.Tile, tree.Original.center, tree.Original.size, 0f, 1f);
+
             DrawFarm(mesh, rect, seconds);
+        }
+
+        private void DrawAirplane(VertexHelper mesh, Rect rect, float seconds)
+        {
+            float phase = Mathf.Repeat(seconds / 27f + 0.31f, 1f);
+            Vector2 position = Airplane.Original.center + new Vector2(
+                Mathf.Lerp(195f, -440f, phase), Mathf.Lerp(-10f, -43f, phase));
+            float opacity = PassageOpacity(phase);
+            float tilt = Mathf.Sin(seconds * 0.7f) * 0.65f;
+            DrawTile(mesh, rect, AirplaneTrail, position + new Vector2(43f, 1.5f),
+                new Vector2(108f, 12f), -2f + tilt, opacity);
+            DrawActor(mesh, rect, Airplane, position, 1f, tilt, opacity);
         }
 
         private void DrawCleanPlate(VertexHelper mesh, Rect rect, Actor actor) =>
