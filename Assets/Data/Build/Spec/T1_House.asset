@@ -33,6 +33,6 @@ MonoBehaviour:
   isPowerPole: 0
   policePatrolCount: 0
   fixedAccessTimeMinutes: 5
-  buildingPrefab: {fileID: 7301714859460476872, guid: d3fab1e8bda6abb4b94547cf55e451ae, type: 3}
-  previewPrefab: {fileID: 7301714859460476872, guid: d3fab1e8bda6abb4b94547cf55e451ae, type: 3}
+  buildingPrefab: {fileID: 895415692000207866, guid: 41c3986d79f1b3d468e59963ab48c86e, type: 3}
+  previewPrefab: {fileID: 895415692000207866, guid: 41c3986d79f1b3d468e59963ab48c86e, type: 3}
   buildingIcon: {fileID: 0}
