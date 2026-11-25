@@ -34,11 +34,11 @@ namespace InfraTown.UI
         private RectTransform _saveSlots;
         private RectTransform _loadSlots;
         private bool _loading;
+        private TextMeshProUGUI _quitStatus;
 
         private void Start()
         {
-            MouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(SensitivityKey, 1f), 0.25f, 2f);
-            AudioListener.volume = Mathf.Clamp01(PlayerPrefs.GetFloat(VolumeKey, 1f));
+            ReadSettings();
             BuildMenu();
         }
 
@@ -123,26 +123,39 @@ namespace InfraTown.UI
             var loadButton = CreateButton(_menu, "불러오기", -20, () => ShowSlots(_loadSlots, false));
             _settingsButton = CreateButton(_menu, "게임 설정", -78, () => ShowSettings(true));
             var quitButton = CreateButton(_menu, "게임 종료", -136, QuitGame);
+            _quitStatus = CreateLabel(CreateRect(_menu, "Quit Status", 350, 26, 0, -174), "", 16);
             LinkNavigation(_resumeButton, saveButton, loadButton, _settingsButton, quitButton);
 
-            _settings = CreatePanel(backdrop, "게임 설정");
-            var sensitivity = CreateSlider(_settings, "마우스 감도", 88, 0.25f, 2f, MouseSensitivity, value =>
-            {
-                MouseSensitivity = value;
-                PlayerPrefs.SetFloat(SensitivityKey, value);
-            });
-            var volume = CreateSlider(_settings, "전체 음량", -10, 0f, 1f, AudioListener.volume, value =>
-            {
-                AudioListener.volume = value;
-                PlayerPrefs.SetFloat(VolumeKey, value);
-            });
-            _backButton = CreateButton(_settings, "뒤로", -136, () => ShowSettings(false));
-            LinkNavigation(sensitivity, volume, _backButton);
+            _settings = CreateSettingsPanel(backdrop, () => ShowSettings(false), out _backButton);
             _settings.gameObject.SetActive(false);
             _saveSlots = CreatePanel(backdrop, "저장", 476);
             _loadSlots = CreatePanel(backdrop, "불러오기", 476);
             _saveSlots.gameObject.SetActive(false);
             _loadSlots.gameObject.SetActive(false);
+        }
+
+        internal static void ReadSettings()
+        {
+            MouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(SensitivityKey, 1f), 0.25f, 2f);
+            AudioListener.volume = Mathf.Clamp01(PlayerPrefs.GetFloat(VolumeKey, 1f));
+        }
+
+        internal static RectTransform CreateSettingsPanel(Transform parent, UnityEngine.Events.UnityAction back, out Button backButton)
+        {
+            var panel = CreatePanel(parent, "게임 설정");
+            var sensitivity = CreateSlider(panel, "마우스 감도", 88, 0.25f, 2f, MouseSensitivity, value =>
+            {
+                MouseSensitivity = value;
+                PlayerPrefs.SetFloat(SensitivityKey, value);
+            });
+            var volume = CreateSlider(panel, "전체 음량", -10, 0f, 1f, AudioListener.volume, value =>
+            {
+                AudioListener.volume = value;
+                PlayerPrefs.SetFloat(VolumeKey, value);
+            });
+            backButton = CreateButton(panel, "뒤로", -136, back);
+            LinkNavigation(sensitivity, volume, backButton);
+            return panel;
         }
 
         private void ShowSlots(RectTransform panel, bool saving, string message = "")
@@ -207,7 +220,7 @@ namespace InfraTown.UI
             UIEventSystem.current?.SetSelectedGameObject(available[0].gameObject);
         }
 
-        private static RectTransform CreatePanel(Transform parent, string title, float height = 380)
+        internal static RectTransform CreatePanel(Transform parent, string title, float height = 380)
         {
             var panel = CreateRect(parent, title, 400, height);
             AddImage(panel, PanelColor);
@@ -215,7 +228,7 @@ namespace InfraTown.UI
             return panel;
         }
 
-        private static Button CreateButton(Transform parent, string title, float y, UnityEngine.Events.UnityAction action, float height = 46)
+        internal static Button CreateButton(Transform parent, string title, float y, UnityEngine.Events.UnityAction action, float height = 46)
         {
             var rect = CreateRect(parent, title, 310, height, 0, y);
             var image = AddImage(rect, ButtonColor, true);
@@ -261,7 +274,7 @@ namespace InfraTown.UI
             return slider;
         }
 
-        private static void LinkNavigation(params Selectable[] controls)
+        internal static void LinkNavigation(params Selectable[] controls)
         {
             for (int i = 0; i < controls.Length; i++)
             {
@@ -274,7 +287,7 @@ namespace InfraTown.UI
             }
         }
 
-        private static RectTransform CreateRect(Transform parent, string name, float width = 0,
+        internal static RectTransform CreateRect(Transform parent, string name, float width = 0,
             float height = 0, float x = 0, float y = 0)
         {
             var rect = (RectTransform)new GameObject(name, typeof(RectTransform)).transform;
@@ -284,7 +297,7 @@ namespace InfraTown.UI
             return rect;
         }
 
-        private static RectTransform SetFill(RectTransform rect)
+        internal static RectTransform SetFill(RectTransform rect)
         {
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
@@ -293,7 +306,7 @@ namespace InfraTown.UI
             return rect;
         }
 
-        private static Image AddImage(RectTransform rect, Color color, bool raycast = false)
+        internal static Image AddImage(RectTransform rect, Color color, bool raycast = false)
         {
             var image = rect.gameObject.AddComponent<Image>();
             image.color = color;
@@ -301,7 +314,7 @@ namespace InfraTown.UI
             return image;
         }
 
-        private static TextMeshProUGUI CreateLabel(RectTransform rect, string text, float size)
+        internal static TextMeshProUGUI CreateLabel(RectTransform rect, string text, float size)
         {
             var label = rect.gameObject.AddComponent<TextMeshProUGUI>();
             label.font = TMP_Settings.defaultFontAsset;
@@ -313,7 +326,23 @@ namespace InfraTown.UI
             return label;
         }
 
-        private static void QuitGame()
+        private void OnApplicationQuit()
+        {
+            if (!_loading) SaveSystem.SaveResumeForQuit();
+        }
+
+        private void QuitGame()
+        {
+            if (!SaveSystem.SaveResumeForQuit())
+            {
+                _quitStatus.text = "이어하기 저장 실패";
+                return;
+            }
+
+            ExitApplication();
+        }
+
+        internal static void ExitApplication()
         {
             PlayerPrefs.Save();
 #if UNITY_EDITOR

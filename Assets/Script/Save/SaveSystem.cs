@@ -22,7 +22,7 @@ namespace InfraTown.Save
     ///   슬롯 목록 화면 (저장·불러오기 공용) → SaveSystem.GetAllSlots()  (5칸: 빈 슬롯 / 깨진 파일 / 요약 정보, 현재·최근 슬롯 표시)
     ///   ESC '저장' 화면에서 슬롯 선택     → SaveSystem.SaveGame(slot)   (덮어쓸지 묻는 건 UI가 HasSave(slot)로 판단)
     ///   ESC '저장 후 나가기'              → SaveSystem.SaveAndQuitToTitle(slot)  (실패하면 false, LastError — 나가지 않음)
-    ///   타이틀 '이어하기' 버튼 표시 여부  → SaveSystem.HasAnySave()
+    ///   타이틀 '이어하기' → SaveSystem.HasResume() / ContinueResume() (종료 직전 자동 저장)
     ///   타이틀 '불러오기' 화면에서 슬롯 선택 → SaveSystem.ContinueGame(slot)  (저장한 씬을 열고 그 시점으로 되돌림)
     ///   (가장 최근 저장 바로 이어하기)    → SaveSystem.ContinueLatest()
     ///   슬롯 지우기                       → SaveSystem.DeleteSave(slot)
@@ -82,6 +82,9 @@ namespace InfraTown.Save
         }
 
         public static string GetSavePath(int slot = CurrentSlotArg) => Path.Combine(SaveFolder, $"save_{Resolve(slot)}.json");
+        private static string ResumePath => Path.Combine(SaveFolder, "resume.json");
+
+        public static bool HasResume() => File.Exists(ResumePath);
 
         /// <summary>마지막 실패 이유 (성공하면 null)</summary>
         public static string LastError { get; private set; }
@@ -99,6 +102,7 @@ namespace InfraTown.Save
         public static bool IsApplying { get; private set; }
 
         private static SaveData _pending;
+        private static bool _resumeSavedForQuit;
 
         // ───────────────── 저장 ─────────────────
 
@@ -122,21 +126,49 @@ namespace InfraTown.Save
             LastError = null;
             slot = Resolve(slot);
             if (!CheckSlot(slot)) { Debug.LogWarning($"[SaveSystem] {LastError}"); return false; }
+            if (!WriteSnapshot(GetSavePath(slot), 0)) return false;
+            SetCurrentSlot(slot);
+            OnGameSaved?.Invoke(slot);
+            return true;
+        }
+
+        public static bool SaveResume()
+        {
+            LastError = null;
+            if (TimeManager.Instance == null || HasPendingLoad || IsApplying)
+            {
+                LastError = "이어하기에 저장할 게임이 준비되지 않았어요.";
+                return false;
+            }
+            return WriteSnapshot(ResumePath, CurrentSlot);
+        }
+
+        public static bool SaveResumeForQuit()
+        {
+            if (!_resumeSavedForQuit) _resumeSavedForQuit = SaveResume();
+            return _resumeSavedForQuit;
+        }
+
+        private static void HandleApplicationQuit()
+        {
+            var time = TimeManager.Instance;
+            if (time != null && time.gameObject.scene == SceneManager.GetActiveScene())
+                SaveResumeForQuit();
+        }
+
+        private static bool WriteSnapshot(string path, int resumeSlot)
+        {
             try
             {
                 var data = CaptureCurrentGame();
                 if (data == null) return false;
+                data.resumeSlot = resumeSlot;
 
                 Directory.CreateDirectory(SaveFolder);
-                string path = GetSavePath(slot);
                 string temp = path + ".tmp";
                 File.WriteAllText(temp, JsonUtility.ToJson(data, true));
                 if (File.Exists(path)) File.Replace(temp, path, null);
                 else File.Move(temp, path);
-
-                Debug.Log($"[SaveSystem] 저장 완료 (슬롯 {slot}): {path}");
-                SetCurrentSlot(slot);
-                OnGameSaved?.Invoke(slot);
                 return true;
             }
             catch (Exception e)
@@ -227,6 +259,11 @@ namespace InfraTown.Save
             if (!CheckSlot(slot)) return null;
             string path = GetSavePath(slot);
             if (!File.Exists(path)) { LastError = $"{slot}번 슬롯에 저장된 게임이 없어요."; return null; }
+            return ReadSnapshot(path, logErrors);
+        }
+
+        private static SaveData ReadSnapshot(string path, bool logErrors)
+        {
             try
             {
                 var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(path));
@@ -319,6 +356,25 @@ namespace InfraTown.Save
         {
             slot = Resolve(slot);
             var data = LoadData(slot);
+            return OpenSnapshot(data, slot);
+        }
+
+        public static bool ContinueResume()
+        {
+            LastError = null;
+            if (!HasResume())
+            {
+                LastError = "이어할 게임이 없어요.";
+                return false;
+            }
+
+            var data = ReadSnapshot(ResumePath, true);
+            if (data == null) return false;
+            return OpenSnapshot(data, IsValidSlot(data.resumeSlot) ? data.resumeSlot : 1);
+        }
+
+        private static bool OpenSnapshot(SaveData data, int slot)
+        {
             if (data == null) return false;
             if (string.IsNullOrEmpty(data.sceneName) || !Application.CanStreamedLevelBeLoaded(data.sceneName))
             {
@@ -354,8 +410,11 @@ namespace InfraTown.Save
             _pending = null;
             IsApplying = false;
             CurrentSlot = 1;
+            _resumeSavedForQuit = false;
             SceneManager.sceneLoaded -= HandleSceneLoaded;
             SceneManager.sceneLoaded += HandleSceneLoaded;
+            Application.quitting -= HandleApplicationQuit;
+            Application.quitting += HandleApplicationQuit;
         }
 
         private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)

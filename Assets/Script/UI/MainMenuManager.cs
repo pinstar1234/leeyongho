@@ -1,35 +1,124 @@
+using System.Collections.Generic;
+using InfraTown.Save;
+using InfraTown.UI;
+using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement; // æ¿ ¿¸»Ø(LoadScene)¿ª ªÁøÎ«œ±‚ ¿ß«ÿ π›µÂΩ√ √ﬂ∞°«ÿæﬂ «’¥œ¥Ÿ.
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+using UIEventSystem = UnityEngine.EventSystems.EventSystem;
 
 public class MainMenuManager : MonoBehaviour
 {
-    [Header("¿Ãµø«“ æ¿ ¿Ã∏ß")]
-    [Tooltip("Start πˆ∆∞¿ª ¥©∏£∏È ¿Ãµø«“ æ¿¿« ¿Ã∏ß¿ª ¡§»Æ»˜ ¿˚æÓ¡÷ººø‰.")]
-    public string nextSceneName = "GameScene"; // ¿ŒΩ∫∆Â≈Õø°º≠ ºˆ¡§ ∞°¥…
+    public string nextSceneName = "GameScene";
+    [SerializeField] private Button startButton;
+    [SerializeField] private Button continueButton;
+    [SerializeField] private Button loadButton;
+    [SerializeField] private Button settingsButton;
+    [SerializeField] private Button exitButton;
 
-    /// <summary>
-    /// Start πˆ∆∞¿ª ¥≠∑∂¿ª ∂ß Ω««‡µ… «‘ºˆ
-    /// </summary>
+    private Button[] _buttons;
+    private RectTransform _overlay;
+    private RectTransform _settings;
+    private RectTransform _loadSlots;
+    private Button _settingsBack;
+    private Selectable _firstLoadControl;
+    private Button _modalButton;
+    private TextMeshProUGUI _status;
+    private bool _openingGame;
+
+    private void Start()
+    {
+        GamePauseMenu.ReadSettings();
+        if (startButton == null || continueButton == null || loadButton == null ||
+            settingsButton == null || exitButton == null) return;
+
+        _buttons = new[] { startButton, continueButton, loadButton, settingsButton, exitButton };
+        continueButton.interactable = SaveSystem.HasResume();
+        continueButton.onClick.AddListener(ContinueGame);
+        loadButton.onClick.AddListener(() => OpenPanel(_loadSlots, loadButton, _firstLoadControl));
+        settingsButton.onClick.AddListener(() => OpenPanel(_settings, settingsButton, _settingsBack));
+        GamePauseMenu.LinkNavigation(new List<Selectable>(_buttons).FindAll(button => button.interactable).ToArray());
+
+        var canvas = startButton.GetComponentInParent<Canvas>();
+        _overlay = GamePauseMenu.SetFill(GamePauseMenu.CreateRect(canvas.transform, "Title Dialogs"));
+        GamePauseMenu.AddImage(_overlay, new Color(0f, 0f, 0f, 0.62f), true);
+        _settings = GamePauseMenu.CreateSettingsPanel(_overlay, ClosePanel, out _settingsBack);
+        BuildLoadPanel();
+        _overlay.gameObject.SetActive(false);
+
+        var rect = GamePauseMenu.CreateRect(startButton.transform.parent, "Title Status", 380, 52);
+        rect.anchorMin = rect.anchorMax = new Vector2(1f, 0.5f);
+        rect.anchoredPosition = new Vector2(-224, -266);
+        _status = GamePauseMenu.CreateLabel(rect, "", 19);
+    }
+
+    private void Update()
+    {
+        if (!_openingGame && _overlay != null && _overlay.gameObject.activeSelf && Input.GetKeyDown(KeyCode.Escape))
+            ClosePanel();
+    }
+
     public void OnClickStart()
     {
-        Debug.Log($"'{nextSceneName}' æ¿¿∏∑Œ ¿Ãµø«’¥œ¥Ÿ.");
-        // ¡ˆ¡§«— ¿Ã∏ß¿« æ¿¿ª ∫“∑Øø…¥œ¥Ÿ.
+        if (_openingGame) return;
+        _openingGame = true;
+        SaveSystem.ClearPendingLoad();
+        SaveSystem.SetCurrentSlot(1);
+        Time.timeScale = 1f;
         SceneManager.LoadScene(nextSceneName);
     }
 
-    /// <summary>
-    /// Exit πˆ∆∞¿ª ¥≠∑∂¿ª ∂ß Ω««‡µ… «‘ºˆ
-    /// </summary>
-    public void OnClickExit()
+    public void OnClickExit() => GamePauseMenu.ExitApplication();
+
+    private void ContinueGame()
     {
-        Debug.Log("∞‘¿”¿ª ¡æ∑·«’¥œ¥Ÿ.");
+        if (_openingGame) return;
+        _openingGame = SaveSystem.ContinueResume();
+        if (!_openingGame) _status.text = SaveSystem.LastError;
+    }
 
-        // 1. Ω«¡¶ ∫ÙµÂµ» ∞‘¿”(PC, ∏πŸ¿œ µÓ)ø°º≠ æ÷«√∏Æƒ…¿Ãº«¿ª ¡æ∑·«’¥œ¥Ÿ.
-        Application.Quit();
+    private void BuildLoadPanel()
+    {
+        _loadSlots = GamePauseMenu.CreatePanel(_overlay, "Î∂àÎü¨Ïò§Í∏∞", 460);
+        var status = GamePauseMenu.CreateLabel(
+            GamePauseMenu.CreateRect(_loadSlots, "Load Status", 340, 55, 0, -114), "", 17);
+        var navigation = new List<Selectable>();
+        foreach (var slot in SaveSystem.GetAllSlots())
+        {
+            string summary = slot.isEmpty ? "Îπà Ïä¨Î°Ø" : slot.isBroken ? "ÏùΩÏùÑ Ïàò ÏóÜÏùå" :
+                $"{slot.summary.year}ÎÖÑ {slot.summary.month}Ïõî {slot.summary.week}Ï£º";
+            var button = GamePauseMenu.CreateButton(_loadSlots, $"{slot.slot}Î≤à   {summary}",
+                116 - (slot.slot - 1) * 44, () =>
+                {
+                    if (_openingGame) return;
+                    _openingGame = SaveSystem.ContinueGame(slot.slot);
+                    if (!_openingGame) status.text = SaveSystem.LastError;
+                }, 38);
+            button.interactable = !slot.isEmpty && !slot.isBroken;
+            if (button.interactable) navigation.Add(button);
+        }
+        if (navigation.Count == 0) status.text = "ÏßÅÏ†ë Ï†ÄÏû•Ìïú Ïä¨Î°ØÏù¥ ÏóÜÏñ¥Ïöî.";
+        navigation.Add(GamePauseMenu.CreateButton(_loadSlots, "Îí§Î°ú", -179, ClosePanel));
+        _firstLoadControl = navigation[0];
+        GamePauseMenu.LinkNavigation(navigation.ToArray());
+    }
 
-        // 2. ¿Ø¥œ∆º ø°µ≈Õ »Ø∞Êø°º≠ ≈◊Ω∫∆Æ«“ ∂ß «√∑π¿Ã ∏µÂ∏¶ ¡§¡ˆΩ√≈µ¥œ¥Ÿ.
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.isPlaying = false;
-#endif
+    private void OpenPanel(RectTransform panel, Button opener, Selectable firstControl)
+    {
+        foreach (var button in _buttons) button.gameObject.SetActive(false);
+        _status.text = "";
+        _modalButton = opener;
+        _settings.gameObject.SetActive(panel == _settings);
+        _loadSlots.gameObject.SetActive(panel == _loadSlots);
+        _overlay.gameObject.SetActive(true);
+        UIEventSystem.current?.SetSelectedGameObject(firstControl.gameObject);
+    }
+
+    private void ClosePanel()
+    {
+        PlayerPrefs.Save();
+        _overlay.gameObject.SetActive(false);
+        foreach (var button in _buttons) button.gameObject.SetActive(true);
+        UIEventSystem.current?.SetSelectedGameObject(_modalButton.gameObject);
     }
 }
