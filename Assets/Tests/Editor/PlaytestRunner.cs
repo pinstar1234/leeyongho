@@ -15,6 +15,7 @@ using InfraTown.Grid;
 using InfraTown.Population;
 using InfraTown.Power;
 using InfraTown.Satisfaction;
+using InfraTown.Save;
 using InfraTown.Services;
 using InfraTown.TimeSystem;
 using InfraTown.UI;
@@ -165,6 +166,8 @@ namespace InfraTown.Tests.Playtest
 
         private static IEnumerator Scenario()
         {
+            // 자동 저장(1주마다)이 실제 세이브 폴더(persistentDataPath)를 덮어쓰지 않도록 테스트 폴더로 (save 모드도 같은 폴더를 비우고 씀)
+            SaveSystem.FolderOverrideForTests = Path.Combine(SessionState.GetString(OutKey, "Logs/Playtest"), "Saves");
             Section("0. 씬 시작");
             string injected = SessionState.GetString(InjectedKey, "");
             if (string.IsNullOrEmpty(injected)) Note("씬에 필요한 매니저·건물 목록이 모두 있음");

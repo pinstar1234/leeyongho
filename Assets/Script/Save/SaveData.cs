@@ -142,7 +142,7 @@ namespace InfraTown.Save
     [Serializable]
     public class SaveSummary
     {
-        public int slot; // 1~5
+        public int slot; // 1~5, 자동 저장은 SaveSystem.AutoSaveSlot(-1)
         public string savedAt;
         public string sceneName;
         public string playerName;
@@ -159,7 +159,8 @@ namespace InfraTown.Save
     [Serializable]
     public class SaveSlotInfo
     {
-        public int slot;          // 1~5
+        public int slot;          // 1~5, 자동 저장 칸은 SaveSystem.AutoSaveSlot(-1)
+        public bool isAutoSave;   // 자동 저장 전용 칸 (불러오기 화면에만, 직접 저장 불가 — 사용자 기획 2026-11-25)
         public bool isEmpty;
         public bool isBroken;
         public string error;

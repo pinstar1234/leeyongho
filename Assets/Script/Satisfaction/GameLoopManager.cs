@@ -47,6 +47,12 @@ namespace InfraTown.Core
                 gameObject.AddComponent<SettlementForecaster>();
             }
 
+            // 1주마다 자동 저장도 씬에 없으면 추가 (사용자 기획 2026-11-25)
+            if (InfraTown.Save.AutoSaveManager.Instance == null)
+            {
+                gameObject.AddComponent<InfraTown.Save.AutoSaveManager>();
+            }
+
             BuildingInstance.OnBuildingDestroyed += HandleBuildingDestroyed;
 
             // TimeManager 틱 이벤트 연동

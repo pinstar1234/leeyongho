@@ -22,11 +22,14 @@ namespace InfraTown.Save
     ///   슬롯 목록 화면 (저장·불러오기 공용) → SaveSystem.GetAllSlots()  (5칸: 빈 슬롯 / 깨진 파일 / 요약 정보, 현재·최근 슬롯 표시)
     ///   ESC '저장' 화면에서 슬롯 선택     → SaveSystem.SaveGame(slot)   (덮어쓸지 묻는 건 UI가 HasSave(slot)로 판단)
     ///   ESC '저장 후 나가기'              → SaveSystem.SaveAndQuitToTitle(slot)  (실패하면 false, LastError — 나가지 않음)
-    ///   타이틀 '이어하기' 버튼 표시 여부  → SaveSystem.HasAnySave()
+    ///   타이틀 '이어하기'                 → SaveSystem.ContinueLatest()  (직전에 저장한 게임 = 가장 최근에 저장된 슬롯, 자동 저장 포함)
+    ///                                       버튼 표시 여부는 SaveSystem.HasAnySave()
     ///   타이틀 '불러오기' 화면에서 슬롯 선택 → SaveSystem.ContinueGame(slot)  (저장한 씬을 열고 그 시점으로 되돌림)
-    ///   (가장 최근 저장 바로 이어하기)    → SaveSystem.ContinueLatest()
+    ///   타이틀 '새로 시작'                → SaveSystem.StartNewGame(게임 씬 이름)  (이전 게임 상태를 지우고 처음부터 — 이름은 게임 씬에서 입력, 저장 파일은 지우지 않음)
+    ///   타이틀 '불러오기' 슬롯 화면       → SaveSystem.GetLoadSlots()  (자동 저장 칸 + 1~5번, 6칸)
     ///   슬롯 지우기                       → SaveSystem.DeleteSave(slot)
-    ///   타이틀 '새 게임'                  → SaveSystem.ClearPendingLoad() 후 게임 씬 열기 (저장 파일은 지우지 않음)
+    ///   자동 저장                         → AutoSaveManager가 1주마다 자동 저장 전용 슬롯(AutoSaveSlot)에만 덮어씀 (사용자 기획 2026-11-25).
+    ///                                       플레이어는 이 슬롯에 직접 저장할 수 없고 '저장하기' 화면(GetAllSlots, 1~5번)에는 나오지 않는다
     ///
     /// slot 인자를 생략하거나 0을 주면 '현재 슬롯'(CurrentSlot: 이번 게임에서 마지막으로 저장했거나 불러온 슬롯, 처음엔 1번).
     /// 지우기(DeleteSave)는 실수를 막기 위해 슬롯 번호를 꼭 줘야 한다.
@@ -44,6 +47,13 @@ namespace InfraTown.Save
         /// <summary>slot 인자에 이 값(0)을 주면 현재 슬롯</summary>
         public const int CurrentSlotArg = 0;
 
+        /// <summary>
+        /// 자동 저장 전용 슬롯 (사용자 기획 2026-11-25). 1~5번과 따로 있고, 1주마다 자동 저장만 여기에 덮어쓴다
+        /// (새로 시작한 게임도 같은 슬롯을 덮어씀). 플레이어가 직접 저장할 수 없고(SaveGame이 거부), 저장하기 화면(GetAllSlots)에는 나오지 않는다.
+        /// 불러오기 화면(GetLoadSlots)·이어하기(ContinueLatest)·ContinueGame(AutoSaveSlot)으로는 불러올 수 있다. 파일 save_auto.json
+        /// </summary>
+        public const int AutoSaveSlot = -1;
+
         /// <summary>테스트에서 저장 폴더를 바꿀 때 (null이면 persistentDataPath/Saves)</summary>
         public static string FolderOverrideForTests;
 
@@ -58,7 +68,11 @@ namespace InfraTown.Save
         /// <summary>현재 슬롯이 바뀜 (새 슬롯)</summary>
         public static event Action<int> OnCurrentSlotChanged;
 
+        /// <summary>플레이어가 직접 저장할 수 있는 슬롯(1~5번)인지</summary>
         public static bool IsValidSlot(int slot) => slot >= 1 && slot <= SlotCount;
+
+        /// <summary>불러올 수 있는 슬롯(1~5번 + 자동 저장 슬롯)인지</summary>
+        public static bool IsLoadableSlot(int slot) => IsValidSlot(slot) || slot == AutoSaveSlot;
 
         /// <summary>현재 슬롯을 직접 정함 (예: 새 게임을 시작하며 슬롯을 고르는 UI). 범위 밖이면 false</summary>
         public static bool SetCurrentSlot(int slot)
@@ -73,15 +87,21 @@ namespace InfraTown.Save
         /// <summary>0이면 현재 슬롯으로 바꿈</summary>
         private static int Resolve(int slot) => slot == CurrentSlotArg ? CurrentSlot : slot;
 
-        /// <summary>슬롯 번호가 맞는지 확인 (틀리면 LastError)</summary>
-        private static bool CheckSlot(int slot)
+        /// <summary>슬롯 번호가 맞는지 확인 (틀리면 LastError). allowAutoSave면 자동 저장 슬롯도 허용</summary>
+        private static bool CheckSlot(int slot, bool allowAutoSave = false)
         {
-            if (IsValidSlot(slot)) return true;
-            LastError = $"슬롯은 1~{SlotCount}번만 있어요 (받은 값: {slot}).";
+            if (IsValidSlot(slot) || (allowAutoSave && slot == AutoSaveSlot)) return true;
+            LastError = slot == AutoSaveSlot
+                ? "자동 저장 슬롯에는 직접 저장할 수 없어요."
+                : $"슬롯은 1~{SlotCount}번만 있어요 (받은 값: {slot}).";
             return false;
         }
 
-        public static string GetSavePath(int slot = CurrentSlotArg) => Path.Combine(SaveFolder, $"save_{Resolve(slot)}.json");
+        public static string GetSavePath(int slot = CurrentSlotArg)
+        {
+            slot = Resolve(slot);
+            return Path.Combine(SaveFolder, slot == AutoSaveSlot ? "save_auto.json" : $"save_{slot}.json");
+        }
 
         /// <summary>마지막 실패 이유 (성공하면 null)</summary>
         public static string LastError { get; private set; }
@@ -102,26 +122,77 @@ namespace InfraTown.Save
 
         // ───────────────── 저장 ─────────────────
 
-        /// <summary>그 슬롯에 저장 파일이 있는지 (생략하면 현재 슬롯)</summary>
+        /// <summary>그 슬롯에 저장 파일이 있는지 (생략하면 현재 슬롯, 자동 저장 슬롯도 가능)</summary>
         public static bool HasSave(int slot = CurrentSlotArg)
         {
             slot = Resolve(slot);
-            return IsValidSlot(slot) && File.Exists(GetSavePath(slot));
+            return IsLoadableSlot(slot) && File.Exists(GetSavePath(slot));
         }
 
-        /// <summary>슬롯 중 하나라도 저장이 있는지 (타이틀 '이어하기'·'불러오기' 버튼 표시)</summary>
+        /// <summary>자동 저장이 있는지</summary>
+        public static bool HasAutoSave() => HasSave(AutoSaveSlot);
+
+        /// <summary>슬롯(1~5번 + 자동 저장) 중 하나라도 저장이 있는지 (타이틀 '이어하기'·'불러오기' 버튼 표시)</summary>
         public static bool HasAnySave()
         {
+            if (HasAutoSave()) return true;
             for (int s = 1; s <= SlotCount; s++) if (HasSave(s)) return true;
             return false;
         }
 
-        /// <summary>현재 게임을 그 슬롯에 저장 (생략하면 현재 슬롯). 성공하면 그 슬롯이 현재 슬롯이 된다. 실패하면 false (LastError)</summary>
+        /// <summary>
+        /// 현재 게임을 그 슬롯(1~5번)에 저장 (생략하면 현재 슬롯). 성공하면 그 슬롯이 현재 슬롯이 된다.
+        /// 자동 저장 슬롯은 직접 저장할 수 없다. 실패하면 false (LastError)
+        /// </summary>
         public static bool SaveGame(int slot = CurrentSlotArg)
         {
             LastError = null;
             slot = Resolve(slot);
             if (!CheckSlot(slot)) { Debug.LogWarning($"[SaveSystem] {LastError}"); return false; }
+            if (!WriteSave(slot)) return false;
+            SetCurrentSlot(slot);
+            OnGameSaved?.Invoke(slot);
+            return true;
+        }
+
+        /// <summary>
+        /// 자동 저장 (AutoSaveManager가 1주마다 부름): 자동 저장 전용 슬롯에 덮어쓴다. 현재 슬롯은 바꾸지 않는다. 실패하면 false (LastError)
+        /// </summary>
+        public static bool AutoSave()
+        {
+            LastError = null;
+            if (!WriteSave(AutoSaveSlot)) return false;
+            OnAutoSaved?.Invoke();
+            return true;
+        }
+
+        /// <summary>자동 저장 성공</summary>
+        public static event Action OnAutoSaved;
+
+        /// <summary>지금 시각과 '이미 있는 저장 중 가장 나중 시각 + 1틱' 중 늦은 쪽 (방금 저장한 파일이 늘 가장 최근이 되게)</summary>
+        private static DateTime NextWriteStamp()
+        {
+            DateTime stamp = DateTime.UtcNow;
+            foreach (int s in AllSlots())
+            {
+                string p = GetSavePath(s);
+                if (!File.Exists(p)) continue;
+                DateTime t = File.GetLastWriteTimeUtc(p);
+                if (t >= stamp) stamp = t.AddTicks(1);
+            }
+            return stamp;
+        }
+
+        /// <summary>자동 저장 슬롯 + 1~5번</summary>
+        private static IEnumerable<int> AllSlots()
+        {
+            yield return AutoSaveSlot;
+            for (int s = 1; s <= SlotCount; s++) yield return s;
+        }
+
+        /// <summary>지금 게임을 그 슬롯 파일에 씀 (임시 파일에 쓴 뒤 교체)</summary>
+        private static bool WriteSave(int slot)
+        {
             try
             {
                 var data = CaptureCurrentGame();
@@ -130,13 +201,15 @@ namespace InfraTown.Save
                 Directory.CreateDirectory(SaveFolder);
                 string path = GetSavePath(slot);
                 string temp = path + ".tmp";
+                DateTime stamp = NextWriteStamp(); // 쓰기 전에 다른 저장들의 시각을 봄
                 File.WriteAllText(temp, JsonUtility.ToJson(data, true));
                 if (File.Exists(path)) File.Replace(temp, path, null);
                 else File.Move(temp, path);
+                // 이어하기(GetLatestSlot)는 파일 수정 시각으로 '가장 최근 저장'을 고른다. 자동 저장 직후 같은 순간에 직접 저장하면
+                // 시계 해상도 때문에 시각이 같게 찍혀 엉뚱한 슬롯이 골라질 수 있으므로, 방금 저장한 파일이 항상 가장 나중이 되게 맞춘다
+                File.SetLastWriteTimeUtc(path, stamp);
 
-                Debug.Log($"[SaveSystem] 저장 완료 (슬롯 {slot}): {path}");
-                SetCurrentSlot(slot);
-                OnGameSaved?.Invoke(slot);
+                Debug.Log($"[SaveSystem] 저장 완료 ({SlotLabel(slot)}): {path}");
                 return true;
             }
             catch (Exception e)
@@ -220,13 +293,15 @@ namespace InfraTown.Save
         /// <summary>그 슬롯의 저장 파일 읽기 (생략하면 현재 슬롯. 없거나 깨졌으면 null, LastError)</summary>
         public static SaveData LoadData(int slot = CurrentSlotArg) => LoadData(slot, true);
 
+        private static string SlotLabel(int slot) => slot == AutoSaveSlot ? "자동 저장" : $"{slot}번 슬롯";
+
         private static SaveData LoadData(int slot, bool logErrors)
         {
             LastError = null;
             slot = Resolve(slot);
-            if (!CheckSlot(slot)) return null;
+            if (!CheckSlot(slot, allowAutoSave: true)) return null;
             string path = GetSavePath(slot);
-            if (!File.Exists(path)) { LastError = $"{slot}번 슬롯에 저장된 게임이 없어요."; return null; }
+            if (!File.Exists(path)) { LastError = $"{SlotLabel(slot)}에 저장된 게임이 없어요."; return null; }
             try
             {
                 var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(path));
@@ -247,34 +322,58 @@ namespace InfraTown.Save
         public static SaveSummary GetSummary(int slot = CurrentSlotArg) => ToSummary(Resolve(slot), LoadData(slot));
 
         /// <summary>
-        /// 슬롯 5칸의 정보 (저장·불러오기 화면). 빈 슬롯·깨진 파일도 칸으로 돌려주고, 깨진 파일은 콘솔 에러 없이 isBroken·error로 알려준다.
+        /// '저장하기' 화면의 슬롯 5칸(1~5번) 정보 — 자동 저장 슬롯은 직접 저장할 수 없으므로 빠진다 (사용자 기획 2026-11-25).
+        /// 빈 슬롯·깨진 파일도 칸으로 돌려주고, 깨진 파일은 콘솔 에러 없이 isBroken·error로 알려준다.
         /// </summary>
         public static SaveSlotInfo[] GetAllSlots()
         {
             var slots = new SaveSlotInfo[SlotCount];
             int latest = GetLatestSlot();
-            for (int s = 1; s <= SlotCount; s++)
-            {
-                var info = new SaveSlotInfo { slot = s, isCurrent = s == CurrentSlot, isLatest = s == latest };
-                if (!File.Exists(GetSavePath(s))) info.isEmpty = true;
-                else
-                {
-                    var data = LoadData(s, false);
-                    if (data == null) { info.isBroken = true; info.error = LastError; }
-                    else info.summary = ToSummary(s, data);
-                }
-                slots[s - 1] = info;
-            }
+            for (int s = 1; s <= SlotCount; s++) slots[s - 1] = BuildSlotInfo(s, latest);
             LastError = null;
             return slots;
         }
 
-        /// <summary>가장 최근에 저장한 슬롯 (파일 수정 시각 기준, 저장이 없으면 0)</summary>
+        /// <summary>
+        /// '불러오기' 화면의 슬롯 정보: 맨 앞이 자동 저장 칸(isAutoSave, 비어 있어도 칸으로), 그 뒤 1~5번 — 6칸
+        /// </summary>
+        public static SaveSlotInfo[] GetLoadSlots()
+        {
+            var slots = new SaveSlotInfo[SlotCount + 1];
+            int latest = GetLatestSlot();
+            slots[0] = BuildSlotInfo(AutoSaveSlot, latest);
+            for (int s = 1; s <= SlotCount; s++) slots[s] = BuildSlotInfo(s, latest);
+            LastError = null;
+            return slots;
+        }
+
+        /// <summary>자동 저장 칸 정보 (불러오기 화면에서 따로 그릴 때)</summary>
+        public static SaveSlotInfo GetAutoSaveSlotInfo()
+        {
+            var info = BuildSlotInfo(AutoSaveSlot, GetLatestSlot());
+            LastError = null;
+            return info;
+        }
+
+        private static SaveSlotInfo BuildSlotInfo(int s, int latest)
+        {
+            var info = new SaveSlotInfo { slot = s, isAutoSave = s == AutoSaveSlot, isCurrent = s == CurrentSlot, isLatest = s == latest };
+            if (!File.Exists(GetSavePath(s))) info.isEmpty = true;
+            else
+            {
+                var data = LoadData(s, false);
+                if (data == null) { info.isBroken = true; info.error = LastError; }
+                else info.summary = ToSummary(s, data);
+            }
+            return info;
+        }
+
+        /// <summary>가장 최근에 저장한 슬롯 (파일 수정 시각 기준, 자동 저장이면 AutoSaveSlot, 저장이 없으면 0)</summary>
         public static int GetLatestSlot()
         {
             int latest = 0;
             DateTime latestTime = DateTime.MinValue;
-            for (int s = 1; s <= SlotCount; s++)
+            foreach (int s in AllSlots())
             {
                 string path = GetSavePath(s);
                 if (!File.Exists(path)) continue;
@@ -300,20 +399,20 @@ namespace InfraTown.Save
             };
         }
 
-        /// <summary>그 슬롯의 저장 지우기 (실수 방지로 슬롯 번호 1~5를 꼭 줘야 함). 지웠으면 true</summary>
+        /// <summary>그 슬롯의 저장 지우기 (실수 방지로 슬롯 번호 1~5 또는 AutoSaveSlot을 꼭 줘야 함). 지웠으면 true</summary>
         public static bool DeleteSave(int slot)
         {
             LastError = null;
-            if (!CheckSlot(slot)) return false;
+            if (!CheckSlot(slot, allowAutoSave: true)) return false;
             string path = GetSavePath(slot);
-            if (!File.Exists(path)) { LastError = $"{slot}번 슬롯은 비어 있어요."; return false; }
+            if (!File.Exists(path)) { LastError = $"{SlotLabel(slot)}은 비어 있어요."; return false; }
             File.Delete(path);
             return true;
         }
 
         /// <summary>
         /// 불러오기: 고른 슬롯의 저장 파일을 읽어 저장한 씬을 열고, 씬이 뜨면 저장 시점으로 되돌린다.
-        /// 성공하면 그 슬롯이 현재 슬롯이 된다(이후 '저장'은 기본으로 이 슬롯). 실패하면 false (LastError)
+        /// 성공하면 그 슬롯이 현재 슬롯이 된다(이후 '저장'은 기본으로 이 슬롯 — 자동 저장 슬롯을 불러오면 현재 슬롯은 그대로). 실패하면 false (LastError)
         /// </summary>
         public static bool ContinueGame(int slot = CurrentSlotArg)
         {
@@ -328,13 +427,13 @@ namespace InfraTown.Save
             }
 
             PrepareLoad(data);
-            SetCurrentSlot(slot);
+            if (IsValidSlot(slot)) SetCurrentSlot(slot);
             Time.timeScale = 1f;
             SceneManager.LoadScene(data.sceneName);
             return true;
         }
 
-        /// <summary>타이틀 '이어하기': 가장 최근에 저장한 슬롯을 불러옴 (저장이 없으면 false)</summary>
+        /// <summary>타이틀 '이어하기': 가장 최근에 저장한 슬롯(자동 저장 포함)을 불러옴 (저장이 없으면 false)</summary>
         public static bool ContinueLatest()
         {
             int latest = GetLatestSlot();
@@ -345,8 +444,38 @@ namespace InfraTown.Save
         /// <summary>다음에 열리는 씬(data.sceneName)이 뜨면 이 데이터로 되돌리도록 예약 (씬은 직접 연다 — 에디터 테스트용)</summary>
         public static void PrepareLoad(SaveData data) => _pending = data;
 
-        /// <summary>예약된 불러오기 취소 (타이틀 '새 게임')</summary>
+        /// <summary>예약된 불러오기 취소</summary>
         public static void ClearPendingLoad() => _pending = null;
+
+        /// <summary>
+        /// 타이틀 '새로 시작' (사용자 기획 2026-11-25): 이전 게임에서 이어지는 상태를 지우고 게임 씬을 처음부터 연다.
+        /// 지우는 것: 예약된 불러오기, 현재 슬롯(→ 1번), 주인공 이름(게임 씬이 뜨면 DialogueTriggers가 이름 입력부터 다시 — 이름은 타이틀이 아니라 게임을 시작할 때 정함), 멈춘 시간 배율.
+        /// 저장 파일(1~5번·자동 저장)은 지우지 않는다 — 새로 시작한 뒤에도 불러오기로 다른 저장을 가져올 수 있다 (쯔꾸르식).
+        /// 씬이 Build Settings에 없거나 이름이 잘못되면 false (LastError) — 그때는 아무것도 바꾸지 않는다
+        /// </summary>
+        public static bool StartNewGame(string gameScene)
+        {
+            LastError = null;
+            if (string.IsNullOrEmpty(gameScene) || !Application.CanStreamedLevelBeLoaded(gameScene))
+            {
+                LastError = $"게임 씬 '{gameScene}'이 Build Settings에 없어 열 수 없어요.";
+                Debug.LogWarning($"[SaveSystem] {LastError}");
+                return false;
+            }
+
+            ResetForNewGame();
+            Time.timeScale = 1f;
+            SceneManager.LoadScene(gameScene);
+            return true;
+        }
+
+        /// <summary>새 게임 준비: 예약된 불러오기·현재 슬롯(1번)·주인공 이름을 초기화 (씬은 열지 않음, 저장 파일은 그대로 — 테스트·UI용)</summary>
+        public static void ResetForNewGame()
+        {
+            _pending = null;
+            SetCurrentSlot(1);
+            PlayerProfile.ClearPlayerName();
+        }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics()

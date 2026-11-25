@@ -6,8 +6,8 @@ namespace InfraTown.Core
     /// <summary>
     /// 플레이어(주인공) 정보. 게임을 시작할 때 정한 이름을 씬이 바뀌어도 유지한다 (게임을 끄면 사라짐 — 저장 기능이 생기면 거기에 넣기).
     ///
-    /// 이름 정하기: 타이틀의 '새 게임' 이름 입력창이나 게임 시작 시 DialogueTriggers.OnPlayerNameRequested를 받은 입력창이
-    ///   TrySetPlayerName(입력값, out 오류문구)를 부른다 (게임 씬에서는 DialogueTriggers.SubmitPlayerName 사용).
+    /// 이름 정하기 (사용자 기획 2026-11-25): 타이틀이 아니라 게임을 시작했을 때 정한다 — 게임 씬에서 DialogueTriggers.OnPlayerNameRequested를 받은
+    ///   입력창이 DialogueTriggers.SubmitPlayerName(입력값)을 부른다. 타이틀 '새로 시작'(SaveSystem.StartNewGame)은 이전 이름을 지운다.
     /// 대화·컷씬 문장에 {player} 또는 {이름}을 쓰면 정한 이름으로 바뀌어 나온다 (사용자 기획 2026-11-19).
     /// </summary>
     public static class PlayerProfile

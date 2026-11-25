@@ -117,7 +117,11 @@ namespace InfraTown.Tests.Playtest
 
             Section("S-2. 저장");
             Check("2번 슬롯에 저장 성공", SaveSystem.SaveGame(2), SaveSystem.LastError);
-            Check("2번 슬롯 저장 파일 생성 (다른 슬롯은 비어 있음)", SaveSystem.HasSave(2) && !SaveSystem.HasSave(1) && SaveSystem.CurrentSlot == 2, SaveSystem.GetSavePath(2));
+            // 저장 전 4주 동안의 자동 저장은 자동 저장 전용 슬롯에만 (사용자 기획 2026-11-25) → 1~5번 중에는 2번만
+            Check("2번 슬롯 저장 파일 생성, 현재 슬롯 2번 (1~5번 중 2번만, 자동 저장은 전용 슬롯)",
+                SaveSystem.HasSave(2) && SaveSystem.CurrentSlot == 2 && SaveSystem.HasAutoSave() && Enumerable.Range(1, 5).Count(s => SaveSystem.HasSave(s)) == 1,
+                string.Join(", ", Enumerable.Range(1, 5).Where(s => SaveSystem.HasSave(s)).Select(s => $"{s}번")) + (SaveSystem.HasAutoSave() ? ", 자동 저장" : ""));
+            int savedWeekSlot2 = SaveSystem.LoadData(2).time.totalWeeksPassed;
             var summary = SaveSystem.GetSummary(2);
             Note($"저장 요약: {summary?.playerName}, {summary?.year}년 {summary?.month}월 {summary?.week}주차, 돈 {summary?.money:N0}, 인구 {summary?.population}, 건물 {summary?.buildingCount}개, {summary?.savedAt}");
             Check("저장 요약이 지금 상태와 같음", summary != null && summary.money == before.money && summary.population == before.population && summary.buildingCount == before.buildings.Count);
@@ -174,13 +178,19 @@ namespace InfraTown.Tests.Playtest
             yield return WaitWeeks(3);
             Check("시간이 이어서 흐르고 엔딩 판정도 이어서 셈", WeekIndex(TimeManager.Instance) - weekBefore == 3 && GameOutcomeManager.Instance.WeeksElapsed - elapsedBefore == 3,
                 $"날짜 +{WeekIndex(TimeManager.Instance) - weekBefore}, 판정 +{GameOutcomeManager.Instance.WeeksElapsed - elapsedBefore}");
+            yield return Frames(1); // 마지막 주의 LateUpdate(자동 저장)
+            var autoSaved = SaveSystem.LoadData(SaveSystem.AutoSaveSlot);
+            Check("이어서 하는 동안 1주마다 자동 저장 슬롯에 저장 (불러온 2번은 그대로)",
+                autoSaved != null && autoSaved.time.totalWeeksPassed == TimeManager.Instance.TotalWeeksPassed && SaveSystem.GetLatestSlot() == SaveSystem.AutoSaveSlot
+                && SaveSystem.LoadData(2).time.totalWeeksPassed == savedWeekSlot2,
+                $"자동 저장 {autoSaved?.time.totalWeeksPassed}주 / 지금 {TimeManager.Instance.TotalWeeksPassed}주, 2번 {SaveSystem.LoadData(2)?.time.totalWeeksPassed}주(저장 때 {savedWeekSlot2}주)");
             int moneyBefore = EconomyManager.Instance.CurrentMoney;
             Check("불러온 건물(축사 50,30) 자리에는 겹쳐 지을 수 없음", Place("house", 50, 30, null) == null && EconomyManager.Instance.CurrentMoney == moneyBefore);
             var built = PlaceWithRoad("house", 55, 10, "after_load_house");
             Check("이어서 건물을 지을 수 있음 (건설비 차감)", built != null && EconomyManager.Instance.CurrentMoney < moneyBefore,
                 $"건물 {(built != null ? "생김" : "없음")}, 돈 {moneyBefore:N0} → {EconomyManager.Instance.CurrentMoney:N0}, 배치 모드 {BuildingManager.Instance.IsPlacingBuilding}, 시간 정지 {TimeManager.Instance.IsEventPaused}");
 
-            SaveSystem.FolderOverrideForTests = null;
+            // 저장 폴더는 테스트 폴더 그대로 둠 (자동 저장이 실제 세이브 폴더를 덮어쓰지 않도록, 2026-11-25)
         }
     }
 }

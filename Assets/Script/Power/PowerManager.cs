@@ -181,11 +181,14 @@ namespace InfraTown.Power
             seasonalPowerUsage = GetSeasonalDemand(CurrentSeason);
             currentUsedPower = buildingPowerUsage + seasonalPowerUsage;
 
-            if (purchaseOnStart)
+            // 이어하기로 저장 상태를 이미 되돌렸으면 첫 달 구매를 하지 않음 (Start가 세이브 적용보다 늦게 돌 때 — GasManager와 같음)
+            if (purchaseOnStart && !_restoredFromSave)
             {
                 ProcessMonthlyPowerPurchase();
             }
         }
+
+        private bool _restoredFromSave;
 
         private void OnDestroy()
         {
@@ -259,6 +262,7 @@ namespace InfraTown.Power
         public void ApplySaveState(InfraTown.Save.PowerSaveState s)
         {
             if (s == null) return;
+            _restoredFromSave = true;
             targetPurchasedPower = Mathf.Clamp(s.targetPurchasedPower, 0, Mathf.Max(0, maxPurchasablePower));
             currentAvailablePower = Mathf.Max(0, s.currentAvailablePower);
             seasonalPowerUsage = GetSeasonalDemand(CurrentSeason);

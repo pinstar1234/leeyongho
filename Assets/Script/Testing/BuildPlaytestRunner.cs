@@ -49,6 +49,8 @@ namespace InfraTown.Testing
             var runner = go.AddComponent<BuildPlaytestRunner>();
             runner._seed = int.TryParse(Arg(args, "-infratownSeed"), out int s) ? s : 1;
             runner._outPath = Arg(args, "-infratownTestOut") ?? Path.Combine(Application.persistentDataPath, "build-test-result.txt");
+            // 자동 저장(1주마다)이 플레이어의 실제 세이브 폴더를 덮어쓰지 않도록 테스트 폴더로
+            SaveSystem.FolderOverrideForTests = Path.Combine(Application.temporaryCachePath, $"BuildTestSaves_{runner._seed}");
         }
 
         private static string Arg(string[] args, string name)
@@ -116,6 +118,7 @@ namespace InfraTown.Testing
                 ("Save_FiveSlotsWrite", Save_FiveSlotsWrite),
                 ("Save_ContinueChosenSlot", Save_ContinueChosenSlot),
                 ("Save_PlayContinuesAfterLoad", Save_PlayContinuesAfterLoad),
+                ("Save_AutoSaveWeekly", Save_AutoSaveWeekly),
                 ("Outcome_DefeatAfter12BadWeeks", Outcome_DefeatAfter12BadWeeks),
                 ("Outcome_VictoryAt480Weeks", Outcome_VictoryAt480Weeks),
                 ("Console_NoErrors", Console_NoErrors),
@@ -1083,6 +1086,7 @@ namespace InfraTown.Testing
         private static void DeleteAllSlots()
         {
             for (int s = 1; s <= SaveSystem.SlotCount; s++) if (SaveSystem.HasSave(s)) SaveSystem.DeleteSave(s);
+            if (SaveSystem.HasAutoSave()) SaveSystem.DeleteSave(SaveSystem.AutoSaveSlot);
         }
 
         private IEnumerator Save_FiveSlotsWrite()
@@ -1153,6 +1157,38 @@ namespace InfraTown.Testing
             yield return Frames(1);
             Expect(SaveSystem.SaveGame(), "슬롯을 생략한 저장 실패");
             Expect(SaveSystem.GetLatestSlot() == LoadSlot, $"슬롯 생략 저장이 {SaveSystem.GetLatestSlot()}번에 됨 (불러온 {LoadSlot}번이어야 함)");
+            DeleteAllSlots();
+        }
+
+        /// <summary>
+        /// 자동 저장 (사용자 기획 2026-11-25): 1주가 지나면 그 프레임 끝에 자동 저장 전용 슬롯에만 이번 주 상태가 저장되고(1~5번은 그대로),
+        /// 저장하기 화면에는 자동 저장 칸이 없으며 직접 저장도 안 됨. 새로 시작해도 같은 자동 저장 슬롯에
+        /// </summary>
+        private IEnumerator Save_AutoSaveWeekly()
+        {
+            if (!Expect(AutoSaveManager.Instance != null, "AutoSaveManager가 자동으로 추가되지 않음")) yield break;
+            DeleteAllSlots();
+            Expect(SaveSystem.SaveGame(3), "3번 직접 저장 실패");
+            int week3 = SaveSystem.LoadData(3).time.totalWeeksPassed;
+            AdvanceWeek();
+            yield return Frames(1); // LateUpdate
+            var data = SaveSystem.LoadData(SaveSystem.AutoSaveSlot);
+            Expect(data != null && data.time.totalWeeksPassed == TimeM.TotalWeeksPassed && data.economy.money == EconomyManager.Instance.CurrentMoney,
+                $"1주가 지났는데 자동 저장 슬롯에 이번 주가 저장되지 않음 (저장 {data?.time.totalWeeksPassed}주 / 지금 {TimeM.TotalWeeksPassed}주)");
+            Expect(SaveSystem.LoadData(3).time.totalWeeksPassed == week3 && !SaveSystem.HasSave(1) && SaveSystem.CurrentSlot == 3, "자동 저장이 1~5번 슬롯을 건드림");
+            Expect(SaveSystem.GetLatestSlot() == SaveSystem.AutoSaveSlot, "이어하기(가장 최근 저장)가 자동 저장이 아님");
+            Expect(SaveSystem.GetAllSlots().Length == SaveSystem.SlotCount && SaveSystem.GetAllSlots().All(s => !s.isAutoSave), "저장하기 화면에 자동 저장 칸이 보임");
+            Expect(SaveSystem.GetLoadSlots()[0].isAutoSave && !SaveSystem.GetLoadSlots()[0].isEmpty, "불러오기 화면 맨 앞에 자동 저장 칸이 없음");
+            Expect(!SaveSystem.SaveGame(SaveSystem.AutoSaveSlot), "자동 저장 슬롯에 직접 저장됨");
+
+            string playerName = PlayerProfile.PlayerName;
+            SaveSystem.ResetForNewGame(); // 새로 시작: 이름·현재 슬롯 초기화, 저장 파일은 그대로
+            Expect(!PlayerProfile.HasName && SaveSystem.HasSave(3) && SaveSystem.HasAutoSave(), "새로 시작이 이름을 지우지 않거나 저장 파일을 지움");
+            AdvanceWeek();
+            yield return Frames(1);
+            Expect(SaveSystem.LoadData(SaveSystem.AutoSaveSlot)?.time.totalWeeksPassed == TimeM.TotalWeeksPassed && !SaveSystem.HasSave(1),
+                "새로 시작한 뒤 자동 저장이 자동 저장 슬롯에 덮어써지지 않음");
+            PlayerProfile.TrySetPlayerName(playerName, out _);
             DeleteAllSlots();
         }
 

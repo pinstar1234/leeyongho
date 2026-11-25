@@ -87,6 +87,8 @@ namespace InfraTown.Gas
 
         private static Season CurrentSeason => TimeManager.Instance != null ? TimeManager.Instance.CurrentSeason : Season.Spring;
 
+        private bool _restoredFromSave; // ApplySaveState를 받았는지 (그 뒤 Start면 첫 달 구매를 건너뜀)
+
         private void Awake()
         {
             if (Instance != null && Instance != this) { SingletonGuard.RemoveDuplicate(this, Instance); return; }
@@ -113,7 +115,9 @@ namespace InfraTown.Gas
 
             RecalculateGasUsage(false);
 
-            if (purchaseOnStart)
+            // 이어하기로 저장 상태를 이미 되돌렸으면 첫 달 구매를 하지 않는다 — 씬에 없어 GameLoopManager가 붙인 경우
+            // 이 Start가 세이브 적용(SaveGameApplier)보다 늦게 돌 수 있어, 불러온 직후 가스값이 한 번 더 빠지던 문제 (2026-11-25)
+            if (purchaseOnStart && !_restoredFromSave)
             {
                 ProcessMonthlyGasPurchase();
             }
@@ -219,6 +223,7 @@ namespace InfraTown.Gas
         public void ApplySaveState(InfraTown.Save.GasSaveState s)
         {
             if (s == null) return;
+            _restoredFromSave = true;
             targetPurchasedGas = Mathf.Clamp(s.targetPurchasedGas, 0, Mathf.Max(0, maxPurchasableGas));
             currentAvailableGas = Mathf.Max(0, s.currentAvailableGas);
             OnTargetGasChanged?.Invoke(targetPurchasedGas, MonthlyPurchaseCost);
