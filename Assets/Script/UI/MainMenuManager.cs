@@ -15,6 +15,8 @@ public class MainMenuManager : MonoBehaviour
     [SerializeField] private Button loadButton;
     [SerializeField] private Button settingsButton;
     [SerializeField] private Button exitButton;
+    [SerializeField] private TextMeshProUGUI continueLabel;
+    [SerializeField] private Image menuShade;
 
     private Button[] _buttons;
     private RectTransform _overlay;
@@ -34,6 +36,8 @@ public class MainMenuManager : MonoBehaviour
 
         _buttons = new[] { startButton, continueButton, loadButton, settingsButton, exitButton };
         continueButton.interactable = SaveSystem.HasResume();
+        if (continueLabel != null && !continueButton.interactable)
+            continueLabel.color = new Color32(197, 204, 189, 255);
         continueButton.onClick.AddListener(ContinueGame);
         loadButton.onClick.AddListener(() => OpenPanel(_loadSlots, loadButton, _firstLoadControl));
         settingsButton.onClick.AddListener(() => OpenPanel(_settings, settingsButton, _settingsBack));
@@ -106,6 +110,7 @@ public class MainMenuManager : MonoBehaviour
     private void OpenPanel(RectTransform panel, Button opener, Selectable firstControl)
     {
         foreach (var button in _buttons) button.gameObject.SetActive(false);
+        if (menuShade != null) menuShade.gameObject.SetActive(false);
         _status.text = "";
         _modalButton = opener;
         _settings.gameObject.SetActive(panel == _settings);
@@ -119,6 +124,7 @@ public class MainMenuManager : MonoBehaviour
         PlayerPrefs.Save();
         _overlay.gameObject.SetActive(false);
         foreach (var button in _buttons) button.gameObject.SetActive(true);
+        if (menuShade != null) menuShade.gameObject.SetActive(true);
         UIEventSystem.current?.SetSelectedGameObject(_modalButton.gameObject);
     }
 }
