@@ -9,6 +9,7 @@ namespace InfraTown.TimeSystem
     {
         [Header("UI Text Component")]
         [SerializeField] private TextMeshProUGUI dateText; // 예: "1년차 1월 3주차"
+        [SerializeField] private TextMeshProUGUI seasonText;
 
         [Header("Speed Buttons")]
         [SerializeField] private Button btnPause;
@@ -57,7 +58,7 @@ namespace InfraTown.TimeSystem
 
         private void OnClickWeekSkip()
         {
-            TimeManager.Instance?.StartWeekSkip();
+            TimeManager.Instance?.StartMonthSkip();
             UpdateWeekSkipButton();
         }
 
@@ -87,6 +88,7 @@ namespace InfraTown.TimeSystem
             {
                 dateText.text = $"{year}년차 {month}월 {week}주차"; // 시간이 주 단위로 바뀜 (2026-11-24): 세 번째 값은 이번 달 몇 주차(1~4) 
             }
+            if (seasonText != null) seasonText.text = SeasonUtil.ToKorean(SeasonUtil.FromMonth(month));
         }
         private void UpdateSpeedButtonVisuals(GameSpeed currentSpeed)
         {

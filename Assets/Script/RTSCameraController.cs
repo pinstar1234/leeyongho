@@ -31,6 +31,7 @@ namespace InfraTown.CameraSystem
 
         private void Update()
         {
+            if (InfraTown.UI.GamePauseMenu.IsOpen) return;
             HandleHeightZoom();
             HandleEdgeMovement();
         }
@@ -41,7 +42,7 @@ namespace InfraTown.CameraSystem
 
             if (Mathf.Abs(scroll) > 0.01f)
             {
-                _targetY -= scroll * zoomSpeed * 20f;
+                _targetY -= scroll * zoomSpeed * 20f * InfraTown.UI.GamePauseMenu.MouseSensitivity;
                 _targetY = Mathf.Clamp(_targetY, minHeight, maxHeight);
             }
 
@@ -72,7 +73,8 @@ namespace InfraTown.CameraSystem
 
             if (moveDir != Vector3.zero)
             {
-                Vector3 targetPos = transform.position + moveDir * (moveSpeed * Time.unscaledDeltaTime);
+                float sensitivity = hor != 0 || ver != 0 ? 1f : InfraTown.UI.GamePauseMenu.MouseSensitivity;
+                Vector3 targetPos = transform.position + moveDir * (moveSpeed * Time.unscaledDeltaTime * sensitivity);
 
                 // 현재 카메라 높이에 맞는 동적 경계 계산 적용
                 transform.position = ClampPositionToDynamicBounds(targetPos);

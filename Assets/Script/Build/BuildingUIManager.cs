@@ -61,6 +61,8 @@ namespace InfraTown.UI
         private Button _lastClickedCategoryButton; //[cite: 18]
         private Image _highlightedCategory;
         private Color _categoryColor;
+        [SerializeField] private Button btnInfrastructure;
+        private ScrollRect _catalogScroll;
         private List<RectTransform> _subButtonRects = new List<RectTransform>(); //[cite: 18]
         private List<Vector2> _subButtonOriginPositions = new List<Vector2>(); //[cite: 18]
         private Sequence _buildMenuSequence; //[cite: 18]
@@ -92,6 +94,11 @@ namespace InfraTown.UI
 
             if (buildSubMenuPanel != null) buildSubMenuPanel.SetActive(false); //[cite: 18]
             if (buildingListPanel != null) buildingListPanel.SetActive(false);
+            if (showCatalogOnCategoryClick && buildingSlotContainer is RectTransform content && buildingListPanel != null)
+                ConfigureCatalogScroll(content);
+
+            if (btnInfrastructure != null)
+                btnInfrastructure.onClick.AddListener(() => OnClickCategoryMainButton(btnInfrastructure, BuildingType.Infrastructure));
 
             // 메인 카테고리 버튼 이벤트
             if (btnFacility != null) btnFacility.onClick.AddListener(() => OnClickCategoryMainButton(btnFacility, BuildingType.Facility)); //[cite: 18]
@@ -106,6 +113,19 @@ namespace InfraTown.UI
             if (largeButton != null) largeButton.onClick.AddListener(() => OnSelectBuildingSize(BuildingSizeType.Large)); //[cite: 18]
         }
 
+        private void ConfigureCatalogScroll(RectTransform content)
+        {
+            buildingListPanel.AddComponent<RectMask2D>();
+            _catalogScroll = buildingListPanel.AddComponent<ScrollRect>();
+            _catalogScroll.viewport = (RectTransform)buildingListPanel.transform;
+            _catalogScroll.content = content;
+            _catalogScroll.vertical = false;
+            _catalogScroll.movementType = ScrollRect.MovementType.Clamped;
+            _catalogScroll.scrollSensitivity = 45f;
+            content.anchorMin = content.anchorMax = content.pivot = new Vector2(0f, 0.5f);
+            content.anchoredPosition = Vector2.zero;
+        }
+
         private void Start()
         {
             if (btnInfo != null) btnInfo.onClick.AddListener(ShowInfoPanel); //[cite: 18]
@@ -115,13 +135,10 @@ namespace InfraTown.UI
             CloseAllUI(); //[cite: 18]
         }
 
-        private void Update()
+        public void CancelConstruction()
         {
-            if (showCatalogOnCategoryClick && Input.GetKeyDown(KeyCode.Escape))
-            {
-                CloseBuildMenu();
-                BuildingManager.Instance?.CancelBuildingMode();
-            }
+            CloseBuildMenu();
+            BuildingManager.Instance?.CancelBuildingMode();
         }
 
         // ==========================================
@@ -316,6 +333,13 @@ namespace InfraTown.UI
                     .SetDelay(i * 0.05f)
                     .SetEase(Ease.OutBack);
             }
+
+            if (_catalogScroll != null)
+            {
+                LayoutRebuilder.ForceRebuildLayoutImmediate(_catalogScroll.content);
+                _catalogScroll.StopMovement();
+                _catalogScroll.horizontalNormalizedPosition = 0f;
+            }
         }
 
         private void CloseBuildingListPanel()
@@ -437,6 +461,7 @@ namespace InfraTown.UI
                 BuildingType.Facility => "편의 시설",
                 BuildingType.Nimbys => "불쾌 시설",
                 BuildingType.Housing => "주택",
+                BuildingType.Infrastructure => "인프라",
                 _ => "미분류"
             };
         }

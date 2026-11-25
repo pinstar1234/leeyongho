@@ -5,6 +5,7 @@ using InfraTown.Satisfaction;
 using InfraTown.Population;
 using InfraTown.Economy;
 using InfraTown.Power;
+using InfraTown.Gas;
 using InfraTown.Services;
 using InfraTown.TimeSystem;
 using DG.Tweening; // ★ DOTween 네임스페이스 추가
@@ -30,6 +31,8 @@ namespace InfraTown.UI
         [Header("1-1. 다음 달 전력 구매량 조절 (Slider)")]
         [SerializeField] private TextMeshProUGUI powerPurchaseText;
         [SerializeField] private Slider powerSlider;
+        [SerializeField] private TextMeshProUGUI gasPurchaseText;
+        [SerializeField] private Slider gasSlider;
 
         [Header("2. 인구 현황")]
         [SerializeField] private TextMeshProUGUI populationText;
@@ -49,10 +52,18 @@ namespace InfraTown.UI
         [SerializeField] private TextMeshProUGUI fireStationTimeText;
         [SerializeField] private TextMeshProUGUI convenienceTimeText;
 
+        [Header("전체 현황 탭")]
+        [SerializeField] private Button[] overviewTabs;
+        [SerializeField] private GameObject[] overviewPages;
+
+        private static readonly Color SelectedTabColor = new Color32(62, 104, 83, 255);
+        private static readonly Color TabColor = new Color32(44, 67, 87, 255);
+
         private Vector2 _windowTargetPos; // 화면 중앙 원래 위치 (보통 Vector2.zero)
         private float _slideDistance = 1400f; // 오른쪽으로 빠져나갈 거리 (화면 너비 기준)
         private Tween _slideTween;
         private Tween _fadeTween;
+        private GasManager _gas;
 
         private void Awake()
         {
@@ -74,15 +85,43 @@ namespace InfraTown.UI
             if (powerSlider != null)
                 powerSlider.onValueChanged.AddListener(OnPowerSliderChanged);
 
+            _gas = GasManager.Instance;
+            if (gasSlider != null) gasSlider.onValueChanged.AddListener(OnGasSliderChanged);
+            if (_gas != null && gasPurchaseText != null) _gas.OnGasDataChanged += UpdateGasUI;
+            RegisterTabs(overviewTabs, overviewPages, 2);
             RegisterEvents();
 
             if (overviewPanel != null)
                 overviewPanel.SetActive(false);
         }
 
+        private static void RegisterTabs(Button[] buttons, GameObject[] pages, int selected)
+        {
+            if (buttons == null || pages == null || buttons.Length == 0 || buttons.Length != pages.Length) return;
+
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                int index = i;
+                buttons[i].onClick.AddListener(() => SelectTab(buttons, pages, index));
+            }
+            SelectTab(buttons, pages, Mathf.Clamp(selected, 0, pages.Length - 1));
+        }
+
+        private static void SelectTab(Button[] buttons, GameObject[] pages, int selected)
+        {
+            for (int i = 0; i < pages.Length; i++)
+            {
+                bool active = i == selected;
+                pages[i].SetActive(active);
+                if (buttons[i].targetGraphic != null)
+                    buttons[i].targetGraphic.color = active ? SelectedTabColor : TabColor;
+            }
+        }
+
         private void OnDestroy()
         {
             UnregisterEvents();
+            if (_gas != null) _gas.OnGasDataChanged -= UpdateGasUI;
             _slideTween?.Kill();
             _fadeTween?.Kill();
         }
@@ -191,6 +230,7 @@ namespace InfraTown.UI
         public void RefreshAllData()
         {
             UpdatePowerUI();
+            if (_gas != null) UpdateGasUI(_gas.CurrentUsedGas, _gas.CurrentAvailableGas);
 
             if (PopulationManager.Instance != null)
                 UpdatePopulationUI(PopulationManager.Instance.CurrentPopulation, PopulationManager.Instance.MaxPopulationCapacity);
@@ -235,6 +275,26 @@ namespace InfraTown.UI
             PowerManager.Instance?.SetTargetPurchasedPower(Mathf.RoundToInt(value));
         }
 
+        private void UpdateGasUI(int used, int available)
+        {
+            if (gasSlider != null)
+            {
+                gasSlider.maxValue = _gas.MaxPurchasableGas;
+                gasSlider.SetValueWithoutNotify(_gas.TargetPurchasedGas);
+            }
+            if (gasPurchaseText != null)
+            {
+                string shortage = _gas.NextMonthShortage > 0
+                    ? $"\n<color=#FF6666>다음 달 {_gas.NextMonthShortage:N0} 부족</color>" : "";
+                gasPurchaseText.text = $"다음 달 가스 구매: {_gas.TargetPurchasedGas:N0} (월 {_gas.MonthlyPurchaseCost:N0} 원){shortage}";
+            }
+        }
+
+        private void OnGasSliderChanged(float value)
+        {
+            if (_gas != null) _gas.SetTargetPurchasedGas(Mathf.RoundToInt(value));
+        }
+
         private void UpdatePopulationUI(int current, int maxCapacity)
         {
             if (populationText != null)
@@ -249,6 +309,7 @@ namespace InfraTown.UI
             {
                 subsidySlider.minValue = 0;
                 subsidySlider.maxValue = maxEligible;
+                subsidySlider.wholeNumbers = true;
                 subsidySlider.SetValueWithoutNotify(requested);
             }
 
@@ -271,13 +332,6 @@ namespace InfraTown.UI
                 satisfactionText.text = $"현재 만족도: {Mathf.RoundToInt(score)}%";
             }
 
-            if (complaintsText != null)
-            {
-                if (ServiceAccessibilityManager.Instance != null)
-                {
-                    complaintsText.text = ServiceAccessibilityManager.Instance.GetServiceComplaintSummary();
-                }
-            }
         }
 
         private void UpdateServiceMetricsUI()
@@ -285,6 +339,8 @@ namespace InfraTown.UI
             if (ServiceAccessibilityManager.Instance == null) return;
 
             var mgr = ServiceAccessibilityManager.Instance;
+
+            if (complaintsText != null) complaintsText.text = mgr.GetServiceComplaintSummary();
 
             if (patrolCountText != null)
             {

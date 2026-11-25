@@ -3,6 +3,7 @@ using UnityEngine.UI;
 using TMPro;
 using InfraTown.Economy;
 using InfraTown.Power;
+using InfraTown.Gas;
 using InfraTown.Population;
 using DG.Tweening;
 
@@ -19,6 +20,7 @@ namespace InfraTown.UI
         [SerializeField] private RectTransform powerContainer;
         [SerializeField] private Color normalPowerColor = Color.white;
         [SerializeField] private Color shortagePowerColor = new Color(1f, 0.35f, 0.35f, 1f);
+        [SerializeField] private TextMeshProUGUI gasText;
 
         [Header("인구 (Population) UI")]
         [SerializeField] private TextMeshProUGUI populationText;
@@ -33,6 +35,7 @@ namespace InfraTown.UI
         private int _displayedMoney;
         private int _lastPopulation = -1;
         private Tween _moneyCountTween;
+        private GasManager _gas;
 
         private void Start()
         {
@@ -43,11 +46,19 @@ namespace InfraTown.UI
 
             RegisterEvents();
             RefreshInitialData();
+
+            _gas = GasManager.Instance;
+            if (gasText != null && _gas != null)
+            {
+                _gas.OnGasDataChanged += HandleGasChanged;
+                HandleGasChanged(_gas.CurrentUsedGas, _gas.CurrentAvailableGas);
+            }
         }
 
         private void OnDestroy()
         {
             UnregisterEvents();
+            if (_gas != null) _gas.OnGasDataChanged -= HandleGasChanged;
             _moneyCountTween?.Kill();
         }
 
@@ -170,6 +181,12 @@ namespace InfraTown.UI
             }
 
             _lastPopulation = currentPop;
+        }
+
+        private void HandleGasChanged(int used, int available)
+        {
+            gasText.text = $"{used:N0} / {available:N0}";
+            gasText.color = used > available ? shortagePowerColor : normalPowerColor;
         }
     }
 }

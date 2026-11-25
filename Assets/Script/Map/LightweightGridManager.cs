@@ -63,7 +63,7 @@ namespace InfraTown.Grid
             Ray ray = _mainCamera.ScreenPointToRay(Input.mousePosition);
 
             bool pointerOverUI = UIEventSystem.current != null && UIEventSystem.current.IsPointerOverGameObject();
-            if (!pointerOverUI && _groundPlane.Raycast(ray, out float enter))
+            if (!InfraTown.UI.GamePauseMenu.IsOpen && !pointerOverUI && _groundPlane.Raycast(ray, out float enter))
             {
                 Vector3 hitPoint = ray.GetPoint(enter);
 

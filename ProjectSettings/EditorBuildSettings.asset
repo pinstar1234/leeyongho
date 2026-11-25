@@ -11,4 +11,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/2park.unity
     guid: 6d855ba6a9c6bb94baf7e37186f0a5e2
+  - enabled: 1
+    path: Assets/Scenes/2Park 1.unity
+    guid: b10a29685f2f58543aefde6365ed081d
   m_configObjects: {}
