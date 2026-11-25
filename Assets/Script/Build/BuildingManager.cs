@@ -5,6 +5,7 @@ using InfraTown.Grid;
 using InfraTown.Core;
 using InfraTown.Economy;
 using InfraTown.Population;
+using InfraTown.UI;
 
 namespace InfraTown.Building
 {
@@ -21,6 +22,9 @@ namespace InfraTown.Building
 
         [Header("하이라이트 컨트롤러 참조")]
         [SerializeField] private GridHighlightController highlightController;
+
+        [Tooltip("켜면 한 번 설치한 뒤 건설 모드가 끝난다 (Jinyu12)")]
+        [SerializeField] private bool singlePlacement;
 
         [Header("도로 접근 (사용자 기획 2026-11-24)")]
         [Tooltip("건물은 한 면 이상(상하좌우, 대각선 제외) 도로에 맞닿아야 설치할 수 있다. 도로 자신은 어디든, 전신주는 도로 위에도 설치 가능. 끄면 예전처럼 어디든 (테스트·연출용)")]
@@ -263,6 +267,7 @@ namespace InfraTown.Building
             if (!IsBuildingUnlocked(data))
             {
                 Debug.LogWarning($"[BuildingManager] '{data.buildingName}'은(는) 해금되지 않았습니다. (필요 인구수: {data.requiredPopulation}명)");
+                ToastUIManager.Instance?.ShowToast($"🔒 '{data.buildingName}' 해금에는 인구 {data.requiredPopulation}명이 필요합니다!");
                 return;
             }
 
@@ -284,6 +289,9 @@ namespace InfraTown.Building
 
             _previewRenderers = _previewInstance.GetComponentsInChildren<MeshRenderer>();
             SetPreviewMaterial(validPreviewMaterial);
+            // 고르자마자 지금 마우스 칸에 미리보기 표시 (Jinyu12)
+            var grid = LightweightGridManager.Instance;
+            UpdateBuildingPreview(grid != null ? grid.HoveredGridPos : new Vector2Int(-1, -1));
             NotifyPlacementMode();
         }
 
@@ -334,6 +342,7 @@ namespace InfraTown.Building
             if (!IsBuildingUnlocked(_selectedBuildingData))
             {
                 Debug.LogWarning("[BuildingManager] 해금 조건 미달로 건설할 수 없습니다.");
+                ToastUIManager.Instance?.ShowToast($"🔒 해금 조건(인구 {_selectedBuildingData.requiredPopulation}명)이 부족합니다!");
                 CancelBuildingMode();
                 return;
             }
@@ -352,8 +361,12 @@ namespace InfraTown.Building
             }
 
             LastPlacementError = null;
-            BuildingInstance instance = SpawnBuilding(_selectedBuildingData, gridPos, CurrentRotationY);
+            var placedData = _selectedBuildingData;
+            BuildingInstance instance = SpawnBuilding(placedData, gridPos, CurrentRotationY);
             OnBuildingPlaced?.Invoke(instance);
+
+            ToastUIManager.Instance?.ShowToast($"✅ '{placedData.buildingName}' 건설 완료!", false);
+            if (singlePlacement) CancelBuildingMode();
         }
 
         private void RejectPlacement(BuildingData data, Vector2Int gridPos, string reason)
@@ -361,6 +374,12 @@ namespace InfraTown.Building
             LastPlacementError = reason;
             Debug.LogWarning($"[BuildingManager] '{data.buildingName}' ({gridPos.x},{gridPos.y}) 설치 불가: {reason}");
             OnPlacementRejected?.Invoke(data, gridPos, reason);
+
+            // 화면 안내 (Jinyu12의 토스트 문구, 자금 부족은 필요 금액까지)
+            string toast = reason == "건설 자금이 부족합니다."
+                ? $"💰 건설 자금이 부족합니다! (필요 자금: {data.constructionCost:N0}원)"
+                : $"⚠️ {reason}";
+            ToastUIManager.Instance?.ShowToast(toast);
         }
 
         // ─── 설치 조건 (사용자 기획 2026-11-24: 도로 접근, 도로 위 전신주) ───
@@ -593,6 +612,7 @@ namespace InfraTown.Building
             _selectedBuildingData = null;
             if (_previewInstance != null)
             {
+                _previewInstance.SetActive(false); // Destroy는 프레임 끝에 되므로 바로 숨김 (Jinyu12)
                 if (Application.isPlaying) Destroy(_previewInstance);
                 else DestroyImmediate(_previewInstance); // 에디터 테스트에서 호출될 때
                 _previewInstance = null;

@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using TMPro;
 using InfraTown.Building;
 using DG.Tweening;
+using InfraTown.UI;
 
 namespace InfraTown.UI
 {
@@ -24,6 +25,8 @@ namespace InfraTown.UI
         [SerializeField] private GameObject buildingListPanel;      // 건물 슬롯들이 들어갈 배경 패널
         [SerializeField] private Transform buildingSlotContainer;   // HorizontalLayoutGroup이 붙은 부모 Transform
         [SerializeField] private BuildingSlotUI buildingSlotPrefab; // BuildingSlotUI가 붙은 슬롯 프리팹
+        [SerializeField] private bool showCatalogOnCategoryClick;
+        [SerializeField] private Sprite selectedCategorySprite;
 
         [Header("Info UI (상세 정보 팝업 패널)")]
         public GameObject infoPanel; //[cite: 18]
@@ -47,6 +50,7 @@ namespace InfraTown.UI
         public TextMeshProUGUI txtCategory; //[cite: 18]
         public TextMeshProUGUI txtPower; //[cite: 18]
         public TextMeshProUGUI txtCost; //[cite: 18]
+        [SerializeField] private TextMeshProUGUI txtMonthlyCost;
         public TextMeshProUGUI txtDescription; //[cite: 18]
         public Button btnCloseInfo; //[cite: 18]
 
@@ -55,6 +59,8 @@ namespace InfraTown.UI
 
         private BuildingType _currentSelectedCategory = BuildingType.Facility; //[cite: 18]
         private Button _lastClickedCategoryButton; //[cite: 18]
+        private Image _highlightedCategory;
+        private Color _categoryColor;
         private List<RectTransform> _subButtonRects = new List<RectTransform>(); //[cite: 18]
         private List<Vector2> _subButtonOriginPositions = new List<Vector2>(); //[cite: 18]
         private Sequence _buildMenuSequence; //[cite: 18]
@@ -109,6 +115,15 @@ namespace InfraTown.UI
             CloseAllUI(); //[cite: 18]
         }
 
+        private void Update()
+        {
+            if (showCatalogOnCategoryClick && Input.GetKeyDown(KeyCode.Escape))
+            {
+                CloseBuildMenu();
+                BuildingManager.Instance?.CancelBuildingMode();
+            }
+        }
+
         // ==========================================
         // 1단계: 카테고리 버튼 클릭 (편의/필수/혐오/주택)
         // ==========================================
@@ -117,6 +132,12 @@ namespace InfraTown.UI
             clickedBtn.transform.DOKill(); //[cite: 18]
             clickedBtn.transform.localScale = Vector3.one; //[cite: 18]
             clickedBtn.transform.DOPunchScale(Vector3.one * 0.2f, 0.25f, 10, 1f); //[cite: 18]
+
+            if (showCatalogOnCategoryClick)
+            {
+                ToggleCategoryCatalog(clickedBtn, category);
+                return;
+            }
 
             CloseBuildingListPanel();
 
@@ -134,6 +155,47 @@ namespace InfraTown.UI
             UpdateSizeButtonAvailability(category);
 
             OpenBuildMenu(); //[cite: 18]
+        }
+
+        private void ToggleCategoryCatalog(Button clickedButton, BuildingType category)
+        {
+            if (buildingListPanel == null || BuildingManager.Instance == null) return;
+
+            BuildingManager.Instance.CancelBuildingMode();
+            if (buildingListPanel.activeSelf && _lastClickedCategoryButton == clickedButton)
+            {
+                CloseBuildMenu();
+                return;
+            }
+
+            _lastClickedCategoryButton = clickedButton;
+            var buildings = BuildingManager.Instance.GetBuildingsByCategory(category);
+            if (buildings.Count == 0)
+            {
+                CloseBuildMenu();
+                ToastUIManager.Instance?.ShowToast("이 분류에는 등록된 시설이 없습니다.");
+                return;
+            }
+
+            ShowBuildingListPanel(buildings);
+            if (buildingListPanel.activeSelf) HighlightCategory(clickedButton.image);
+        }
+
+        private void HighlightCategory(Image categoryImage)
+        {
+            if (_highlightedCategory != null)
+            {
+                _highlightedCategory.overrideSprite = null;
+                _highlightedCategory.color = _categoryColor;
+            }
+
+            _highlightedCategory = selectedCategorySprite != null ? categoryImage : null;
+            if (_highlightedCategory != null)
+            {
+                _categoryColor = _highlightedCategory.color;
+                _highlightedCategory.color = new Color(0.86f, 0.83f, 0.68f);
+                _highlightedCategory.overrideSprite = selectedCategorySprite;
+            }
         }
 
         private void UpdateSizeButtonAvailability(BuildingType category)
@@ -183,10 +245,11 @@ namespace InfraTown.UI
         public void CloseBuildMenu()
         {
             CloseBuildingListPanel();
+            HighlightCategory(null);
+            _lastClickedCategoryButton = null;
 
             if (!_isBuildMenuOpen) return; //[cite: 18]
             _isBuildMenuOpen = false; //[cite: 18]
-            _lastClickedCategoryButton = null; //[cite: 18]
 
             _buildMenuSequence?.Kill(); //[cite: 18]
             _buildMenuSequence = DOTween.Sequence(); //[cite: 18]
@@ -233,6 +296,8 @@ namespace InfraTown.UI
             // 이전 슬롯 삭제
             foreach (Transform child in buildingSlotContainer)
             {
+                child.DOKill();
+                child.gameObject.SetActive(false);
                 Destroy(child.gameObject);
             }
 
@@ -247,6 +312,7 @@ namespace InfraTown.UI
                 // DOTween 순차적 팝업 연출
                 slot.transform.localScale = Vector3.zero;
                 slot.transform.DOScale(Vector3.one, 0.3f)
+                    .SetUpdate(true)
                     .SetDelay(i * 0.05f)
                     .SetEase(Ease.OutBack);
             }
@@ -301,9 +367,19 @@ namespace InfraTown.UI
                 }
             }
 
-            if (txtCategory != null) txtCategory.text = $"<b>분류:</b> {GetCategoryName(data.category)}"; //[cite: 18]
-            if (txtPower != null) txtPower.text = $"<b>전력 소비:</b> {data.requiredPower} kW"; //[cite: 18]
-            if (txtCost != null) txtCost.text = $"<b>유지비:</b> {data.maintenanceCost:N0}원/월\n<b>건설비:</b> {data.constructionCost:N0}원"; //[cite: 18]
+            if (txtMonthlyCost != null)
+            {
+                if (txtCategory != null) txtCategory.text = GetCategoryName(data.category);
+                if (txtPower != null) txtPower.text = $"{data.requiredPower} kW";
+                if (txtCost != null) txtCost.text = $"{data.constructionCost:N0} 원";
+                txtMonthlyCost.text = $"{data.maintenanceCost:N0} 원";
+            }
+            else
+            {
+                if (txtCategory != null) txtCategory.text = $"<b>분류:</b> {GetCategoryName(data.category)}";
+                if (txtPower != null) txtPower.text = $"<b>전력 소비:</b> {data.requiredPower} kW";
+                if (txtCost != null) txtCost.text = $"<b>유지비:</b> {data.maintenanceCost:N0}원/월\n<b>건설비:</b> {data.constructionCost:N0}원";
+            }
             if (txtDescription != null) txtDescription.text = data.description; //[cite: 18]
 
             if (infoPanelCanvasGroup != null) //[cite: 18]
