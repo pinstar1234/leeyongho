@@ -27,6 +27,7 @@ namespace InfraTown.UI
         [SerializeField] private BuildingSlotUI buildingSlotPrefab; // BuildingSlotUI가 붙은 슬롯 프리팹
         [SerializeField] private bool showCatalogOnCategoryClick;
         [SerializeField] private Sprite selectedCategorySprite;
+        [SerializeField] private Color selectedCategoryTint = new Color(0.86f, 0.83f, 0.68f);
 
         [Header("Info UI (상세 정보 팝업 패널)")]
         public GameObject infoPanel; //[cite: 18]
@@ -63,6 +64,7 @@ namespace InfraTown.UI
         private Color _categoryColor;
         [SerializeField] private Button btnInfrastructure;
         private ScrollRect _catalogScroll;
+        private float _catalogMaxWidth;
         private List<RectTransform> _subButtonRects = new List<RectTransform>(); //[cite: 18]
         private List<Vector2> _subButtonOriginPositions = new List<Vector2>(); //[cite: 18]
         private Sequence _buildMenuSequence; //[cite: 18]
@@ -115,9 +117,14 @@ namespace InfraTown.UI
 
         private void ConfigureCatalogScroll(RectTransform content)
         {
-            buildingListPanel.AddComponent<RectMask2D>();
+            var viewport = (RectTransform)buildingListPanel.transform;
+            _catalogMaxWidth = viewport.rect.width;
+            var mask = buildingListPanel.AddComponent<RectMask2D>();
+            if (content.TryGetComponent(out HorizontalLayoutGroup layout))
+                mask.padding = new Vector4(layout.padding.left, 0f, layout.padding.right, 0f);
+
             _catalogScroll = buildingListPanel.AddComponent<ScrollRect>();
-            _catalogScroll.viewport = (RectTransform)buildingListPanel.transform;
+            _catalogScroll.viewport = viewport;
             _catalogScroll.content = content;
             _catalogScroll.vertical = false;
             _catalogScroll.movementType = ScrollRect.MovementType.Clamped;
@@ -210,7 +217,7 @@ namespace InfraTown.UI
             if (_highlightedCategory != null)
             {
                 _categoryColor = _highlightedCategory.color;
-                _highlightedCategory.color = new Color(0.86f, 0.83f, 0.68f);
+                _highlightedCategory.color = selectedCategoryTint;
                 _highlightedCategory.overrideSprite = selectedCategorySprite;
             }
         }
@@ -336,7 +343,10 @@ namespace InfraTown.UI
 
             if (_catalogScroll != null)
             {
-                LayoutRebuilder.ForceRebuildLayoutImmediate(_catalogScroll.content);
+                RectTransform content = _catalogScroll.content;
+                LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+                _catalogScroll.viewport.SetSizeWithCurrentAnchors(
+                    RectTransform.Axis.Horizontal, Mathf.Min(_catalogMaxWidth, content.rect.width));
                 _catalogScroll.StopMovement();
                 _catalogScroll.horizontalNormalizedPosition = 0f;
             }

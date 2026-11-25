@@ -1,0 +1,11 @@
+WILLOWBROOK UI — ASSET LICENSE v1.0
+
+The seller grants each lawful recipient a non-exclusive, worldwide, perpetual license to use and modify these assets in personal and commercial games, apps, websites, videos and other finished projects, including client work. Any number of finished projects is permitted. Attribution is appreciated but not required.
+
+You may share the source assets with collaborators or contractors solely to work on your licensed projects. They may not use the assets independently without their own license. You may distribute the assets as incorporated into a finished project, including web builds; reasonable project packaging is sufficient.
+
+You may not sell, sublicense, distribute or give away the source assets, modified assets, sprite sheets, source templates or competing asset packs as standalone resources. You may not claim that you created the original assets or grant third parties independent rights to the source assets. This restriction does not prevent distribution of finished projects containing the assets.
+
+No trademark rights or third-party font rights are granted. No font files are included. Assets are provided as-is without warranties to the extent allowed by applicable law. This license does not limit rights that cannot lawfully be limited.
+
+The seller may redistribute and sell the original pack and its free sample.
