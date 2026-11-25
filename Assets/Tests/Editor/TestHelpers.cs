@@ -26,7 +26,8 @@ namespace InfraTown.Tests
         {
             typeof(GameLoopManager), typeof(EconomyManager), typeof(PopulationManager),
             typeof(PowerManager), typeof(SatisfactionManager), typeof(ServiceAccessibilityManager),
-            typeof(TimeManager), typeof(BuildingManager), typeof(GameOutcomeManager)
+            typeof(TimeManager), typeof(BuildingManager), typeof(GameOutcomeManager), typeof(InfraTown.Gas.GasManager), typeof(SettlementForecaster),
+            typeof(InfraTown.EventSystem.DialogueEventManager), typeof(InfraTown.EventSystem.CutsceneManager), typeof(InfraTown.EventSystem.TutorialDialogues)
         };
 
         private readonly List<GameObject> _objects = new List<GameObject>();
@@ -147,6 +148,7 @@ namespace InfraTown.Tests
                 var prop = type.GetProperty("Instance", BindingFlags.Static | BindingFlags.Public);
                 prop?.SetValue(null, null);
             }
+            PlayerProfile.ClearPlayerName(); // 주인공 이름(정적)도 테스트마다 초기화
         }
 
         private static Type[] GetTypes(object[] args)

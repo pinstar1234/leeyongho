@@ -28,6 +28,9 @@ namespace InfraTown.Power
         /// </summary>
         public Vector2Int GridPos => Building != null ? Building.OriginGridPos : Vector2Int.zero;
 
+        /// <summary>전봇대 건물이 차지하는 칸 크기 (정전 순서를 정할 때 중심 계산용)</summary>
+        public Vector2Int GridSize => Building != null && Building.Data != null ? Building.Data.GridSize : Vector2Int.one;
+
         // Awake 전에 조회되거나(에디터 테스트) 컴포넌트 추가 순서가 달라도 동작하도록 필요할 때 찾는다
         private BuildingInstance Building
         {

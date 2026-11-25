@@ -173,37 +173,96 @@ namespace InfraTown.Tests
         [TearDown]
         public void TearDown() => _world.Dispose();
 
-        private void AdvanceDays(int days)
+        private void AdvanceWeeks(int weeks)
         {
-            for (int i = 0; i < days; i++) TestWorld.Invoke(_time, "AdvanceOneDay");
+            for (int i = 0; i < weeks; i++) TestWorld.Invoke(_time, "AdvanceOneWeek");
         }
 
         [Test]
-        public void 일주일마다_주간틱()
+        public void 한_칸은_1주이고_매주_주간틱()
         {
             int weekly = 0;
             _time.OnWeeklyTick += () => weekly++;
-            AdvanceDays(14);
+            AdvanceWeeks(2);
             Assert.AreEqual(2, weekly);
+            Assert.AreEqual(3, _time.CurrentWeek);
+            Assert.AreEqual(2, _time.TotalWeeksPassed);
+            Assert.AreEqual(180f, _time.SecondsPerWeek, "1주 = 180초 (사용자 결정 2026-11-24)");
         }
 
         [Test]
-        public void 한달이_지나면_월간틱과_다음달_1일()
+        public void 네_주가_지나면_월간틱과_다음달_1주차()
         {
-            int monthly = 0;
+            int monthly = 0, weekly = 0;
             _time.OnMonthlyTick += () => monthly++;
-            AdvanceDays(30);
+            _time.OnWeeklyTick += () => weekly++;
+            AdvanceWeeks(3);
+            Assert.AreEqual(0, monthly);
+            AdvanceWeeks(1);
             Assert.AreEqual(1, monthly);
+            Assert.AreEqual(4, weekly, "달이 바뀌는 주에도 주간틱");
             Assert.AreEqual(2, _time.CurrentMonth);
-            Assert.AreEqual(1, _time.CurrentDay);
+            Assert.AreEqual(1, _time.CurrentWeek);
         }
 
         [Test]
-        public void 일년이_지나면_다음해()
+        public void 주_48개가_지나면_다음해()
         {
-            AdvanceDays(360);
+            AdvanceWeeks(47);
+            Assert.AreEqual(1, _time.CurrentYear);
+            AdvanceWeeks(1);
             Assert.AreEqual(2, _time.CurrentYear);
             Assert.AreEqual(1, _time.CurrentMonth);
+            Assert.AreEqual(1, _time.CurrentWeek);
+            Assert.AreEqual(48, TimeManager.WeeksPerYear);
+        }
+
+        [Test]
+        public void 날짜_알림은_년_월_주차()
+        {
+            var dates = new List<(int, int, int)>();
+            _time.OnDateChanged += (y, m, w) => dates.Add((y, m, w));
+            AdvanceWeeks(4);
+            CollectionAssert.AreEqual(new[] { (1, 1, 2), (1, 1, 3), (1, 1, 4), (1, 2, 1) }, dates);
+        }
+
+        [TestCase(1, Season.Winter)]
+        [TestCase(2, Season.Winter)]
+        [TestCase(3, Season.Spring)]
+        [TestCase(5, Season.Spring)]
+        [TestCase(6, Season.Summer)]
+        [TestCase(8, Season.Summer)]
+        [TestCase(9, Season.Autumn)]
+        [TestCase(11, Season.Autumn)]
+        [TestCase(12, Season.Winter)]
+        public void 계절은_봄3_5_여름6_8_가을9_11_겨울12_2(int month, Season expected)
+        {
+            Assert.AreEqual(expected, SeasonUtil.FromMonth(month));
+        }
+
+        [Test]
+        public void 계절이_바뀌는_달에만_계절_변경_이벤트가_월간틱보다_먼저()
+        {
+            var log = new List<string>();
+            _time.OnSeasonChanged += s => log.Add($"season:{s}");
+            _time.OnMonthlyTick += () => log.Add($"month:{_time.CurrentMonth}");
+            AdvanceWeeks(4 * 6); // 1월 → 7월
+
+            CollectionAssert.AreEqual(new[]
+            {
+                "month:2", "season:Spring", "month:3", "month:4", "month:5", "season:Summer", "month:6", "month:7"
+            }, log);
+            Assert.AreEqual(Season.Summer, _time.CurrentSeason);
+            Assert.AreEqual(Season.Summer, _time.NextMonthSeason);
+        }
+
+        [Test]
+        public void 다음달_계절()
+        {
+            TestWorld.SetField(_time, "currentMonth", 2);
+            Assert.AreEqual(Season.Spring, _time.NextMonthSeason);
+            TestWorld.SetField(_time, "currentMonth", 12);
+            Assert.AreEqual(Season.Winter, _time.NextMonthSeason, "12월 다음은 1월(겨울)");
         }
 
         [Test]
@@ -411,11 +470,11 @@ namespace InfraTown.Tests
         {
             var power = _world.CreateManager<PowerManager>(); // 보유 전력 0
             _loop.RegisterBuilding(_world.CreateBuilding(_world.CreateData(BuildingType.Housing, capacity: 10), 0, 0));
-            Assert.AreEqual(70f, _satisfaction.CurrentAverageSatisfaction);
+            Assert.AreEqual(55f, _satisfaction.CurrentAverageSatisfaction); // 전봇대가 없어 전기 꺼진 주택 -15 (사용자 결정 2026-11-24)
 
             _loop.RegisterBuilding(_world.CreateBuilding(_world.CreateData(BuildingType.Facility, power: 40), 10, 10));
 
-            Assert.AreEqual(40f, _satisfaction.CurrentAverageSatisfaction); // 전면 정전 -30
+            Assert.AreEqual(40f, _satisfaction.CurrentAverageSatisfaction); // 전면 정전 -30 (이때는 주택 개별 감점과 겹치지 않음)
         }
 
         [Test]

@@ -11,23 +11,25 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T3_FireStation
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: fire_station
-  buildingName: "소방서"
-  description: "화재 예방, 반경 12타일 만족도 증가"
+  buildingName: "\uC18C\uBC29\uC11C"
+  description: "\uD654\uC7AC \uC608\uBC29, \uBC18\uACBD 12\uD0C0\uC77C \uB9CC\uC871\uB3C4
+    \uC99D\uAC00"
   requiredPopulation: 150
   unlockTier: 3
-  easyDescription: "불을 꺼주는 소방서"
-  unlockMessage: "작은 불씨가 번졌는데 소방차가 1시간 뒤에나 도착했어요."
-  constructionDays: 14
-  demolitionDays: 2
+  easyDescription: "\uBD88\uC744 \uAEBC\uC8FC\uB294 \uC18C\uBC29\uC11C"
+  unlockMessage: "\uBD88\uC5D0 \uC9D1\uC774 \uB2E4 \uD0C8 \uB54C\uAE4C\uC9C0 \uC18C\uBC29\uAD00\uC774
+    \uC624\uC9C0 \uBABB\uD588\uB2E4\uACE0 \uD558\uB124\uC694."
+  constructionWeeks: 4
+  demolitionWeeks: 2
   sizeType: 1
   category: 0
   requiredPower: 40
   maintenanceCost: 300
   constructionCost: 5000
   housingCapacity: 0
-  satisfactionImpact: 5
+  satisfactionImpact: 1
   satisfactionRadius: 12
   powerSupplyRadius: 4
   isPowerPole: 0

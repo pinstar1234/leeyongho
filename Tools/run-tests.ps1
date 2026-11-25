@@ -43,7 +43,8 @@ function Test-EditorOpen {
 $projectPath = $root
 if ($ForceCopy -or (Test-EditorOpen)) {
     $projectPath = Join-Path $env:LOCALAPPDATA "InfraTownTestProject"
-    Write-Host "Unity editor is using the project -> running in a mirrored copy: $projectPath" -ForegroundColor Yellow
+    $why = if ($ForceCopy) { "-ForceCopy" } else { "Unity editor is using the project" }
+    Write-Host "$why -> running in a mirrored copy: $projectPath" -ForegroundColor Yellow
     foreach ($dir in "Assets", "Packages", "ProjectSettings") {
         robocopy (Join-Path $root $dir) (Join-Path $projectPath $dir) /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
         if ($LASTEXITCODE -ge 8) { Write-Host "robocopy failed for $dir ($LASTEXITCODE)" -ForegroundColor Red; exit 1 }
@@ -77,6 +78,11 @@ if ($Filter) { $unityArgs += @("-testFilter", "`"$Filter`"") }
 Write-Host "Running $Platform tests with Unity $version ..."
 $sw = [System.Diagnostics.Stopwatch]::StartNew()
 $proc = Start-Process -FilePath $UnityPath -ArgumentList $unityArgs -Wait -PassThru -NoNewWindow
+# Unity licensing client sometimes is not reachable on the first try (exit 199) -> retry once
+if (-not (Test-Path $resultsPath) -and (Test-Path $logPath) -and (Select-String -Path $logPath -Pattern "LicensingClient doesn't exist" -Quiet)) {
+    Write-Host "Unity licensing client not ready -> retrying once" -ForegroundColor DarkYellow
+    $proc = Start-Process -FilePath $UnityPath -ArgumentList $unityArgs -Wait -PassThru -NoNewWindow
+}
 $sw.Stop()
 
 if (-not (Test-Path $resultsPath)) {

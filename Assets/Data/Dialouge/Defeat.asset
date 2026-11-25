@@ -1,0 +1,86 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a4abce92d2f04c46950ccacf447658a7, type: 3}
+  m_Name: Defeat
+  m_EditorClassIdentifier: 
+  dialogueId: Defeat
+  cutsceneBefore: {fileID: 0}
+  lines:
+  - speaker: "\uBE44\uC11C"
+    portrait: {fileID: 0}
+    side: 2
+    text: "\uC774\uC7A5\uB2D8\uAED8\uC11C \uD558\uACE0\uC2F6\uC740 \uB9D0\uC500\uC774
+      \uC788\uB2E4\uACE0 \uD558\uC2ED\uB2C8\uB2E4"
+    easyText: 
+  - speaker: "\uC774\uC7A5\uB2D8"
+    portrait: {fileID: 21300000, guid: b2de812db2e9d964eb548773d2eac49d, type: 3}
+    side: 2
+    text: "\uC6B0\uB9AC \uB9C8\uC744\uC744 \uB354 \uC88B\uAC8C \uB9CC\uB4E4\uC5B4\uC8FC\uACA0\uB2E4\uACE0
+      \uD558\uB354\uB2C8"
+    easyText: 
+  - speaker: "\uC774\uC7A5\uB2D8"
+    portrait: {fileID: 21300000, guid: b2de812db2e9d964eb548773d2eac49d, type: 3}
+    side: 2
+    text: "\uC798 \uC0B4\uACE0 \uC788\uB294 \uC0AC\uB78C\uB4E4 \uAD34\uB86D\uD788\uAE30\uB9CC
+      \uD558\uB294 \uC591\uBC18\uC774\uC600\uAD6C\uB9CC"
+    easyText: 
+  - speaker: "\uC774\uC7A5\uB2D8"
+    portrait: {fileID: 21300000, guid: b2de812db2e9d964eb548773d2eac49d, type: 3}
+    side: 2
+    text: "\uC790\uB124\uAC19\uC740 \uC591\uBC18 \uC5C6\uC5B4\uB3C4 \uC6B0\uB9AC
+      \uB9C8\uC744\uC740 \uC798 \uC0B4\uACE0 \uC788\uC5C8\uB124"
+    easyText: 
+  - speaker: "\uC774\uC7A5\uB2D8"
+    portrait: {fileID: 21300000, guid: b2de812db2e9d964eb548773d2eac49d, type: 3}
+    side: 2
+    text: "\uAD1C\uD788 \uBA40\uCA61\uD55C \uB9C8\uC744 \uB4E4\uC464\uC2DC\uC9C0\uB9D0\uACE0
+      \uC870\uC6A9\uD788 \uC9C0\uB0B4\uB2E4 \uAC00\uAC8C\uB098"
+    easyText: 
+  - speaker: "\uC8FC\uC778\uACF5"
+    portrait: {fileID: 0}
+    side: 0
+    text: "\uADF8\uC800 \uB9C8\uC744\uC744 \uB354 \uC88B\uAC8C \uB9CC\uB4E4\uACE0
+      \uC2F6\uC5C8\uB358 \uAC83 \uBFD0\uC778\uB370"
+    easyText: 
+  - speaker: "\uC8FC\uC778\uACF5"
+    portrait: {fileID: 0}
+    side: 0
+    text: "\uB9C8\uC744 \uC0AC\uB78C\uB4E4\uC744 \uD798\uB4E4\uAC8C\uB9CC \uB9CC\uB4E4\uC5C8\uB358
+      \uAC83 \uAC19\uB2E4"
+    easyText: 
+  - speaker: "\uC8FC\uC778\uACF5"
+    portrait: {fileID: 0}
+    side: 0
+    text: "\uB354 \uC798 \uD560 \uC218 \uC788\uC5C8\uB358 \uAC83 \uAC19\uC740\uB370
+      \uB0B4 \uB2A5\uB825\uC774 \uBD80\uC871\uD588\uB358 \uBAA8\uC591\uC774\uB2E4"
+    easyText: 
+  - speaker: "\uBE44\uC11C"
+    portrait: {fileID: 0}
+    side: 2
+    text: "\uB9C8\uC744 \uC0AC\uB78C\uB4E4\uC758 \uBD88\uB9CC\uC774 \uB108\uBB34
+      \uB192\uC544\uC84C\uC2B5\uB2C8\uB2E4"
+    easyText: 
+  - speaker: "\uBE44\uC11C"
+    portrait: {fileID: 0}
+    side: 2
+    text: "\uB354 \uC774\uC0C1 \uC774 \uB9C8\uC744\uC5D0\uC11C \uC800\uD76C\uAC00
+      \uD560 \uC218 \uC788\uB294 \uD65C\uB3D9\uC740 \uC5C6\uB294 \uAC83 \uAC19\uC2B5\uB2C8\uB2E4"
+    easyText: 
+  - speaker: "\uBE44\uC11C"
+    portrait: {fileID: 0}
+    side: 2
+    text: "\uBC30\uB4DC\uC5D4\uB529\n\n\uD301 - \uD544\uC218\uC2DC\uC124\uC744 \uC9C0\uC73C\uBA74\uC11C
+      \uC8FC\uBBFC\uB4E4\uC774 \uC9C0\uAE08 \uC0DD\uD65C\uC5D0 \uB9CC\uC871\uD560
+      \uC218 \uC788\uB3C4\uB85D \uD574\uC8FC\uC138\uC694"
+    easyText: 
+  pauseGame: 1
+  playOnce: 1

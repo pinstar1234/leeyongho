@@ -11,16 +11,16 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T1_Road
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: road
-  buildingName: "도로"
-  description: "건물 연결"
+  buildingName: "\uB3C4\uB85C"
+  description: "\uAC74\uBB3C \uC5F0\uACB0"
   requiredPopulation: 0
   unlockTier: 1
-  easyDescription: "길 (모든 건물 연결 필요)"
-  unlockMessage: "비만 오면 길이 진흙밭이 되어 통행이 불가능합니다."
-  constructionDays: 0
-  demolitionDays: 0
+  easyDescription: "\uAE38 (\uBAA8\uB4E0 \uAC74\uBB3C \uC5F0\uACB0 \uD544\uC694)"
+  unlockMessage: "\uAE38 (\uBAA8\uB4E0 \uAC74\uBB3C \uC5F0\uACB0 \uD544\uC694)"
+  constructionWeeks: 0
+  demolitionWeeks: 0
   sizeType: 0
   category: 4
   requiredPower: 0

@@ -11,24 +11,25 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T2_BusStop
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: bus_stop
-  buildingName: "버스 정류장"
-  description: "이동성 제공, 만족도 증가"
+  buildingName: "\uBC84\uC2A4 \uC815\uB958\uC7A5"
+  description: "\uC774\uB3D9\uC131 \uC81C\uACF5, \uB9CC\uC871\uB3C4 \uC99D\uAC00"
   requiredPopulation: 50
   unlockTier: 2
-  easyDescription: "다른 곳으로 이동하는 버스 타는 곳"
-  unlockMessage: "어르신 한 분이 병원 가려고 버스를 6시간 기다리셨대요."
-  constructionDays: 14
-  demolitionDays: 2
+  easyDescription: "\uBC84\uC2A4 \uD0C0\uB294 \uACF3"
+  unlockMessage: "\uC5B4\uB974\uC2E0 \uD55C \uBD84\uC774 \uBCD1\uC6D0 \uAC00\uB824\uACE0
+    \uBC84\uC2A4\uB97C 6\uC2DC\uAC04 \uAE30\uB2E4\uB9AC\uC168\uB300\uC694."
+  constructionWeeks: 4
+  demolitionWeeks: 2
   sizeType: 1
   category: 1
   requiredPower: 5
   maintenanceCost: 80
   constructionCost: 1500
   housingCapacity: 0
-  satisfactionImpact: 5
-  satisfactionRadius: 5
+  satisfactionImpact: 6
+  satisfactionRadius: 7
   powerSupplyRadius: 4
   isPowerPole: 0
   policePatrolCount: 0

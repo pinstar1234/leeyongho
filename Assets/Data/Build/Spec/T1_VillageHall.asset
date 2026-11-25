@@ -11,24 +11,25 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 97b82fe9a3c597e4397963b306ccadf4, type: 3}
   m_Name: T1_VillageHall
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   buildingID: village_hall
-  buildingName: "마을 회관"
-  description: "주민 모임, 마을 만족도 상승"
+  buildingName: "\uB9C8\uC744 \uD68C\uAD00"
+  description: "\uC8FC\uBBFC \uBAA8\uC784, \uB9C8\uC744 \uB9CC\uC871\uB3C4 \uC0C1\uC2B9"
   requiredPopulation: 0
   unlockTier: 1
-  easyDescription: "마을 주민들이 모여 회의하는 곳"
-  unlockMessage: "이장님 방송을 들으려 모일 장소가 필요해요."
-  constructionDays: 14
-  demolitionDays: 2
+  easyDescription: "\uC8FC\uBBFC\uB4E4\uC774 \uBAA8\uC774\uB294 \uACF3"
+  unlockMessage: "\uB9C8\uC744 \uC8FC\uBBFC\uB4E4\uC774 \uBAA8\uC77C \uACF3\uC774
+    \uC5C6\uB2E4\uACE0 \uD558\uB124\uC694"
+  constructionWeeks: 4
+  demolitionWeeks: 2
   sizeType: 1
   category: 1
   requiredPower: 20
   maintenanceCost: 100
   constructionCost: 2000
   housingCapacity: 0
-  satisfactionImpact: 5
-  satisfactionRadius: 4
+  satisfactionImpact: 6
+  satisfactionRadius: 7
   powerSupplyRadius: 4
   isPowerPole: 0
   policePatrolCount: 0

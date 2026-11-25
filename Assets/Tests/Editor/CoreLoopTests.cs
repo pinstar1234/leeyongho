@@ -49,13 +49,13 @@ namespace InfraTown.Tests
         [Test]
         public void 읍내_60분_기준_대비_단축비율만큼_보너스()
         {
-            // 맞닿은 병원 → 5분, 단축 비율 55/60 → 보너스 6 × 0.9167 = 5.5
+            // 맞닿은 병원 → 5분, 단축 비율 55/60 → 보너스 (10 ÷ 5종 = 2) × 0.9167 = 1.833
             var house = House(0, 0);
             Recalculate(new List<BuildingInstance> { house, Service("hospital", 1, 0) });
 
-            Assert.AreEqual(5.5f, _service.GetAccessBonus(house, ServiceType.Hospital), 0.001f);
-            Assert.AreEqual(75.5f, house.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
-            Assert.AreEqual(5.5f, house.GetComponent<HousingInstance>().AccessBonus, 0.001f);
+            Assert.AreEqual(2f * 55f / 60f, _service.GetAccessBonus(house, ServiceType.Hospital), 0.001f);
+            Assert.AreEqual(70f + 2f * 55f / 60f, house.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
+            Assert.AreEqual(2f * 55f / 60f, house.GetComponent<HousingInstance>().AccessBonus, 0.001f);
         }
 
         [Test]
@@ -63,7 +63,25 @@ namespace InfraTown.Tests
         {
             var house = House(0, 0);
             Recalculate(new List<BuildingInstance> { house, Service("hospital", 1, 0), Service("school", 0, 1) });
-            Assert.AreEqual(11f, _service.GetTotalAccessBonus(house), 0.001f);
+            Assert.AreEqual(2f * 2f * 55f / 60f, _service.GetTotalAccessBonus(house), 0.001f);
+        }
+
+        [Test]
+        public void 접근_보너스_합계는_최대_10점()
+        {
+            Assert.AreEqual(10f, _service.MaxTotalAccessBonus);
+            Assert.AreEqual(2f, _service.MaxBonusPerService, 0.001f);
+
+            // 5종 시설이 모두 맞닿아 있어도 (기본 시간 0분이면) 합계 10을 넘지 않는다
+            var house = House(5, 5);
+            Recalculate(new List<BuildingInstance>
+            {
+                house,
+                Service("hospital", 6, 5, baseTime: 0f), Service("school", 4, 5, baseTime: 0f),
+                Service("fire", 5, 6, baseTime: 0f), Service("police", 5, 4, baseTime: 0f),
+                Service("convenience_store", 6, 6, baseTime: 0f)
+            });
+            Assert.AreEqual(10f, _service.GetTotalAccessBonus(house), 0.001f);
         }
 
         [Test]
@@ -152,8 +170,8 @@ namespace InfraTown.Tests
 
             _satisfaction.RecalculateSatisfaction(buildings);
 
-            // 80 - 전면 정전 30 = 50 → 보통
-            Assert.AreEqual(50f, house.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
+            // 70 - 전면 정전 30 = 40 → 보통 (+10 시설은 전봇대가 없어 전기가 꺼져 기능 정지 — 사용자 결정 2026-11-24)
+            Assert.AreEqual(40f, house.GetComponent<HousingInstance>().CurrentSatisfaction, 0.001f);
             Assert.AreEqual(SatisfactionState.Normal, house.GetComponent<HousingInstance>().State);
             Assert.AreEqual(0f, _satisfaction.GoodHousingRatio);
         }
@@ -193,9 +211,9 @@ namespace InfraTown.Tests
             _satisfaction.RecalculateSatisfaction(_buildings);
         }
 
-        private void Days(int count)
+        private void Weeks(int count)
         {
-            for (int i = 0; i < count; i++) _outcome.ProcessDay();
+            for (int i = 0; i < count; i++) _outcome.ProcessWeek();
         }
 
         /// <summary>주택 1채가 '나쁨'(20점)이 되는 마을</summary>
@@ -226,99 +244,99 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 나쁨이_30일_연속이면_배드엔딩()
+        public void 나쁨이_12주_연속이면_배드엔딩()
         {
             var time = _world.CreateManager<TimeManager>();
             MakeBadTown();
 
-            Days(29);
+            Weeks(11);
             Assert.IsFalse(_outcome.IsGameOver);
-            Assert.AreEqual(29, _outcome.BadStreakDays);
+            Assert.AreEqual(11, _outcome.BadStreakWeeks);
 
-            Days(1);
+            Weeks(1);
             Assert.AreEqual(GameResult.Defeat, _outcome.Result);
             Assert.IsTrue(time.IsEventPaused, "게임이 끝나면 시간이 멈춰야 한다");
         }
 
         [Test]
-        public void 나쁨에서_벗어나면_연속일수가_초기화된다()
+        public void 나쁨에서_벗어나면_연속_주수가_초기화된다()
         {
             var nimby = MakeBadTown();
-            Days(20);
+            Weeks(8);
 
             _buildings.Remove(nimby);
             Recalculate();
-            Days(1);
+            Weeks(1);
 
-            Assert.AreEqual(0, _outcome.BadStreakDays);
+            Assert.AreEqual(0, _outcome.BadStreakWeeks);
             Assert.IsFalse(_outcome.IsGameOver);
         }
 
         [Test]
-        public void 공사중_유예_요청이_있으면_나쁨_일수가_멈춘다()
+        public void 공사중_유예_요청이_있으면_나쁨_주수가_멈춘다()
         {
             MakeBadTown();
-            Days(10);
+            Weeks(4);
 
             var construction = new object();
             _outcome.RequestDefeatGrace(construction);
-            Days(100);
-            Assert.AreEqual(10, _outcome.BadStreakDays);
+            Weeks(100);
+            Assert.AreEqual(4, _outcome.BadStreakWeeks);
             Assert.IsFalse(_outcome.IsGameOver);
 
             _outcome.ReleaseDefeatGrace(construction);
-            Days(20);
+            Weeks(8);
             Assert.AreEqual(GameResult.Defeat, _outcome.Result);
         }
 
         [Test]
-        public void 나쁨_일수_변경_이벤트가_발생한다()
+        public void 나쁨_주수_변경_이벤트가_발생한다()
         {
             int lastDays = -1, lastLimit = -1;
             _outcome.OnBadStreakChanged += (days, limit) => { lastDays = days; lastLimit = limit; };
             MakeBadTown();
-            Days(3);
+            Weeks(3);
             Assert.AreEqual(3, lastDays);
-            Assert.AreEqual(30, lastLimit);
+            Assert.AreEqual(12, lastLimit);
         }
 
         [Test]
-        public void 조건을_모두_갖추면_10년이_되는_날_해피엔딩()
+        public void 조건을_모두_갖추면_10년이_되는_주에_해피엔딩()
         {
             MakeGoodTown();
             Assert.AreEqual(1f, _satisfaction.GoodHousingRatio);
 
-            Days(_outcome.VictoryDays - 1);
+            Weeks(_outcome.VictoryWeeks - 1);
             Assert.IsFalse(_outcome.IsGameOver, "10년 전에는 끝나지 않는다");
 
-            Days(1);
+            Weeks(1);
             Assert.AreEqual(GameResult.Victory, _outcome.Result);
         }
 
         [Test]
-        public void 필수시설이_빠지면_10년이_지나도_계속되고_갖추는_날_승리()
+        public void 필수시설이_빠지면_10년이_지나도_계속되고_갖추는_주에_승리()
         {
             MakeGoodTown(policeToo: false);
-            Days(_outcome.VictoryDays + 50);
+            Weeks(_outcome.VictoryWeeks + 50);
 
             Assert.IsFalse(_outcome.IsGameOver);
             CollectionAssert.AreEqual(new[] { ServiceType.Police }, _outcome.GetMissingRequiredServices());
 
             AddPolice();
-            Days(1);
+            Weeks(1);
             Assert.AreEqual(GameResult.Victory, _outcome.Result);
         }
 
         [Test]
-        public void 좋음_70퍼센트를_30일_이상_유지해야_승리()
+        public void 좋음_70퍼센트를_4주_이상_유지해야_승리()
         {
-            Days(_outcome.VictoryDays - 10); // 주택 없이 보내다가
-            MakeGoodTown();                   // 10년 10일 전에 좋은 마을 완성
+            Weeks(_outcome.VictoryWeeks - 2); // 주택 없이 보내다가
+            MakeGoodTown();                    // 10년 2주 전에 좋은 마을 완성
 
-            Days(29);
-            Assert.IsFalse(_outcome.IsGameOver, "좋음 유지 29일");
+            Weeks(3);
+            Assert.IsFalse(_outcome.IsGameOver, "좋음 유지 3주");
 
-            Days(1);
+            Weeks(1);
             Assert.AreEqual(GameResult.Victory, _outcome.Result);
         }
 
@@ -329,12 +347,12 @@ namespace InfraTown.Tests
             TestWorld.SetField(_outcome, "requiredPopulation", 5);
             MakeGoodTown();
 
-            Days(_outcome.VictoryDays + 30);
+            Weeks(_outcome.VictoryWeeks + 30);
             Assert.IsFalse(_outcome.IsGameOver);
 
             population.RecalculateCapacity(_buildings);
             population.AddPopulation(5);
-            Days(1);
+            Weeks(1);
             Assert.AreEqual(GameResult.Victory, _outcome.Result);
         }
 
@@ -342,19 +360,19 @@ namespace InfraTown.Tests
         public void 게임이_끝나면_더이상_판정하지_않는다()
         {
             MakeBadTown();
-            Days(40);
-            Assert.AreEqual(30, _outcome.DaysElapsed);
+            Weeks(40);
+            Assert.AreEqual(12, _outcome.WeeksElapsed);
         }
 
         [Test]
-        public void TimeManager의_날짜가_넘어갈_때마다_하루를_센다()
+        public void TimeManager의_날짜가_넘어갈_때마다_한_주를_센다()
         {
             var time = _world.CreateManager<TimeManager>();
             TestWorld.Invoke(_outcome, "Start");
 
-            for (int i = 0; i < 3; i++) TestWorld.Invoke(time, "AdvanceOneDay");
+            for (int i = 0; i < 3; i++) TestWorld.Invoke(time, "AdvanceOneWeek");
 
-            Assert.AreEqual(3, _outcome.DaysElapsed);
+            Assert.AreEqual(3, _outcome.WeeksElapsed);
         }
 
         [Test]

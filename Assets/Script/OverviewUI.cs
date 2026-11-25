@@ -27,6 +27,10 @@ namespace InfraTown.UI
         [Header("1. 전기 현황")]
         [SerializeField] private TextMeshProUGUI powerText;
 
+        [Header("1-1. 다음 달 전력 구매량 조절 (Slider)")]
+        [SerializeField] private TextMeshProUGUI powerPurchaseText;
+        [SerializeField] private Slider powerSlider;
+
         [Header("2. 인구 현황")]
         [SerializeField] private TextMeshProUGUI populationText;
 
@@ -66,6 +70,9 @@ namespace InfraTown.UI
 
             if (subsidySlider != null)
                 subsidySlider.onValueChanged.AddListener(OnSubsidySliderChanged);
+
+            if (powerSlider != null)
+                powerSlider.onValueChanged.AddListener(OnPowerSliderChanged);
 
             RegisterEvents();
 
@@ -199,14 +206,33 @@ namespace InfraTown.UI
 
         private void UpdatePowerUI()
         {
-            if (powerText == null) return;
+            var power = PowerManager.Instance;
+            if (power == null) return;
 
-            if (PowerManager.Instance != null)
+            if (powerText != null)
             {
-                int usedPower = PowerManager.Instance.CurrentUsedPower;
-                int availablePower = PowerManager.Instance.CurrentAvailablePower;
-                powerText.text = $"전기 수급: {usedPower} / {availablePower} kW";
+                powerText.text = $"전기 수급: {power.CurrentUsedPower} / {power.CurrentAvailablePower} kW";
             }
+
+            if (powerSlider != null)
+            {
+                powerSlider.minValue = 0;
+                powerSlider.maxValue = power.MaxPurchasablePower;
+                powerSlider.wholeNumbers = true;
+                powerSlider.SetValueWithoutNotify(power.TargetPurchasedPower);
+            }
+
+            if (powerPurchaseText != null)
+            {
+                string shortage = power.NextMonthShortage > 0 ? $"\n<color=#FF6666>다음 달 {power.NextMonthShortage} kW 부족</color>" : "";
+                powerPurchaseText.text = $"다음 달 전력 구매: {power.TargetPurchasedPower} kW (월 {power.MonthlyPurchaseCost:N0} 원){shortage}";
+            }
+        }
+
+        private void OnPowerSliderChanged(float value)
+        {
+            // 다음 월간 정산부터 적용 (이번 달 보유 전력은 그대로)
+            PowerManager.Instance?.SetTargetPurchasedPower(Mathf.RoundToInt(value));
         }
 
         private void UpdatePopulationUI(int current, int maxCapacity)

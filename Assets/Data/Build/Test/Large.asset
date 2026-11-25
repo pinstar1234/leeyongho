@@ -19,8 +19,8 @@ MonoBehaviour:
   unlockTier: 1
   easyDescription: 
   unlockMessage: 
-  constructionDays: 0
-  demolitionDays: 0
+  constructionWeeks: 0
+  demolitionWeeks: 0
   sizeType: 2
   category: 0
   requiredPower: 10

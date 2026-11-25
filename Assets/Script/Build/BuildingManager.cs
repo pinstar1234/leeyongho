@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using UnityEngine;
 using InfraTown.Grid;
 using InfraTown.Core;
@@ -21,16 +22,72 @@ namespace InfraTown.Building
         [Header("하이라이트 컨트롤러 참조")]
         [SerializeField] private GridHighlightController highlightController;
 
+        [Header("도로 접근 (사용자 기획 2026-11-24)")]
+        [Tooltip("건물은 한 면 이상(상하좌우, 대각선 제외) 도로에 맞닿아야 설치할 수 있다. 도로 자신은 어디든, 전신주는 도로 위에도 설치 가능. 끄면 예전처럼 어디든 (테스트·연출용)")]
+        [SerializeField] private bool requireRoadAccess = true;
+
+        [Header("건설 회전 (Q: +90°, E: -90°)")]
+        [SerializeField] private KeyCode rotateKeyPositive = KeyCode.Q;
+        [SerializeField] private KeyCode rotateKeyNegative = KeyCode.E;
+        [SerializeField] private float rotationStep = 90f;
+
+        /// <summary>건설 모드에서 플레이어가 돌린 Y축 회전 (0/90/180/270). 같은 건물을 연속 설치하는 동안 유지되고, 다른 건물을 고르면 0으로 돌아간다</summary>
+        public float CurrentRotationY { get; private set; }
+
+        /// <summary>건설 모드 중인지</summary>
+        public bool IsBuildMode => _selectedBuildingData != null;
+
+        /// <summary>건설 모드에서 고른 건물 (없으면 null)</summary>
+        public BuildingData SelectedBuildingData => _selectedBuildingData;
+
+        /// <summary>미리보기 회전이 바뀔 때 (새 Y 회전값)</summary>
+        public event Action<float> OnPreviewRotationChanged;
+
+        /// <summary>건물이 설치됐을 때 (연출·효과용)</summary>
+        public event Action<BuildingInstance> OnBuildingPlaced;
+
+        /// <summary>건물을 골라 배치 중인지 (미리보기가 마우스를 따라다니는 건설 모드)</summary>
+        public bool IsPlacingBuilding => _selectedBuildingData != null;
+
+        /// <summary>
+        /// 건설 모드가 켜지거나 꺼질 때 (true = 배치 시작, false = 취소·종료). 건물을 바꿔 고를 때는 다시 알리지 않는다.
+        /// 건설 독 UI(BuildDockUI) 등이 구독
+        /// </summary>
+        public event Action<bool> OnPlacementModeChanged;
+
+        private bool _notifiedPlacing;
+
+        /// <summary>배치 상태가 마지막으로 알린 값과 달라졌을 때만 OnPlacementModeChanged 발생</summary>
+        private void NotifyPlacementMode()
+        {
+            if (_notifiedPlacing == IsPlacingBuilding) return;
+            _notifiedPlacing = IsPlacingBuilding;
+            OnPlacementModeChanged?.Invoke(_notifiedPlacing);
+        }
+
         private BuildingData _selectedBuildingData;
+        private BuildingData _lastSelectedBuildingData;
         private GameObject _previewInstance;
         private MeshRenderer[] _previewRenderers;
 
         // 60x40 타일별 점유중인 건물 인스턴스 저장 배열
         private BuildingInstance[,] _occupiedGrid = new BuildingInstance[60, 40];
 
+        // 도로 위에 세운 전신주 (도로와 같은 칸을 쓰므로 따로 보관, 사용자 기획 2026-11-24). 도로가 철거돼도 전신주는 그 자리에 남는다
+        private BuildingInstance[,] _roadPoleGrid = new BuildingInstance[60, 40];
+
+        /// <summary>도로 접근 조건을 쓰는지 (끄면 어디든 설치 — 테스트·연출용)</summary>
+        public bool RequireRoadAccess { get => requireRoadAccess; set => requireRoadAccess = value; }
+
+        /// <summary>마지막으로 설치하지 못한 이유 (설치 성공하면 null) — UI 안내 문구용</summary>
+        public string LastPlacementError { get; private set; }
+
+        /// <summary>설치를 시도했지만 못 했을 때 (건물, 칸, 이유) — 토스트 등 안내용</summary>
+        public event Action<BuildingData, Vector2Int, string> OnPlacementRejected;
+
         private void Awake()
         {
-            if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+            if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
             Instance = this;
 
             if (highlightController == null)
@@ -52,6 +109,47 @@ namespace InfraTown.Building
             if (highlightController != null)
             {
                 highlightController.HideHighlight();
+            }
+        }
+
+        private void Update()
+        {
+            if (_selectedBuildingData == null) return;
+
+            if (Input.GetKeyDown(rotateKeyPositive)) RotatePreview(rotationStep);
+            else if (Input.GetKeyDown(rotateKeyNegative)) RotatePreview(-rotationStep);
+        }
+
+        /// <summary>
+        /// 설치할 건물의 Y축 회전을 바꾼다 (Q/E 키, UI 회전 버튼에서도 호출 가능). 미리보기에 바로 반영된다
+        /// </summary>
+        public void RotatePreview(float deltaDegrees)
+        {
+            CurrentRotationY = Mathf.Repeat(Mathf.Round(CurrentRotationY + deltaDegrees), 360f);
+            ApplyPreviewRotation();
+            OnPreviewRotationChanged?.Invoke(CurrentRotationY);
+        }
+
+        /// <summary>
+        /// 설치 시 실제로 쓰일 회전 = 플레이어 Y 회전 × 프리팹에 설정된 원래 회전.
+        /// 미리보기와 설치 모두 이 값을 쓰므로 보이는 모습 그대로 설치된다
+        /// </summary>
+        public Quaternion GetPlacementRotation(BuildingData data) => GetPlacementRotation(data, CurrentRotationY);
+
+        /// <summary>지정한 Y 회전으로 설치할 때의 회전 (세이브 복원 등)</summary>
+        public Quaternion GetPlacementRotation(BuildingData data, float rotationY)
+        {
+            Quaternion prefabRotation = data != null && data.buildingPrefab != null
+                ? data.buildingPrefab.transform.rotation
+                : Quaternion.identity;
+            return Quaternion.Euler(0f, rotationY, 0f) * prefabRotation;
+        }
+
+        private void ApplyPreviewRotation()
+        {
+            if (_previewInstance != null && _selectedBuildingData != null)
+            {
+                _previewInstance.transform.rotation = GetPlacementRotation(_selectedBuildingData);
             }
         }
 
@@ -154,6 +252,13 @@ namespace InfraTown.Building
         {
             if (data == null) return;
 
+            // 0. 배드엔딩(게임 오버) 뒤에는 건설 불가 (사용자 기획 2026-11-24)
+            if (!GameOutcomeManager.CanModifyTownNow)
+            {
+                RejectPlacement(data, new Vector2Int(-1, -1), GameOverPlacementError);
+                return;
+            }
+
             // 1. 현재 인구수 기반 해금 검증
             if (!IsBuildingUnlocked(data))
             {
@@ -161,12 +266,16 @@ namespace InfraTown.Building
                 return;
             }
 
-            CancelBuildingMode();
+            ClearBuildingMode(); // 이전 미리보기 정리 (건물을 바꿔 고를 때 꺼짐→켜짐 알림이 나가지 않도록 알림 없이)
 
+            // 다른 건물을 고르면 회전 초기화, 같은 건물을 다시 고르면 직전 회전 유지
+            if (data != _lastSelectedBuildingData) CurrentRotationY = 0f;
+            _lastSelectedBuildingData = data;
             _selectedBuildingData = data;
 
+            // 미리보기도 설치와 같은 회전(플레이어 Y 회전 × 설치 프리팹의 원래 회전)으로 생성
             GameObject prefabToInstantiate = data.previewPrefab != null ? data.previewPrefab : data.buildingPrefab;
-            _previewInstance = Instantiate(prefabToInstantiate);
+            _previewInstance = Instantiate(prefabToInstantiate, prefabToInstantiate.transform.position, GetPlacementRotation(data));
 
             foreach (var col in _previewInstance.GetComponentsInChildren<Collider>())
             {
@@ -175,6 +284,7 @@ namespace InfraTown.Building
 
             _previewRenderers = _previewInstance.GetComponentsInChildren<MeshRenderer>();
             SetPreviewMaterial(validPreviewMaterial);
+            NotifyPlacementMode();
         }
 
         /// <summary>
@@ -204,7 +314,7 @@ namespace InfraTown.Building
             Vector3 worldPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
             _previewInstance.transform.position = worldPos;
 
-            bool canBuild = CanPlaceBuilding(gridPos.x, gridPos.y, size.x, size.y);
+            bool canBuild = CanPlaceAt(_selectedBuildingData, gridPos, out _);
             SetPreviewMaterial(canBuild ? validPreviewMaterial : invalidPreviewMaterial);
 
             if (highlightController != null)
@@ -228,42 +338,209 @@ namespace InfraTown.Building
                 return;
             }
 
-            Vector2Int size = _selectedBuildingData.GridSize;
-
-            if (CanPlaceBuilding(gridPos.x, gridPos.y, size.x, size.y))
+            if (!CanPlaceAt(_selectedBuildingData, gridPos, out string reason))
             {
-                int cost = _selectedBuildingData.constructionCost;
-
-                if (EconomyManager.Instance != null && !EconomyManager.Instance.TrySpendMoney(cost))
-                {
-                    Debug.LogWarning("[BuildingManager] 건설 자금이 부족합니다!");
-                    return;
-                }
-
-                Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
-                GameObject buildingObj = Instantiate(_selectedBuildingData.buildingPrefab, spawnPos, Quaternion.identity);
-
-                BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
-                instance.Init(_selectedBuildingData, gridPos);
-
-                // 전신주 데이터면 전력 연결 컴포넌트 부착 (프리팹 수정 없이 동작)
-                if (_selectedBuildingData.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
-                {
-                    buildingObj.AddComponent<InfraTown.Power.UtilityPoleInstance>();
-                }
-
-                for (int x = gridPos.x; x < gridPos.x + size.x; x++)
-                {
-                    for (int z = gridPos.y; z < gridPos.y + size.y; z++)
-                    {
-                        _occupiedGrid[x, z] = instance;
-                    }
-                }
-
-                GameLoopManager.Instance?.RegisterBuilding(instance);
+                RejectPlacement(_selectedBuildingData, gridPos, reason);
+                return;
             }
+
+            int cost = _selectedBuildingData.constructionCost;
+            if (EconomyManager.Instance != null && !EconomyManager.Instance.TrySpendMoney(cost))
+            {
+                RejectPlacement(_selectedBuildingData, gridPos, "건설 자금이 부족합니다.");
+                return;
+            }
+
+            LastPlacementError = null;
+            BuildingInstance instance = SpawnBuilding(_selectedBuildingData, gridPos, CurrentRotationY);
+            OnBuildingPlaced?.Invoke(instance);
         }
 
+        private void RejectPlacement(BuildingData data, Vector2Int gridPos, string reason)
+        {
+            LastPlacementError = reason;
+            Debug.LogWarning($"[BuildingManager] '{data.buildingName}' ({gridPos.x},{gridPos.y}) 설치 불가: {reason}");
+            OnPlacementRejected?.Invoke(data, gridPos, reason);
+        }
+
+        // ─── 설치 조건 (사용자 기획 2026-11-24: 도로 접근, 도로 위 전신주) ───
+
+        /// <summary>배드엔딩(게임 오버) 뒤 설치를 시도했을 때의 안내 문구</summary>
+        public const string GameOverPlacementError = "게임이 끝나 더 이상 건설할 수 없습니다.";
+
+        /// <summary>
+        /// 그 칸에 이 건물을 지금 지을 수 있는지: 맵 안 + 겹치지 않음(전신주는 도로 위 허용) + 도로 접근 + 자금.
+        /// 해금 여부는 따로(IsBuildingUnlocked). 못 지으면 reason에 이유
+        /// </summary>
+        public bool CanPlaceAt(BuildingData data, Vector2Int gridPos, out string reason)
+        {
+            if (!GameOutcomeManager.CanModifyTownNow)
+            {
+                reason = GameOverPlacementError;
+                return false;
+            }
+            if (!IsAreaFree(data, gridPos, out reason)) return false;
+            if (!HasRoadAccess(data, gridPos))
+            {
+                reason = data.isPowerPole ? "전신주는 도로 위나 도로에 맞닿은 곳에만 세울 수 있습니다." : "건물은 한 면 이상 도로에 맞닿아야 지을 수 있습니다.";
+                return false;
+            }
+            if (EconomyManager.Instance != null && EconomyManager.Instance.CurrentMoney < data.constructionCost)
+            {
+                reason = "건설 자금이 부족합니다.";
+                return false;
+            }
+            reason = null;
+            return true;
+        }
+
+        /// <summary>
+        /// 자리만 검사 (맵 안 + 겹침). 전신주는 도로 칸 위에 세울 수 있고(도로 위 전신주가 이미 있으면 안 됨),
+        /// 도로는 도로가 철거되고 남은 전신주 아래에 다시 깔 수 있다. 세이브 복원도 이 검사만 쓴다
+        /// </summary>
+        public bool IsAreaFree(BuildingData data, Vector2Int gridPos, out string reason)
+        {
+            reason = null;
+            if (data == null) { reason = "건물 데이터가 없습니다."; return false; }
+            Vector2Int size = data.GridSize;
+            if (gridPos.x < 0 || gridPos.y < 0 || gridPos.x + size.x > 60 || gridPos.y + size.y > 40)
+            {
+                reason = "맵 밖입니다.";
+                return false;
+            }
+
+            for (int x = gridPos.x; x < gridPos.x + size.x; x++)
+            {
+                for (int z = gridPos.y; z < gridPos.y + size.y; z++)
+                {
+                    var occupant = _occupiedGrid[x, z];
+                    var roadPole = _roadPoleGrid[x, z];
+                    bool blocked = data.isPowerPole ? roadPole != null || (occupant != null && !IsRoad(occupant))
+                                 : data.IsRoad ? occupant != null
+                                 : occupant != null || roadPole != null;
+                    if (blocked)
+                    {
+                        reason = "다른 건물과 겹칩니다.";
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// 도로 접근 조건: 건물 영역의 바깥 둘레(상하좌우로 맞닿은 칸, 대각선 제외) 중 한 칸 이상이 도로면 true.
+        /// 도로 자신은 항상 true(어디든), 전신주는 도로 위에 세우는 경우도 true. requireRoadAccess를 끄면 항상 true
+        /// </summary>
+        public bool HasRoadAccess(BuildingData data, Vector2Int gridPos)
+        {
+            if (data == null) return false;
+            if (!requireRoadAccess || data.IsRoad) return true;
+
+            Vector2Int size = data.GridSize;
+            if (data.isPowerPole)
+            {
+                bool allRoad = true;
+                for (int x = gridPos.x; x < gridPos.x + size.x; x++)
+                    for (int z = gridPos.y; z < gridPos.y + size.y; z++)
+                        if (!IsRoadCell(x, z)) allRoad = false;
+                if (allRoad) return true;
+            }
+
+            for (int x = gridPos.x; x < gridPos.x + size.x; x++)
+            {
+                if (IsRoadCell(x, gridPos.y - 1) || IsRoadCell(x, gridPos.y + size.y)) return true;
+            }
+            for (int z = gridPos.y; z < gridPos.y + size.y; z++)
+            {
+                if (IsRoadCell(gridPos.x - 1, z) || IsRoadCell(gridPos.x + size.x, z)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>그 칸에 도로가 깔려 있는지 (맵 밖이면 false)</summary>
+        public bool IsRoadCell(int x, int z) =>
+            x >= 0 && z >= 0 && x < 60 && z < 40 && IsRoad(_occupiedGrid[x, z]);
+
+        private static bool IsRoad(BuildingInstance b) => b != null && b.Data != null && b.Data.IsRoad;
+
+        /// <summary>그 칸의 건물 (도로 위 전신주가 있으면 전신주, 없으면 그 칸을 차지한 건물, 비었으면 null)</summary>
+        public BuildingInstance GetBuildingAt(Vector2Int cell)
+        {
+            if (cell.x < 0 || cell.y < 0 || cell.x >= 60 || cell.y >= 40) return null;
+            return _roadPoleGrid[cell.x, cell.y] != null ? _roadPoleGrid[cell.x, cell.y] : _occupiedGrid[cell.x, cell.y];
+        }
+
+        /// <summary>그 칸에 도로 위 전신주가 있으면 그 전신주 (없으면 null)</summary>
+        public BuildingInstance GetRoadPoleAt(Vector2Int cell)
+        {
+            if (cell.x < 0 || cell.y < 0 || cell.x >= 60 || cell.y >= 40) return null;
+            return _roadPoleGrid[cell.x, cell.y];
+        }
+
+        /// <summary>
+        /// 건물 생성 + 점유 칸 등록 + 게임 루프 등록 (설치와 세이브 복원이 같이 씀). 검사·비용·OnBuildingPlaced는 부르는 쪽에서
+        /// </summary>
+        private BuildingInstance SpawnBuilding(BuildingData data, Vector2Int gridPos, float rotationY)
+        {
+            Vector2Int size = data.GridSize;
+            Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
+            // 미리보기와 같은 회전으로 생성 (예전에는 Quaternion.identity라 프리팹 회전이 사라졌음)
+            GameObject buildingObj = Instantiate(data.buildingPrefab, spawnPos, GetPlacementRotation(data, rotationY));
+
+            BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
+            instance.Init(data, gridPos, rotationY);
+
+            // 전신주 데이터면 전력 연결 컴포넌트 부착 (프리팹 수정 없이 동작)
+            if (data.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
+            {
+                buildingObj.AddComponent<InfraTown.Power.UtilityPoleInstance>();
+            }
+
+            for (int x = gridPos.x; x < gridPos.x + size.x; x++)
+            {
+                for (int z = gridPos.y; z < gridPos.y + size.y; z++)
+                {
+                    // 전신주를 도로 위에 세우면 도로는 그대로 두고 전신주는 따로 보관
+                    if (data.isPowerPole && IsRoadCell(x, z)) _roadPoleGrid[x, z] = instance;
+                    else _occupiedGrid[x, z] = instance;
+                }
+            }
+
+            GameLoopManager.Instance?.RegisterBuilding(instance);
+            return instance;
+        }
+
+        // ─── 세이브 ───
+
+        /// <summary>건물 ID(없으면 이름)로 등록된 건물 데이터 찾기</summary>
+        public BuildingData FindBuildingData(string buildingID, string buildingName = null)
+        {
+            if (buildingDatabase == null) return null;
+            if (!string.IsNullOrEmpty(buildingID))
+            {
+                foreach (var d in buildingDatabase) if (d != null && d.buildingID == buildingID) return d;
+            }
+            if (!string.IsNullOrEmpty(buildingName))
+            {
+                foreach (var d in buildingDatabase) if (d != null && d.buildingName == buildingName) return d;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 저장된 건물 되살리기: 돈·해금 검사 없이 그 자리에 그 회전으로 생성. 칸을 벗어나거나 겹치면 null.
+        /// 설치 대사·튜토리얼이 나오지 않도록 OnBuildingPlaced는 보내지 않는다
+        /// </summary>
+        public BuildingInstance RestoreBuilding(BuildingData data, Vector2Int gridPos, float rotationY)
+        {
+            if (data == null || data.buildingPrefab == null) return null;
+            // 도로 접근·자금은 검사하지 않음 (저장 당시 이미 지어진 건물 — 그 뒤 도로가 철거됐어도 그대로 되살림)
+            if (!IsAreaFree(data, gridPos, out _)) return null;
+            return SpawnBuilding(data, gridPos, Mathf.Repeat(rotationY, 360f));
+        }
+
+        /// <summary>예전 자리 검사 (맵 안 + 빈 칸 + 고른 건물의 자금). 도로 접근은 보지 않음 — 설치·미리보기는 CanPlaceAt을 쓴다</summary>
         private bool CanPlaceBuilding(int startX, int startZ, int sizeX, int sizeZ)
         {
             if (startX < 0 || startZ < 0 || startX + sizeX > 60 || startZ + sizeZ > 40)
@@ -273,7 +550,7 @@ namespace InfraTown.Building
             {
                 for (int z = startZ; z < startZ + sizeZ; z++)
                 {
-                    if (_occupiedGrid[x, z] != null) return false;
+                    if (_occupiedGrid[x, z] != null || _roadPoleGrid[x, z] != null) return false;
                 }
             }
 
@@ -307,10 +584,18 @@ namespace InfraTown.Building
 
         public void CancelBuildingMode()
         {
+            ClearBuildingMode();
+            NotifyPlacementMode();
+        }
+
+        private void ClearBuildingMode()
+        {
             _selectedBuildingData = null;
             if (_previewInstance != null)
             {
-                Destroy(_previewInstance);
+                if (Application.isPlaying) Destroy(_previewInstance);
+                else DestroyImmediate(_previewInstance); // 에디터 테스트에서 호출될 때
+                _previewInstance = null;
             }
 
             if (highlightController != null)
@@ -333,6 +618,10 @@ namespace InfraTown.Building
                         if (_occupiedGrid[x, z] == building)
                         {
                             _occupiedGrid[x, z] = null;
+                        }
+                        if (_roadPoleGrid[x, z] == building)
+                        {
+                            _roadPoleGrid[x, z] = null;
                         }
                     }
                 }

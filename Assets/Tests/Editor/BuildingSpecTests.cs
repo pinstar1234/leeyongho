@@ -32,28 +32,28 @@ namespace InfraTown.Tests
             Assert.IsTrue(all.All(d => d.buildingPrefab != null), "모든 건물에 (임시) 프리팹이 연결되어야 한다");
         }
 
-        // id, 크기, 분류, 티어, 건설 일수, 철거 일수 (기획서 4장 표 / 3장 건설·철거 기간)
-        [TestCase("house", BuildingSizeType.Small, BuildingType.Housing, 1, 7, 1)]
+        // id, 크기, 분류, 티어, 건설 주 수, 철거 주 수 (기획서 4장 표. 공사 기간은 사용자 결정 2026-11-24로 일 → 주: 건설 7·14·28일 → 2·4·8주, 철거 1·2·3일 → 1·2·3주)
+        [TestCase("house", BuildingSizeType.Small, BuildingType.Housing, 1, 2, 1)]
         [TestCase("road", BuildingSizeType.Small, BuildingType.Infrastructure, 1, 0, 0)]
         [TestCase("power_pole", BuildingSizeType.Small, BuildingType.Infrastructure, 1, 0, 0)]
-        [TestCase("village_hall", BuildingSizeType.Medium, BuildingType.Facility, 1, 14, 2)]
-        [TestCase("convenience_store", BuildingSizeType.Medium, BuildingType.Facility, 2, 14, 2)]
-        [TestCase("bus_stop", BuildingSizeType.Medium, BuildingType.Facility, 2, 14, 2)]
-        [TestCase("senior_center", BuildingSizeType.Medium, BuildingType.Facility, 2, 14, 2)]
-        [TestCase("livestock_farm", BuildingSizeType.Medium, BuildingType.Nimbys, 2, 14, 2)]
-        [TestCase("fire_station", BuildingSizeType.Medium, BuildingType.Essential, 3, 14, 2)]
-        [TestCase("police_station", BuildingSizeType.Medium, BuildingType.Essential, 3, 14, 2)]
-        [TestCase("school", BuildingSizeType.Large, BuildingType.Essential, 4, 28, 3)]
-        [TestCase("hospital", BuildingSizeType.Large, BuildingType.Essential, 4, 28, 3)]
-        [TestCase("landfill", BuildingSizeType.Large, BuildingType.Nimbys, 4, 28, 3)]
-        public void 크기_분류_티어_공사기간이_기획서와_같다(string id, BuildingSizeType size, BuildingType category, int tier, int buildDays, int demolishDays)
+        [TestCase("village_hall", BuildingSizeType.Medium, BuildingType.Facility, 1, 4, 2)]
+        [TestCase("convenience_store", BuildingSizeType.Medium, BuildingType.Facility, 2, 4, 2)]
+        [TestCase("bus_stop", BuildingSizeType.Medium, BuildingType.Facility, 2, 4, 2)]
+        [TestCase("senior_center", BuildingSizeType.Medium, BuildingType.Facility, 2, 4, 2)]
+        [TestCase("livestock_farm", BuildingSizeType.Medium, BuildingType.Nimbys, 2, 4, 2)]
+        [TestCase("fire_station", BuildingSizeType.Medium, BuildingType.Essential, 3, 4, 2)]
+        [TestCase("police_station", BuildingSizeType.Medium, BuildingType.Essential, 3, 4, 2)]
+        [TestCase("school", BuildingSizeType.Large, BuildingType.Essential, 4, 8, 3)]
+        [TestCase("hospital", BuildingSizeType.Large, BuildingType.Essential, 4, 8, 3)]
+        [TestCase("landfill", BuildingSizeType.Large, BuildingType.Nimbys, 4, 8, 3)]
+        public void 크기_분류_티어_공사기간이_기획서와_같다(string id, BuildingSizeType size, BuildingType category, int tier, int buildWeeks, int demolishWeeks)
         {
             var data = Get(id);
             Assert.AreEqual(size, data.sizeType);
             Assert.AreEqual(category, data.category);
             Assert.AreEqual(tier, data.unlockTier);
-            Assert.AreEqual(buildDays, data.constructionDays);
-            Assert.AreEqual(demolishDays, data.demolitionDays);
+            Assert.AreEqual(buildWeeks, data.constructionWeeks);
+            Assert.AreEqual(demolishWeeks, data.demolitionWeeks);
             Assert.IsNotEmpty(data.description);
             Assert.IsNotEmpty(data.easyDescription);
             Assert.IsNotEmpty(data.unlockMessage);
@@ -135,6 +135,7 @@ namespace InfraTown.Tests
         {
             _world = new TestWorld();
             _manager = _world.CreateManager<BuildingManager>();
+            _manager.RequireRoadAccess = false; // 도로 접근 조건은 RoadAccessTests
         }
 
         [TearDown]
