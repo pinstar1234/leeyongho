@@ -55,9 +55,9 @@ namespace InfraTown.UI
         [Header("전체 현황 탭")]
         [SerializeField] private Button[] overviewTabs;
         [SerializeField] private GameObject[] overviewPages;
-
-        private static readonly Color SelectedTabColor = new Color32(62, 104, 83, 255);
-        private static readonly Color TabColor = new Color32(44, 67, 87, 255);
+        [SerializeField] private RectTransform selectedTabUnderline;
+        [SerializeField] private Color selectedTabColor = new Color32(62, 104, 83, 255);
+        [SerializeField] private Color tabColor = new Color32(44, 67, 87, 255);
 
         private Vector2 _windowTargetPos; // 화면 중앙 원래 위치 (보통 Vector2.zero)
         private float _slideDistance = 1400f; // 오른쪽으로 빠져나갈 거리 (화면 너비 기준)
@@ -95,7 +95,7 @@ namespace InfraTown.UI
                 overviewPanel.SetActive(false);
         }
 
-        private static void RegisterTabs(Button[] buttons, GameObject[] pages, int selected)
+        private void RegisterTabs(Button[] buttons, GameObject[] pages, int selected)
         {
             if (buttons == null || pages == null || buttons.Length == 0 || buttons.Length != pages.Length) return;
 
@@ -107,15 +107,18 @@ namespace InfraTown.UI
             SelectTab(buttons, pages, Mathf.Clamp(selected, 0, pages.Length - 1));
         }
 
-        private static void SelectTab(Button[] buttons, GameObject[] pages, int selected)
+        private void SelectTab(Button[] buttons, GameObject[] pages, int selected)
         {
             for (int i = 0; i < pages.Length; i++)
             {
                 bool active = i == selected;
                 pages[i].SetActive(active);
                 if (buttons[i].targetGraphic != null)
-                    buttons[i].targetGraphic.color = active ? SelectedTabColor : TabColor;
+                    buttons[i].targetGraphic.color = active ? selectedTabColor : tabColor;
             }
+
+            if (selectedTabUnderline != null)
+                selectedTabUnderline.SetParent(buttons[selected].transform, false);
         }
 
         private void OnDestroy()
