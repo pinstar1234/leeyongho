@@ -96,6 +96,7 @@ namespace InfraTown.Testing
                 ("Build_NoMoneyRejected", Build_NoMoneyRejected),
                 ("Build_RotateQE", Build_RotateQE),
                 ("Build_DemolishFreesCells", Build_DemolishFreesCells),
+                ("Build_DragPlacement", Build_DragPlacement),
                 ("Pop_WeeklyInflow", Pop_WeeklyInflow),
                 ("Pop_UnlocksAllTiersAt300", Pop_UnlocksAllTiersAt300),
                 ("Satisfaction_MiddleVillage84", Satisfaction_MiddleVillage84),
@@ -588,6 +589,58 @@ namespace InfraTown.Testing
             Expect(Grid[0, 0] == null, "철거 후 칸이 비지 않음");
             Expect(PopulationManager.Instance.MaxPopulationCapacity == 0, $"철거 후 수용 인구 {PopulationManager.Instance.MaxPopulationCapacity}");
             Expect(Place("house", 0, 0) != null, "철거한 자리에 다시 짓지 못함");
+        }
+
+        /// <summary>
+        /// 드래그 건설 (사용자 기획 2026-11-25): 실제 그리드 드래그 경로(BeginDrag → UpdateDrag → EndDrag)로
+        /// 도로 8칸 한 줄 → 그 위로 주택 2줄 사각형(도로에 닿는 아래 줄 8채만 지어짐, 위 줄은 건너뜀), 돈은 지은 만큼만
+        /// </summary>
+        private IEnumerator Build_DragPlacement()
+        {
+            var grid = InfraTown.Grid.LightweightGridManager.Instance;
+            if (!Expect(grid != null, "LightweightGridManager 없음")) yield break;
+            EconomyManager.Instance.AddMoney(100_000);
+            var house = Data("house");
+            int capacityBefore = PopulationManager.Instance.MaxPopulationCapacity;
+            const int x0 = 31, x1 = 38, roadY = 34;
+            try
+            {
+                // 도로: 가로로 끌면서 세로로 조금 움직여도 한 줄
+                Buildings.SelectBuildingToBuild(Data("road"));
+                grid.BeginDrag(new Vector2Int(x0, roadY));
+                grid.UpdateDrag(new Vector2Int(x1, roadY + 1));
+                Expect(Buildings.IsDragPlacing && Buildings.DragCells.Count == 8, $"도로 드래그 미리보기 {Buildings.DragCells.Count}칸 (8칸이어야 함)");
+                grid.EndDrag();
+                yield return Frames(1);
+                int roads = Enumerable.Range(x0, 8).Count(x => Buildings.IsRoadCell(x, roadY));
+                Expect(roads == 8 && !Buildings.IsRoadCell(x0, roadY + 1), $"도로 {roads}칸 (y={roadY} 한 줄 8칸이어야 함)");
+                Expect(Buildings.IsPlacingBuilding, "드래그 건설 뒤 건설 모드가 끝남");
+
+                // 주택: 2줄 사각형 → 도로에 닿는 아래 줄만
+                Buildings.SelectBuildingToBuild(house);
+                grid.BeginDrag(new Vector2Int(x0, roadY + 1));
+                grid.UpdateDrag(new Vector2Int(x1, roadY + 2));
+                Expect(Buildings.DragCells.Count == 16 && Buildings.DragValidCount == 8,
+                    $"주택 드래그 미리보기 {Buildings.DragCells.Count}칸 중 {Buildings.DragValidCount}칸 가능 (16칸 중 8칸이어야 함)");
+                int money = EconomyManager.Instance.CurrentMoney;
+                grid.EndDrag();
+                yield return Frames(1);
+                int lower = Enumerable.Range(x0, 8).Count(x => At(house, x, roadY + 1) != null);
+                int upper = Enumerable.Range(x0, 8).Count(x => At(house, x, roadY + 2) != null);
+                Expect(lower == 8 && upper == 0, $"주택 아래 줄 {lower}채, 위 줄 {upper}채 (8채, 0채여야 함)");
+                Expect(EconomyManager.Instance.CurrentMoney == money - 8 * house.constructionCost, $"돈 {money:N0} → {EconomyManager.Instance.CurrentMoney:N0} (주택 8채 값만 빠져야 함)");
+                Expect(PopulationManager.Instance.MaxPopulationCapacity == capacityBefore + 8 * house.housingCapacity, "드래그로 지은 주택이 수용 인구에 반영되지 않음");
+            }
+            finally
+            {
+                Buildings.CancelBuildingMode();
+            }
+
+            // 다음 검사(주택 30채 = 수용 300명)에 영향이 없도록 정리
+            foreach (var b in GameLoopManager.Instance.PlacedBuildings.Where(b => b != null && b.OriginGridPos.x >= x0 && b.OriginGridPos.x <= x1 && b.OriginGridPos.y >= roadY && b.OriginGridPos.y <= roadY + 2).ToList())
+                Demolish(b);
+            yield return Frames(1);
+            Expect(PopulationManager.Instance.MaxPopulationCapacity == capacityBefore, "정리 뒤 수용 인구가 돌아오지 않음");
         }
 
         // ───────────────────────── 3. 인구·만족도 ─────────────────────────

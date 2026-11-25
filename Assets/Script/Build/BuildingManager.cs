@@ -26,6 +26,13 @@ namespace InfraTown.Building
         [Tooltip("켜면 한 번 설치한 뒤 건설 모드가 끝난다 (Jinyu12)")]
         [SerializeField] private bool singlePlacement;
 
+        [Header("드래그 건설 (사용자 기획 2026-11-25)")]
+        [Tooltip("누른 채 끌어서 여러 개를 한 번에 짓는다. 도로·전신주는 가로 또는 세로 한 줄(더 많이 움직인 방향), 나머지는 끌어서 만든 사각형 안을 건물 크기 간격으로 채운다. 끄면 누르는 순간 한 개만 설치(예전 방식)")]
+        [SerializeField] private bool dragPlacement = true;
+
+        [Tooltip("드래그 한 번에 지을 수 있는 최대 개수 (임시값 — 넘는 칸은 미리보기·설치에서 빠짐)")]
+        [SerializeField] private int maxDragBuildings = 100;
+
         [Header("도로 접근 (사용자 기획 2026-11-24)")]
         [Tooltip("건물은 한 면 이상(상하좌우, 대각선 제외) 도로에 맞닿아야 설치할 수 있다. 도로 자신은 어디든, 전신주는 도로 위에도 설치 가능. 끄면 예전처럼 어디든 (테스트·연출용)")]
         [SerializeField] private bool requireRoadAccess = true;
@@ -86,8 +93,42 @@ namespace InfraTown.Building
         /// <summary>마지막으로 설치하지 못한 이유 (설치 성공하면 null) — UI 안내 문구용</summary>
         public string LastPlacementError { get; private set; }
 
-        /// <summary>설치를 시도했지만 못 했을 때 (건물, 칸, 이유) — 토스트 등 안내용</summary>
+        /// <summary>설치를 시도했지만 못 했을 때 (건물, 칸, 이유) — 토스트 등 안내용. 드래그 건설은 못 지은 칸마다 한 번씩</summary>
         public event Action<BuildingData, Vector2Int, string> OnPlacementRejected;
+
+        /// <summary>돈이 모자라 못 지을 때의 이유 문구</summary>
+        public const string MoneyShortPlacementError = "건설 자금이 부족합니다.";
+
+        // ─── 드래그 건설 상태 (UI·연출용) ───
+
+        /// <summary>드래그 건설을 쓰는지 (끄면 누르는 순간 한 개만 설치)</summary>
+        public bool DragPlacementEnabled { get => dragPlacement; set => dragPlacement = value; }
+
+        /// <summary>드래그 한 번에 지을 수 있는 최대 개수</summary>
+        public int MaxDragBuildings { get => maxDragBuildings; set => maxDragBuildings = Mathf.Max(1, value); }
+
+        /// <summary>지금 끌고 있는지 (건설 모드에서 누른 채)</summary>
+        public bool IsDragPlacing { get; private set; }
+
+        /// <summary>지금 드래그로 지으려는 칸들 (설치 순서대로, 각 건물의 원점 칸)</summary>
+        public IReadOnlyList<Vector2Int> DragCells => _dragCells;
+
+        /// <summary>그중 지을 수 있는 칸 수 (돈은 순서대로 쓴다고 보고 계산)</summary>
+        public int DragValidCount { get; private set; }
+
+        /// <summary>지을 수 있는 칸을 모두 지으면 드는 건설비</summary>
+        public int DragTotalCost { get; private set; }
+
+        /// <summary>드래그 미리보기 칸이 바뀜 (칸 목록) — 개수·비용 표시 등. 드래그가 끝나거나 취소되면 빈 목록</summary>
+        public event Action<IReadOnlyList<Vector2Int>> OnDragCellsChanged;
+
+        /// <summary>드래그 건설이 끝남 (지은 수, 못 지은 수)</summary>
+        public event Action<int, int> OnAreaPlaced;
+
+        private readonly List<Vector2Int> _dragCells = new List<Vector2Int>();
+        private readonly List<bool> _dragValid = new List<bool>();
+        private readonly List<GameObject> _dragPreviews = new List<GameObject>();
+        private Vector2Int _dragStart;
 
         private void Awake()
         {
@@ -104,8 +145,13 @@ namespace InfraTown.Building
         {
             if (LightweightGridManager.Instance != null)
             {
-                LightweightGridManager.Instance.OnGridHoverChanged += UpdateBuildingPreview;
-                LightweightGridManager.Instance.OnGridClicked += TryPlaceBuilding;
+                var grid = LightweightGridManager.Instance;
+                grid.OnGridHoverChanged += UpdateBuildingPreview;
+                // 누르면 드래그 시작, 떼면 그 범위에 건설 (제자리 클릭은 한 칸) — 사용자 기획 2026-11-25
+                grid.OnGridDragStarted += HandleGridDragStarted;
+                grid.OnGridDragUpdated += HandleGridDragUpdated;
+                grid.OnGridDragEnded += HandleGridDragEnded;
+                grid.OnGridDragCanceled += CancelDragPlacement;
             }
 
             BuildingInstance.OnBuildingDestroyed += HandleBuildingDestroyed;
@@ -155,14 +201,22 @@ namespace InfraTown.Building
             {
                 _previewInstance.transform.rotation = GetPlacementRotation(_selectedBuildingData);
             }
+            if (_selectedBuildingData != null)
+            {
+                foreach (var p in _dragPreviews) if (p != null) p.transform.rotation = GetPlacementRotation(_selectedBuildingData);
+            }
         }
 
         private void OnDestroy()
         {
             if (LightweightGridManager.Instance != null)
             {
-                LightweightGridManager.Instance.OnGridHoverChanged -= UpdateBuildingPreview;
-                LightweightGridManager.Instance.OnGridClicked -= TryPlaceBuilding;
+                var grid = LightweightGridManager.Instance;
+                grid.OnGridHoverChanged -= UpdateBuildingPreview;
+                grid.OnGridDragStarted -= HandleGridDragStarted;
+                grid.OnGridDragUpdated -= HandleGridDragUpdated;
+                grid.OnGridDragEnded -= HandleGridDragEnded;
+                grid.OnGridDragCanceled -= CancelDragPlacement;
             }
 
             BuildingInstance.OnBuildingDestroyed -= HandleBuildingDestroyed;
@@ -306,6 +360,8 @@ namespace InfraTown.Building
                 return;
             }
 
+            if (IsDragPlacing) return; // 드래그 중에는 드래그 미리보기가 대신 보임
+
             if (_previewInstance == null) return;
 
             if (gridPos.x == -1 || gridPos.y == -1)
@@ -356,7 +412,7 @@ namespace InfraTown.Building
             int cost = _selectedBuildingData.constructionCost;
             if (EconomyManager.Instance != null && !EconomyManager.Instance.TrySpendMoney(cost))
             {
-                RejectPlacement(_selectedBuildingData, gridPos, "건설 자금이 부족합니다.");
+                RejectPlacement(_selectedBuildingData, gridPos, MoneyShortPlacementError);
                 return;
             }
 
@@ -376,10 +432,259 @@ namespace InfraTown.Building
             OnPlacementRejected?.Invoke(data, gridPos, reason);
 
             // 화면 안내 (Jinyu12의 토스트 문구, 자금 부족은 필요 금액까지)
-            string toast = reason == "건설 자금이 부족합니다."
+            string toast = reason == MoneyShortPlacementError
                 ? $"💰 건설 자금이 부족합니다! (필요 자금: {data.constructionCost:N0}원)"
                 : $"⚠️ {reason}";
             ToastUIManager.Instance?.ShowToast(toast);
+        }
+
+        // ─── 드래그 건설 (사용자 기획 2026-11-25) ───
+        // 누른 칸에서 시작해 뗀 칸까지: 도로·전신주는 가로/세로 한 줄, 나머지는 사각형을 건물 크기 간격으로 채움.
+        // 지을 수 없는 칸은 건너뛰고 되는 칸만 짓는다. 돈이 떨어지면 그 뒤 칸은 짓지 않는다
+
+        /// <summary>도로·전신주처럼 한 줄로 끌어서 짓는 건물인지 (나머지는 사각형 채우기)</summary>
+        public static bool UsesLineDrag(BuildingData data) =>
+            data != null && (data.IsRoad || data.isPowerPole || data.category == BuildingType.Infrastructure);
+
+        /// <summary>
+        /// 시작 칸 → 끝 칸으로 끌었을 때 지을 건물들의 원점 칸 (설치 순서 = 시작 칸에서 가까운 순).
+        /// 한 줄: 더 많이 움직인 방향(같으면 가로)으로 시작 칸의 줄을 따라감. 사각형: 시작 칸 기준으로 끈 방향을 건물 크기 간격으로 채움.
+        /// 맵 밖으로 나가는 건물은 빼고, maxDragBuildings개까지만
+        /// </summary>
+        public List<Vector2Int> GetDragCells(BuildingData data, Vector2Int start, Vector2Int end)
+        {
+            var cells = new List<Vector2Int>();
+            if (data == null) return cells;
+            Vector2Int size = data.GridSize;
+            int sx = Mathf.Max(1, size.x), sy = Mathf.Max(1, size.y);
+            int dx = end.x - start.x, dy = end.y - start.y;
+            int dirX = dx < 0 ? -1 : 1, dirY = dy < 0 ? -1 : 1;
+            int countX = Mathf.Abs(dx) / sx + 1, countY = Mathf.Abs(dy) / sy + 1;
+
+            if (UsesLineDrag(data))
+            {
+                if (Mathf.Abs(dx) >= Mathf.Abs(dy)) countY = 1;
+                else countX = 1;
+            }
+
+            int max = Mathf.Max(1, maxDragBuildings);
+            for (int j = 0; j < countY && cells.Count < max; j++)
+            {
+                for (int i = 0; i < countX && cells.Count < max; i++)
+                {
+                    var cell = new Vector2Int(start.x + dirX * i * sx, start.y + dirY * j * sy);
+                    if (cell.x < 0 || cell.y < 0 || cell.x + sx > 60 || cell.y + sy > 40) continue;
+                    cells.Add(cell);
+                }
+            }
+            return cells;
+        }
+
+        /// <summary>
+        /// 고른 건물을 시작 칸 → 끝 칸 범위에 한 번에 설치 (마우스 드래그를 떼면 호출, UI·테스트가 직접 불러도 됨).
+        /// 되는 칸만 짓고 못 지은 칸은 OnPlacementRejected로 하나씩 알린 뒤 토스트는 한 번만. 지은 개수를 돌려준다
+        /// </summary>
+        public int TryPlaceArea(Vector2Int start, Vector2Int end)
+        {
+            var data = _selectedBuildingData;
+            if (data == null) return 0;
+
+            if (!GameOutcomeManager.CanModifyTownNow)
+            {
+                RejectPlacement(data, start, GameOverPlacementError);
+                return 0;
+            }
+            if (!IsBuildingUnlocked(data))
+            {
+                TryPlaceBuilding(start); // 해금 안내 + 건설 모드 종료 (한 칸 설치와 같은 처리)
+                return 0;
+            }
+
+            var cells = GetDragCells(data, start, end);
+            if (cells.Count == 0)
+            {
+                RejectPlacement(data, start, "맵 밖입니다.");
+                return 0;
+            }
+            if (cells.Count == 1)
+            {
+                // 한 칸이면 예전 클릭 설치와 똑같이 (안내 문구 포함)
+                TryPlaceBuilding(cells[0]);
+                int ok = LastPlacementError == null ? 1 : 0;
+                OnAreaPlaced?.Invoke(ok, 1 - ok);
+                return ok;
+            }
+
+            int placed = 0, failed = 0;
+            string firstReason = null;
+            bool outOfMoney = false;
+            var economy = EconomyManager.Instance;
+
+            foreach (var cell in cells)
+            {
+                string reason;
+                if (outOfMoney) reason = MoneyShortPlacementError;
+                else if (!CanPlaceAt(data, cell, out reason)) { }
+                else if (economy != null && !economy.TrySpendMoney(data.constructionCost)) reason = MoneyShortPlacementError;
+                else
+                {
+                    BuildingInstance instance = SpawnBuilding(data, cell, CurrentRotationY);
+                    OnBuildingPlaced?.Invoke(instance);
+                    placed++;
+                    continue;
+                }
+
+                if (reason == MoneyShortPlacementError) outOfMoney = true;
+                failed++;
+                if (firstReason == null) firstReason = reason;
+                OnPlacementRejected?.Invoke(data, cell, reason);
+            }
+
+            LastPlacementError = failed == 0 ? null : firstReason;
+            Debug.Log($"[BuildingManager] 드래그 건설 '{data.buildingName}': {placed}개 지음, {failed}개 못 지음{(failed > 0 ? $" ({firstReason})" : "")}");
+
+            // 화면 안내는 한 번만
+            string toast = failed == 0 ? $"'{data.buildingName}' {placed}개 건설 완료!"
+                : placed == 0 ? (firstReason == MoneyShortPlacementError ? $"건설 자금이 부족합니다! (1개당 {data.constructionCost:N0}원)" : firstReason)
+                : $"'{data.buildingName}' {placed}개 건설, {failed}개는 지을 수 없습니다. ({firstReason})";
+            ToastUIManager.Instance?.ShowToast(toast, failed > 0);
+
+            OnAreaPlaced?.Invoke(placed, failed);
+            if (singlePlacement && placed > 0) CancelBuildingMode();
+            return placed;
+        }
+
+        private void HandleGridDragStarted(Vector2Int cell)
+        {
+            if (_selectedBuildingData == null) return;
+            if (!dragPlacement)
+            {
+                TryPlaceBuilding(cell); // 예전 방식: 누르는 순간 한 개
+                return;
+            }
+            IsDragPlacing = true;
+            _dragStart = cell;
+            if (_previewInstance != null) _previewInstance.SetActive(false);
+            RefreshDragPreview(cell);
+        }
+
+        private void HandleGridDragUpdated(Vector2Int start, Vector2Int current)
+        {
+            if (IsDragPlacing) RefreshDragPreview(current);
+        }
+
+        private void HandleGridDragEnded(Vector2Int start, Vector2Int end)
+        {
+            if (!IsDragPlacing) return;
+            var from = _dragStart;
+            ClearDragState();
+            TryPlaceArea(from, end);
+
+            // 건설 모드가 이어지면 지금 칸에 다시 한 개짜리 미리보기
+            var grid = LightweightGridManager.Instance;
+            if (_selectedBuildingData != null) UpdateBuildingPreview(grid != null ? grid.HoveredGridPos : end);
+        }
+
+        /// <summary>드래그 취소 (오른쪽 버튼) — 아무것도 짓지 않고 건설 모드는 그대로</summary>
+        public void CancelDragPlacement()
+        {
+            if (!IsDragPlacing) return;
+            ClearDragState();
+            var grid = LightweightGridManager.Instance;
+            if (_selectedBuildingData != null && grid != null) UpdateBuildingPreview(grid.HoveredGridPos);
+        }
+
+        /// <summary>드래그 범위 미리보기: 칸마다 반투명 건물(되는 칸 초록 / 못 짓는 칸 빨강) + 전체 범위 하이라이트</summary>
+        private void RefreshDragPreview(Vector2Int current)
+        {
+            var data = _selectedBuildingData;
+            if (data == null) return;
+
+            _dragCells.Clear();
+            _dragCells.AddRange(GetDragCells(data, _dragStart, current));
+            EvaluateDragCells(data);
+
+            GameObject prefab = data.previewPrefab != null ? data.previewPrefab : data.buildingPrefab;
+            Vector2Int size = data.GridSize;
+            for (int i = 0; i < _dragCells.Count; i++)
+            {
+                if (i >= _dragPreviews.Count)
+                {
+                    if (prefab == null) break;
+                    var ghost = Instantiate(prefab, prefab.transform.position, GetPlacementRotation(data));
+                    ghost.name = $"DragPreview_{i}";
+                    foreach (var col in ghost.GetComponentsInChildren<Collider>()) col.enabled = false;
+                    _dragPreviews.Add(ghost);
+                }
+                var preview = _dragPreviews[i];
+                preview.SetActive(true);
+                preview.transform.SetPositionAndRotation(GetBuildingWorldPosition(_dragCells[i].x, _dragCells[i].y, size.x, size.y), GetPlacementRotation(data));
+                var mat = _dragValid[i] ? validPreviewMaterial : invalidPreviewMaterial;
+                if (mat != null) foreach (var rend in preview.GetComponentsInChildren<MeshRenderer>()) rend.material = mat;
+            }
+            for (int i = _dragCells.Count; i < _dragPreviews.Count; i++) if (_dragPreviews[i] != null) _dragPreviews[i].SetActive(false);
+
+            if (highlightController != null && _dragCells.Count > 0)
+            {
+                int minX = int.MaxValue, minY = int.MaxValue, maxX = int.MinValue, maxY = int.MinValue;
+                foreach (var c in _dragCells)
+                {
+                    minX = Mathf.Min(minX, c.x); minY = Mathf.Min(minY, c.y);
+                    maxX = Mathf.Max(maxX, c.x + size.x); maxY = Mathf.Max(maxY, c.y + size.y);
+                }
+                highlightController.ShowHighlightArea(minX, minY, maxX - minX, maxY - minY);
+                highlightController.SetColor(DragValidCount == _dragCells.Count ? Color.green : DragValidCount > 0 ? Color.yellow : Color.red);
+            }
+            OnDragCellsChanged?.Invoke(_dragCells);
+        }
+
+        /// <summary>드래그 칸마다 지을 수 있는지 (돈은 앞 칸부터 순서대로 쓴다고 보고, 한 번 모자라면 그 뒤는 모두 못 지음)</summary>
+        private void EvaluateDragCells(BuildingData data)
+        {
+            _dragValid.Clear();
+            int money = EconomyManager.Instance != null ? EconomyManager.Instance.CurrentMoney : int.MaxValue;
+            bool outOfMoney = false;
+            int valid = 0, cost = 0;
+            foreach (var cell in _dragCells)
+            {
+                bool ok = !outOfMoney && CanPlaceWithMoney(data, cell, money, out _);
+                if (!ok && !outOfMoney && CanPlaceWithMoney(data, cell, int.MaxValue, out _)) outOfMoney = true; // 돈 때문에만 못 지음
+                if (ok)
+                {
+                    valid++;
+                    cost += data.constructionCost;
+                    if (money != int.MaxValue) money -= data.constructionCost;
+                }
+                _dragValid.Add(ok);
+            }
+            DragValidCount = valid;
+            DragTotalCost = cost;
+        }
+
+        /// <summary>그 드래그 칸을 지을 수 있는지 (미리보기 색과 같은 판정, 테스트·UI용)</summary>
+        public bool IsDragCellValid(int index) => index >= 0 && index < _dragValid.Count && _dragValid[index];
+
+        private void ClearDragState()
+        {
+            bool had = IsDragPlacing || _dragCells.Count > 0;
+            IsDragPlacing = false;
+            _dragCells.Clear();
+            _dragValid.Clear();
+            DragValidCount = 0;
+            DragTotalCost = 0;
+            foreach (var p in _dragPreviews)
+            {
+                if (p == null) continue;
+                p.SetActive(false);
+                if (Application.isPlaying) Destroy(p);
+                else DestroyImmediate(p);
+            }
+            _dragPreviews.Clear();
+            if (had)
+            {
+                if (highlightController != null) highlightController.HideHighlight();
+                OnDragCellsChanged?.Invoke(_dragCells);
+            }
         }
 
         // ─── 설치 조건 (사용자 기획 2026-11-24: 도로 접근, 도로 위 전신주) ───
@@ -391,7 +696,11 @@ namespace InfraTown.Building
         /// 그 칸에 이 건물을 지금 지을 수 있는지: 맵 안 + 겹치지 않음(전신주는 도로 위 허용) + 도로 접근 + 자금.
         /// 해금 여부는 따로(IsBuildingUnlocked). 못 지으면 reason에 이유
         /// </summary>
-        public bool CanPlaceAt(BuildingData data, Vector2Int gridPos, out string reason)
+        public bool CanPlaceAt(BuildingData data, Vector2Int gridPos, out string reason) =>
+            CanPlaceWithMoney(data, gridPos, EconomyManager.Instance != null ? EconomyManager.Instance.CurrentMoney : int.MaxValue, out reason);
+
+        /// <summary>CanPlaceAt과 같고, 자금만 지금 잔액 대신 availableMoney로 본다 (드래그 미리보기에서 앞 칸이 쓴 돈을 뺀 값)</summary>
+        private bool CanPlaceWithMoney(BuildingData data, Vector2Int gridPos, int availableMoney, out string reason)
         {
             if (!GameOutcomeManager.CanModifyTownNow)
             {
@@ -404,9 +713,9 @@ namespace InfraTown.Building
                 reason = data.isPowerPole ? "전신주는 도로 위나 도로에 맞닿은 곳에만 세울 수 있습니다." : "건물은 한 면 이상 도로에 맞닿아야 지을 수 있습니다.";
                 return false;
             }
-            if (EconomyManager.Instance != null && EconomyManager.Instance.CurrentMoney < data.constructionCost)
+            if (availableMoney < data.constructionCost)
             {
-                reason = "건설 자금이 부족합니다.";
+                reason = MoneyShortPlacementError;
                 return false;
             }
             reason = null;
@@ -609,6 +918,7 @@ namespace InfraTown.Building
 
         private void ClearBuildingMode()
         {
+            ClearDragState();
             _selectedBuildingData = null;
             if (_previewInstance != null)
             {

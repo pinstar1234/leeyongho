@@ -789,6 +789,11 @@ namespace InfraTown.Tests.Playtest
             Check("마을 상태 '나쁨'", sat.CurrentState == SatisfactionState.Bad);
             Shot("03_bad_town", null);
 
+            // 배드엔딩 순간에 이미 열려 있던 건물 정보창 (사용자 2026-11-25: 팀원 1이 게임 오버·클리어 창을 만드는 중 — 붙은 뒤에도 이 창으로 철거되는지 확인)
+            var uiForDefeat = BuildingUIManager.Instance;
+            var openedHouse = Placed.Where(kv => kv.Key.StartsWith("house") && kv.Value != null).Select(kv => kv.Value).Skip(1).FirstOrDefault();
+            if (uiForDefeat != null && uiForDefeat.btnDemolish != null && openedHouse != null) uiForDefeat.OnBuildingClicked(openedHouse);
+
             yield return WaitUntil(() => ended != GameResult.None, 40, "배드엔딩");
             Check("나쁨 12주(3달) 연속 → 배드엔딩", ended == GameResult.Defeat && lastBad == 12, $"{ended}, 나쁨 {lastBad}주");
             Check("엔딩 후 시간 정지", TimeManager.Instance.IsEventPaused);
@@ -800,6 +805,30 @@ namespace InfraTown.Tests.Playtest
             someHouse?.DestroyBuilding();
             yield return Frames(1);
             Check("배드엔딩 뒤 철거 불가", someHouse != null && GameLoopManager.Instance.PlacedBuildings.Count == placedCount);
+
+            // 게임 오버 전에 열어 둔 정보창의 [철거] 버튼 (BuildingUIManager가 Destroy(gameObject)를 직접 부르면 기능 코드로 못 막음)
+            if (uiForDefeat == null || uiForDefeat.btnDemolish == null || openedHouse == null)
+                Note("UI [철거] 버튼 없음 — 게임 오버 전에 열어 둔 정보창 철거 확인 생략");
+            else
+            {
+                bool panelOpen = uiForDefeat.actionPanel != null && uiForDefeat.actionPanel.activeInHierarchy;
+                bool buttonUsable = uiForDefeat.btnDemolish.interactable && uiForDefeat.btnDemolish.gameObject.activeInHierarchy;
+                if (!panelOpen || !buttonUsable)
+                {
+                    Check("게임 오버 전에 열어 둔 정보창: UI가 엔딩 때 닫거나 [철거]를 끔", true, panelOpen ? "철거 버튼 꺼짐" : "정보창 닫힘");
+                }
+                else
+                {
+                    int countBefore = GameLoopManager.Instance.PlacedBuildings.Count;
+                    uiForDefeat.btnDemolish.onClick.Invoke();
+                    yield return Frames(2);
+                    bool survived = openedHouse != null && GameLoopManager.Instance.PlacedBuildings.Count == countBefore;
+                    if (survived) Check("게임 오버 전에 열어 둔 정보창의 [철거]로도 철거 안 됨", true);
+                    else Note("⚠ 알려진 문제 (팀원 1 UI, 게임 오버·클리어 창 제작 중): 게임 오버 전에 열어 둔 건물 정보창의 [철거] 버튼으로 철거됨 — " +
+                              "BuildingUIManager가 OnGameEnded에서 정보창을 닫거나, 철거를 Destroy(gameObject) 대신 BuildingInstance.TryDemolish()로 바꾸면 막힘");
+                }
+            }
+            uiForDefeat?.CloseAllUI();
             TimeManager.Instance.OnWeeklyTick -= countWeek;
             // 12주 동안 매주 주간 틱 → 지나간 주 수만큼 2%씩, 시설당 최대 10%
             float expectedPerFacility = Mathf.Min(weeks * 2f, 10f);

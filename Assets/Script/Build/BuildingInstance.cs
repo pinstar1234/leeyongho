@@ -57,13 +57,27 @@ namespace InfraTown.Building
         //    }
         //}
 
+        /// <summary>지금 철거할 수 있는지 (배드엔딩 게임 오버면 false, 세이브 복원 중은 항상 true) — UI가 [철거] 버튼을 끄는 데 쓴다</summary>
+        public static bool CanDemolishNow => InfraTown.Core.GameOutcomeManager.CanModifyTownNow || InfraTown.Save.SaveSystem.IsApplying;
+
+        /// <summary>
+        /// UI [철거] 버튼용 (사용자 2026-11-25): 철거할 수 있으면 철거하고 true, 게임 오버면 아무것도 하지 않고 false.
+        /// Destroy(gameObject)를 직접 부르면 게임 오버 뒤에도 철거되므로 이것을 쓴다
+        /// </summary>
+        public bool TryDemolish()
+        {
+            if (!CanDemolishNow) return false;
+            DestroyBuilding();
+            return true;
+        }
+
         /// <summary>
         /// 철거. 배드엔딩(게임 오버) 뒤에는 철거하지 않는다 (사용자 기획 2026-11-24, GameOutcomeManager.CanModifyTown).
         /// 세이브 복원 중(SaveSystem.IsApplying)에는 씬에 있던 건물을 바꾸기 위해 항상 철거
         /// </summary>
         public void DestroyBuilding()
         {
-            if (!InfraTown.Core.GameOutcomeManager.CanModifyTownNow && !InfraTown.Save.SaveSystem.IsApplying)
+            if (!CanDemolishNow)
             {
                 Debug.LogWarning($"[BuildingInstance] 게임이 끝나 '{(Data != null ? Data.buildingName : name)}'을(를) 철거할 수 없습니다.");
                 return;
