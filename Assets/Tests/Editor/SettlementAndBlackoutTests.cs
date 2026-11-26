@@ -112,6 +112,25 @@ namespace InfraTown.Tests
         }
 
         [Test]
+        public void 경고_중_유지비가_큰_건물을_철거하면_바로_경고가_꺼진다()
+        {
+            // 2026-11-26 점검: 철거는 돈이 바뀌지 않지만 수용 인구 재계산 알림으로 예보가 바로 다시 계산되는지
+            _world.CreateManager<InfraTown.Population.PopulationManager>();
+            var forecast = _world.CreateManager<SettlementForecaster>(); // 씬에 있는 것처럼 (GameLoopManager가 따로 붙이지 않음)
+            var loop = _world.CreateManager<InfraTown.Core.GameLoopManager>(callStart: true);
+            var expensive = _world.CreateBuilding(_world.CreateData(InfraTown.Building.BuildingType.Facility, id: "landfill", maintenance: 20000), 10, 10);
+            loop.RegisterBuilding(expensive);
+            SetWeek(3);
+            TestWorld.Invoke(forecast, "Start"); // 알림 구독
+            Assert.IsTrue(forecast.IsWarning, $"유지비 {forecast.ExpectedMaintenance:N0}원 > 지원금");
+
+            TestWorld.Invoke(expensive, "OnDestroy"); // 철거 알림 (DestroyBuilding·Destroy와 같은 경로)
+
+            Assert.AreEqual(0, forecast.ExpectedMaintenance);
+            Assert.IsFalse(forecast.IsWarning, "다음 주를 기다리지 않고 바로 꺼짐");
+        }
+
+        [Test]
         public void 경고_중_슬라이더로_구매량을_줄이면_경고가_꺼진다()
         {
             MakeDeficit();

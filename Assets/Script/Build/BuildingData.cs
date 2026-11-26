@@ -95,5 +95,55 @@ namespace InfraTown.Building
             BuildingSizeType.Large => new Vector2Int(4, 4),
             _ => new Vector2Int(1, 1)
         };
+
+        /// <summary>
+        /// 값 검사 (2026-11-26): 잘못 넣은 값(음수 비용·유지비·전력·수용 인구·반경, 빈 ID 등)이 조용히 게임을 망가뜨리지 않도록.
+        /// 문제 목록을 돌려주고, fix면 음수를 0으로 고친다 (ID·이름·프리팹처럼 고칠 수 없는 건 알리기만).
+        /// 인스펙터에서 값을 바꾸면 OnValidate가 고치고 콘솔에 경고, BuildingDataValidationTests가 모든 건물 에셋을 검사한다
+        /// </summary>
+        public System.Collections.Generic.List<string> Validate(bool fix)
+        {
+            var problems = new System.Collections.Generic.List<string>();
+            void NonNegative(ref int value, string field)
+            {
+                if (value >= 0) return;
+                problems.Add($"{field}가 음수({value})");
+                if (fix) value = 0;
+            }
+
+            if (string.IsNullOrWhiteSpace(buildingID)) problems.Add("buildingID가 비어 있음 (저장·불러오기·시설 판별에 필요)");
+            if (string.IsNullOrWhiteSpace(buildingName)) problems.Add("buildingName이 비어 있음");
+            NonNegative(ref requiredPopulation, nameof(requiredPopulation));
+            NonNegative(ref constructionWeeks, nameof(constructionWeeks));
+            NonNegative(ref demolitionWeeks, nameof(demolitionWeeks));
+            NonNegative(ref requiredPower, nameof(requiredPower));
+            NonNegative(ref maintenanceCost, nameof(maintenanceCost));
+            NonNegative(ref constructionCost, nameof(constructionCost));
+            NonNegative(ref housingCapacity, nameof(housingCapacity));
+            NonNegative(ref satisfactionRadius, nameof(satisfactionRadius));
+            NonNegative(ref powerSupplyRadius, nameof(powerSupplyRadius));
+            NonNegative(ref policePatrolCount, nameof(policePatrolCount));
+            if (fixedAccessTimeMinutes < 0f)
+            {
+                problems.Add($"fixedAccessTimeMinutes가 음수({fixedAccessTimeMinutes})");
+                if (fix) fixedAccessTimeMinutes = 0f;
+            }
+
+            if (isPowerPole && powerSupplyRadius <= 0) problems.Add("전신주인데 powerSupplyRadius가 0 (아무 건물에도 전기가 들어가지 않음)");
+            if (isPowerPole && category != BuildingType.Infrastructure) problems.Add("전신주는 분류가 Infrastructure여야 함 (도로 위 설치·인프라 버튼)");
+            if (category == BuildingType.Housing && housingCapacity <= 0) problems.Add("주택인데 housingCapacity가 0 (인구가 늘지 않음)");
+            if (category != BuildingType.Housing && housingCapacity > 0) problems.Add("주택이 아닌데 housingCapacity가 있음 (수용 인구는 주택만 셈)");
+            if (Mathf.Abs(satisfactionImpact) > 0.01f && satisfactionRadius <= 0) problems.Add("만족도 영향이 있는데 satisfactionRadius가 0 (자기 칸에만 영향)");
+            return problems;
+        }
+
+#if UNITY_EDITOR
+        private void OnValidate()
+        {
+            var problems = Validate(fix: true);
+            if (problems.Count > 0)
+                Debug.LogWarning($"[BuildingData] '{name}' 값 확인 필요: {string.Join(" / ", problems)}", this);
+        }
+#endif
     }
 }
