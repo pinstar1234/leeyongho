@@ -83,16 +83,16 @@ public class MainMenuManager : MonoBehaviour
 
     private void BuildLoadPanel()
     {
-        _loadSlots = GamePauseMenu.CreatePanel(_overlay, "불러오기", 460);
+        _loadSlots = GamePauseMenu.CreatePanel(_overlay, "불러오기", 504);
         var status = GamePauseMenu.CreateLabel(
             GamePauseMenu.CreateRect(_loadSlots, "Load Status", 340, 55, 0, -114), "", 17);
         var navigation = new List<Selectable>();
-        foreach (var slot in SaveSystem.GetAllSlots())
+        var slots = SaveSystem.GetLoadSlots();
+        for (int i = 0; i < slots.Length; i++)
         {
-            string summary = slot.isEmpty ? "빈 슬롯" : slot.isBroken ? "읽을 수 없음" :
-                $"{slot.summary.year}년 {slot.summary.month}월 {slot.summary.week}주";
-            var button = GamePauseMenu.CreateButton(_loadSlots, $"{slot.slot}번   {summary}",
-                116 - (slot.slot - 1) * 44, () =>
+            var slot = slots[i];
+            var button = GamePauseMenu.CreateButton(_loadSlots, GamePauseMenu.GetSlotButtonLabel(slot),
+                160 - i * 44, () =>
                 {
                     if (_openingGame) return;
                     _openingGame = SaveSystem.ContinueGame(slot.slot);
@@ -101,7 +101,7 @@ public class MainMenuManager : MonoBehaviour
             button.interactable = !slot.isEmpty && !slot.isBroken;
             if (button.interactable) navigation.Add(button);
         }
-        if (navigation.Count == 0) status.text = "직접 저장한 슬롯이 없어요.";
+        if (navigation.Count == 0) status.text = "불러올 수 있는 저장이 없어요.";
         navigation.Add(GamePauseMenu.CreateButton(_loadSlots, "뒤로", -179, ClosePanel));
         _firstLoadControl = navigation[0];
         GamePauseMenu.LinkNavigation(navigation.ToArray());

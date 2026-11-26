@@ -7,6 +7,11 @@ using InfraTown.EventSystem;
 using InfraTown.Population;
 using InfraTown.Satisfaction;
 using InfraTown.TimeSystem;
+using InfraTown.UI;
+using TMPro;
+using UnityEditor;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace InfraTown.Tests
 {
@@ -37,6 +42,53 @@ namespace InfraTown.Tests
         private void AssertDate(int month, int week, string message = null)
         {
             Assert.AreEqual((month, week), (_time.CurrentMonth, _time.CurrentWeek), message);
+        }
+
+        [Test]
+        public void 도움말은_월_넘기기_위에서_열리고_연속건축_시연을_전환한다()
+        {
+            var hud = new GameObject("HUD", typeof(RectTransform), typeof(Canvas));
+            try
+            {
+                var skip = new GameObject("1달 넘기기", typeof(RectTransform));
+                skip.transform.SetParent(hud.transform, false);
+                var help = hud.AddComponent<ConstructionHelpWindow>();
+                TestWorld.SetField(help, "monthSkipButton", (RectTransform)skip.transform);
+                TestWorld.SetField(help, "font", AssetDatabase.LoadAssetAtPath<TMP_FontAsset>("Assets/Font/Maplestory Bold SDF.asset"));
+                TestWorld.Invoke(help, "Start");
+
+                var launcher = skip.GetComponentInChildren<Button>();
+                Assert.IsNotNull(launcher.GetComponent<CanvasRenderer>(), "도움말 버튼에는 CanvasRenderer가 필요함");
+                var demoGraphic = TestWorld.GetField<Graphic>(help, "demo");
+                Assert.IsNotNull(demoGraphic.GetComponent<CanvasRenderer>(), "건축 시연에는 CanvasRenderer가 필요함");
+                var placement = (RectTransform)launcher.transform;
+                Assert.AreEqual(new Vector2(.5f, 1f), placement.anchorMin);
+                Assert.AreEqual(placement.anchorMin, placement.anchorMax);
+                Assert.AreEqual(new Vector2(.5f, 0f), placement.pivot);
+                Assert.AreEqual(new Vector3(2.5f, 16.5f, 0f), placement.anchoredPosition3D);
+                Assert.AreEqual(new Vector2(50f, 50f), placement.sizeDelta);
+                launcher.onClick.Invoke();
+                Assert.IsTrue(ConstructionHelpWindow.IsOpen);
+                Assert.IsTrue(PointerGuard.IsPointerOverUI());
+                Assert.IsFalse(_time.CanSkip);
+
+                TestWorld.GetField<Button>(help, "dragButton").onClick.Invoke();
+                Assert.AreEqual("연속건축", TestWorld.GetField<TMP_Text>(help, "title").text);
+                StringAssert.Contains("드래그", TestWorld.GetField<TMP_Text>(help, "instructions").text);
+                var playback = TestWorld.GetField<Button>(help, "playbackButton");
+                playback.onClick.Invoke();
+                Assert.AreEqual("재생", playback.GetComponentInChildren<TMP_Text>().text);
+                playback.onClick.Invoke();
+                Assert.AreEqual("일시정지", playback.GetComponentInChildren<TMP_Text>().text);
+
+                Assert.IsTrue(ConstructionHelpWindow.TryCloseOpenWindow());
+                Assert.IsTrue(_time.CanSkip);
+            }
+            finally
+            {
+                ConstructionHelpWindow.TryCloseOpenWindow();
+                Object.DestroyImmediate(hud);
+            }
         }
 
         [Test]

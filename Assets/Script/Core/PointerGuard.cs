@@ -17,6 +17,7 @@ namespace InfraTown.Core
         /// </summary>
         public static bool IsPointerOverUI()
         {
+            if (InfraTown.UI.ConstructionHelpWindow.IsOpen) return true;
             if (InfraTown.EventSystem.CutsceneManager.Instance != null && InfraTown.EventSystem.CutsceneManager.Instance.IsPlaying) return true;
             if (InfraTown.EventSystem.DialogueEventManager.Instance != null && InfraTown.EventSystem.DialogueEventManager.Instance.BlocksWorldInput) return true;
             if (OverrideForTests != null) return OverrideForTests();

@@ -526,11 +526,9 @@ namespace InfraTown.EventSystem
             var data = new UnityEngine.EventSystems.PointerEventData(es) { position = Input.mousePosition };
             var results = new List<UnityEngine.EventSystems.RaycastResult>();
             es.RaycastAll(data, results);
-            foreach (var r in results)
-            {
-                if (r.gameObject != null && r.gameObject.GetComponentInParent<UnityEngine.UI.Selectable>() != null) return true;
-            }
-            return false;
+            // 대화창 뒤에 가려진 버튼은 클릭을 받지 않는다.
+            return results.Count > 0 &&
+                   results[0].gameObject.GetComponentInParent<UnityEngine.UI.Selectable>() != null;
         }
 
         /// <summary>
