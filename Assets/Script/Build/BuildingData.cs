@@ -85,6 +85,42 @@ namespace InfraTown.Building
         public GameObject previewPrefab;
         public Sprite buildingIcon;
 
+        [Header("모양 (건설 모드에서 R키로 다음 모양, 사용자 기획 2026-11-26)")]
+        [Tooltip("도로처럼 모양이 여러 가지인 건물. 넣은 개수만큼 R키로 차례로 바뀌고 마지막 다음은 처음으로 (개수 제한 없음). " +
+                 "비워 두면 모양 하나(buildingPrefab). 모양의 prefab을 비우면 buildingPrefab으로 보인다")]
+        public System.Collections.Generic.List<BuildingVariant> variants = new System.Collections.Generic.List<BuildingVariant>();
+
+        /// <summary>모양 수 (목록이 비어 있으면 1 — buildingPrefab 하나)</summary>
+        public int VariantCount => variants != null && variants.Count > 0 ? variants.Count : 1;
+
+        /// <summary>R키로 바꿀 모양이 둘 이상인지</summary>
+        public bool HasVariants => VariantCount > 1;
+
+        /// <summary>모양 번호를 0 ~ VariantCount-1로 맞춤 (없어진 모양을 저장 파일에서 불러와도 안전하게)</summary>
+        public int ClampVariant(int index) => VariantCount <= 1 ? 0 : Mathf.Clamp(index, 0, VariantCount - 1);
+
+        /// <summary>그 번호의 모양 (목록이 비어 있으면 null)</summary>
+        public BuildingVariant GetVariant(int index) => variants != null && variants.Count > 0 ? variants[ClampVariant(index)] : null;
+
+        /// <summary>그 모양으로 설치할 프리팹 (모양에 프리팹이 없으면 buildingPrefab)</summary>
+        public GameObject GetPrefab(int variant)
+        {
+            var v = GetVariant(variant);
+            return v != null && v.prefab != null ? v.prefab : buildingPrefab;
+        }
+
+        /// <summary>그 모양의 미리보기 프리팹 (모양의 미리보기 → 모양의 프리팹 → previewPrefab → buildingPrefab 순)</summary>
+        public GameObject GetPreviewPrefab(int variant)
+        {
+            var v = GetVariant(variant);
+            if (v != null && v.previewPrefab != null) return v.previewPrefab;
+            if (v != null && v.prefab != null) return v.prefab;
+            return previewPrefab != null ? previewPrefab : buildingPrefab;
+        }
+
+        /// <summary>그 모양의 이름 (없으면 빈 문자열)</summary>
+        public string GetVariantName(int variant) => GetVariant(variant)?.variantName ?? "";
+
         /// <summary>도로인지 (인프라 분류 중 전신주가 아닌 것). 다른 건물은 한 면 이상 도로에 닿아야 설치 가능 (사용자 기획 2026-11-24)</summary>
         public bool IsRoad => category == BuildingType.Infrastructure && !isPowerPole;
 
@@ -134,6 +170,14 @@ namespace InfraTown.Building
             if (category == BuildingType.Housing && housingCapacity <= 0) problems.Add("주택인데 housingCapacity가 0 (인구가 늘지 않음)");
             if (category != BuildingType.Housing && housingCapacity > 0) problems.Add("주택이 아닌데 housingCapacity가 있음 (수용 인구는 주택만 셈)");
             if (Mathf.Abs(satisfactionImpact) > 0.01f && satisfactionRadius <= 0) problems.Add("만족도 영향이 있는데 satisfactionRadius가 0 (자기 칸에만 영향)");
+            if (variants != null)
+            {
+                for (int i = 0; i < variants.Count; i++)
+                {
+                    if (variants[i] == null) problems.Add($"variants[{i}]가 비어 있음");
+                    else if (string.IsNullOrWhiteSpace(variants[i].variantName)) problems.Add($"variants[{i}] 모양 이름이 비어 있음 (R키로 바꿀 때 안내에 쓰임)");
+                }
+            }
             return problems;
         }
 
@@ -145,5 +189,17 @@ namespace InfraTown.Building
                 Debug.LogWarning($"[BuildingData] '{name}' 값 확인 필요: {string.Join(" / ", problems)}", this);
         }
 #endif
+    }
+
+    /// <summary>건물 모양 하나 (예: 도로 직선·곡선·T자·십자). BuildingData.variants에 넣는다</summary>
+    [System.Serializable]
+    public class BuildingVariant
+    {
+        [Tooltip("모양 이름 (R키로 바꿀 때 안내에 표시, 예: 직선)")]
+        public string variantName;
+        [Tooltip("이 모양으로 설치할 프리팹 (비우면 BuildingData.buildingPrefab)")]
+        public GameObject prefab;
+        [Tooltip("이 모양의 미리보기 프리팹 (비우면 prefab)")]
+        public GameObject previewPrefab;
     }
 }

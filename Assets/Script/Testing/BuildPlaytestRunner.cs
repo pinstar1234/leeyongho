@@ -99,6 +99,7 @@ namespace InfraTown.Testing
                 ("Build_RotateQE", Build_RotateQE),
                 ("Build_DemolishFreesCells", Build_DemolishFreesCells),
                 ("Build_DragPlacement", Build_DragPlacement),
+                ("Build_RoadVariantR", Build_RoadVariantR),
                 ("Pop_WeeklyInflow", Pop_WeeklyInflow),
                 ("Pop_UnlocksAllTiersAt300", Pop_UnlocksAllTiersAt300),
                 ("Satisfaction_MiddleVillage84", Satisfaction_MiddleVillage84),
@@ -644,6 +645,44 @@ namespace InfraTown.Testing
                 Demolish(b);
             yield return Frames(1);
             Expect(PopulationManager.Instance.MaxPopulationCapacity == capacityBefore, "정리 뒤 수용 인구가 돌아오지 않음");
+        }
+
+        /// <summary>
+        /// 도로 모양 R키 (사용자 기획 2026-11-26): 모양이 여러 개인 도로를 고르고 R(CycleVariant)로 바꾸면 미리보기·설치가 그 모양,
+        /// 마지막 다음은 처음. 실제 도로 데이터에는 아직 모양 모델이 없어 테스트 중에만 복사본에 모양 3개(다른 건물 프리팹)를 넣어 확인
+        /// </summary>
+        private IEnumerator Build_RoadVariantR()
+        {
+            var baseRoad = Data("road");
+            var road = UnityEngine.Object.Instantiate(baseRoad);
+            road.name = "Road (variant test)";
+            var shapes = new[] { ("직선", baseRoad.buildingPrefab), ("곡선", Data("power_pole").buildingPrefab), ("십자", Data("house").buildingPrefab) };
+            foreach (var (n, p) in shapes) road.variants.Add(new BuildingVariant { variantName = n, prefab = p });
+            var cell = new Vector2Int(45, 37);
+            try
+            {
+                Buildings.SelectBuildingToBuild(road);
+                Expect(Buildings.CurrentVariantIndex == 0 && Buildings.CurrentVariantName == "직선", $"처음 모양 {Buildings.CurrentVariantName}");
+                Expect(Buildings.CycleVariant() && Buildings.CurrentVariantName == "곡선", $"R 한 번 → {Buildings.CurrentVariantName} (곡선이어야 함)");
+                Buildings.CycleVariant();
+                Buildings.CycleVariant();
+                Expect(Buildings.CurrentVariantIndex == 0, $"마지막 다음은 처음 ({Buildings.CurrentVariantIndex})");
+                Buildings.CycleVariant(); // 곡선
+                yield return Frames(1);
+                Buildings.TryPlaceArea(cell, cell);
+                yield return Frames(1);
+                var placed = Buildings.GetBuildingAt(cell);
+                Expect(placed != null && placed.VariantIndex == 1 && placed.gameObject.name.StartsWith(shapes[1].Item2.name),
+                    $"설치된 도로 모양 {placed?.VariantIndex} / {placed?.gameObject.name} (곡선 = {shapes[1].Item2.name}이어야 함)");
+                Expect(Buildings.IsRoadCell(cell.x, cell.y), "다른 모양이어도 도로로 인정되지 않음");
+                if (placed != null) Demolish(placed);
+                yield return Frames(1);
+            }
+            finally
+            {
+                Buildings.CancelBuildingMode();
+                UnityEngine.Object.Destroy(road);
+            }
         }
 
         // ───────────────────────── 3. 인구·만족도 ─────────────────────────

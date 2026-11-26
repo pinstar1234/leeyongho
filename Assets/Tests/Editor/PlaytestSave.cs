@@ -105,7 +105,7 @@ namespace InfraTown.Tests.Playtest
                 ["가스"] = JsonUtility.ToJson(d.gas),
                 ["필수 시설 미설치 감점"] = JsonUtility.ToJson(d.satisfaction),
                 ["엔딩 판정"] = JsonUtility.ToJson(d.outcome),
-                ["건물(ID·칸·회전)"] = string.Join(";", d.buildings.Select(b => $"{b.buildingID}@{b.x},{b.y}/{b.rotationY}")),
+                ["건물(ID·칸·회전·모양)"] = string.Join(";", d.buildings.Select(b => $"{b.buildingID}@{b.x},{b.y}/{b.rotationY}#{b.variant}")),
                 ["대화 기록·쉬운 문장·Auto"] = JsonUtility.ToJson(d.dialogue),
                 ["대화 트리거(불만 주 수·해금 안내)"] = JsonUtility.ToJson(d.dialogueTriggers),
                 ["튜토리얼"] = JsonUtility.ToJson(d.tutorial),

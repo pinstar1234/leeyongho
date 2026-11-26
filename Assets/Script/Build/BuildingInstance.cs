@@ -16,12 +16,19 @@ namespace InfraTown.Building
 
         public static event Action<BuildingInstance> OnBuildingDestroyed;
 
-        public void Init(BuildingData data, Vector2Int gridPos, float rotationY = 0f)
+        public void Init(BuildingData data, Vector2Int gridPos, float rotationY = 0f, int variantIndex = 0)
         {
             Data = data;
             OriginGridPos = gridPos;
             RotationY = rotationY;
+            VariantIndex = data != null ? data.ClampVariant(variantIndex) : 0;
         }
+
+        /// <summary>설치한 모양 번호 (BuildingData.variants, 모양이 하나면 0 — 2026-11-26 도로 모양)</summary>
+        public int VariantIndex { get; private set; }
+
+        /// <summary>설치한 모양 이름 (없으면 빈 문자열)</summary>
+        public string VariantName => Data != null ? Data.GetVariantName(VariantIndex) : "";
 
 
         private void OnMouseDown()

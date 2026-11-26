@@ -102,6 +102,7 @@ namespace InfraTown.Save
         public string buildingName; // ID가 없거나 바뀌었을 때 대신 찾는 용도
         public int x, y;
         public float rotationY;
+        public int variant; // 모양 번호 (BuildingData.variants, 도로 모양 등 — 2026-11-26, 없던 저장 파일은 0 = 첫 모양)
     }
 
     [Serializable]

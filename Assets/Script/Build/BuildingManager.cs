@@ -71,6 +71,19 @@ namespace InfraTown.Building
         /// <summary>미리보기 회전이 바뀔 때 (새 Y 회전값)</summary>
         public event Action<float> OnPreviewRotationChanged;
 
+        [Header("건물 모양 (R: 다음 모양, 사용자 기획 2026-11-26)")]
+        [Tooltip("건설 모드에서 이 키를 누르면 고른 건물(도로 등)의 다음 모양 (BuildingData.variants)")]
+        [SerializeField] private KeyCode variantKey = KeyCode.R;
+
+        /// <summary>건설 모드에서 고른 모양 번호 (BuildingData.variants). 같은 건물을 연속 설치하는 동안 유지되고, 다른 건물을 고르면 0</summary>
+        public int CurrentVariantIndex { get; private set; }
+
+        /// <summary>고른 모양 이름 (모양이 없으면 빈 문자열)</summary>
+        public string CurrentVariantName => _selectedBuildingData != null ? _selectedBuildingData.GetVariantName(CurrentVariantIndex) : "";
+
+        /// <summary>모양이 바뀔 때 (새 모양 번호, 모양 이름) — UI가 "도로 모양: 곡선" 같은 안내를 띄울 때</summary>
+        public event Action<int, string> OnPreviewVariantChanged;
+
         /// <summary>건물이 설치됐을 때 (연출·효과용)</summary>
         public event Action<BuildingInstance> OnBuildingPlaced;
 
@@ -211,6 +224,69 @@ namespace InfraTown.Building
 
             if (Input.GetKeyDown(rotateKeyPositive)) RotatePreview(rotationStep);
             else if (Input.GetKeyDown(rotateKeyNegative)) RotatePreview(-rotationStep);
+            if (Input.GetKeyDown(variantKey)) CycleVariant(1);
+        }
+
+        /// <summary>
+        /// 고른 건물의 다음(step=-1이면 이전) 모양으로 (R키, UI 버튼에서도 호출 가능). 마지막 다음은 처음으로.
+        /// 미리보기·드래그 미리보기가 새 모양으로 바뀌고 설치도 그 모양으로 된다. 모양이 하나뿐이면 아무것도 하지 않고 false
+        /// </summary>
+        public bool CycleVariant(int step = 1)
+        {
+            var data = _selectedBuildingData;
+            if (data == null || !data.HasVariants) return false;
+            int count = data.VariantCount;
+            CurrentVariantIndex = ((CurrentVariantIndex + step) % count + count) % count;
+
+            RebuildPreview();
+            string name = data.GetVariantName(CurrentVariantIndex);
+            ToastUIManager.Instance?.ShowToast($"{data.buildingName} 모양: {name} ({CurrentVariantIndex + 1}/{count}, R키로 다음 모양)");
+            OnPreviewVariantChanged?.Invoke(CurrentVariantIndex, name);
+            return true;
+        }
+
+        /// <summary>미리보기를 지금 모양으로 새로 만듦 (드래그 중이면 드래그 미리보기도 새 모양으로)</summary>
+        private void RebuildPreview()
+        {
+            var data = _selectedBuildingData;
+            if (data == null) return;
+            if (_previewInstance != null)
+            {
+                _previewInstance.SetActive(false);
+                if (Application.isPlaying) Destroy(_previewInstance);
+                else DestroyImmediate(_previewInstance);
+                _previewInstance = null;
+            }
+            CreatePreviewInstance(data);
+
+            // 드래그 미리보기는 이전 모양으로 만들어 둔 것을 버리고 다시
+            foreach (var p in _dragPreviews)
+            {
+                if (p == null) continue;
+                p.SetActive(false);
+                if (Application.isPlaying) Destroy(p);
+                else DestroyImmediate(p);
+            }
+            _dragPreviews.Clear();
+
+            var grid = LightweightGridManager.Instance;
+            if (IsDragPlacing)
+            {
+                if (_previewInstance != null) _previewInstance.SetActive(false);
+                RefreshDragPreview(grid != null && grid.IsDragging ? grid.DragCurrentCell : _dragStart);
+            }
+            else UpdateBuildingPreview(grid != null ? grid.HoveredGridPos : new Vector2Int(-1, -1));
+        }
+
+        /// <summary>고른 건물·모양·회전으로 미리보기 오브젝트 생성 (콜라이더 끔, 미리보기 머티리얼)</summary>
+        private void CreatePreviewInstance(BuildingData data)
+        {
+            GameObject prefabToInstantiate = data.GetPreviewPrefab(CurrentVariantIndex);
+            if (prefabToInstantiate == null) return;
+            _previewInstance = Instantiate(prefabToInstantiate, prefabToInstantiate.transform.position, GetPlacementRotation(data));
+            foreach (var col in _previewInstance.GetComponentsInChildren<Collider>()) col.enabled = false;
+            _previewRenderers = _previewInstance.GetComponentsInChildren<MeshRenderer>();
+            SetPreviewMaterial(validPreviewMaterial);
         }
 
         /// <summary>
@@ -227,14 +303,17 @@ namespace InfraTown.Building
         /// 설치 시 실제로 쓰일 회전 = 플레이어 Y 회전 × 프리팹에 설정된 원래 회전.
         /// 미리보기와 설치 모두 이 값을 쓰므로 보이는 모습 그대로 설치된다
         /// </summary>
-        public Quaternion GetPlacementRotation(BuildingData data) => GetPlacementRotation(data, CurrentRotationY);
+        public Quaternion GetPlacementRotation(BuildingData data) =>
+            GetPlacementRotation(data, CurrentRotationY, data != null && data == _selectedBuildingData ? CurrentVariantIndex : 0);
 
-        /// <summary>지정한 Y 회전으로 설치할 때의 회전 (세이브 복원 등)</summary>
-        public Quaternion GetPlacementRotation(BuildingData data, float rotationY)
+        /// <summary>지정한 Y 회전으로 설치할 때의 회전 (세이브 복원 등, 첫 모양)</summary>
+        public Quaternion GetPlacementRotation(BuildingData data, float rotationY) => GetPlacementRotation(data, rotationY, 0);
+
+        /// <summary>지정한 Y 회전·모양으로 설치할 때의 회전 = Y 회전 × 그 모양 프리팹의 원래 회전</summary>
+        public Quaternion GetPlacementRotation(BuildingData data, float rotationY, int variant)
         {
-            Quaternion prefabRotation = data != null && data.buildingPrefab != null
-                ? data.buildingPrefab.transform.rotation
-                : Quaternion.identity;
+            GameObject prefab = data != null ? data.GetPrefab(variant) : null;
+            Quaternion prefabRotation = prefab != null ? prefab.transform.rotation : Quaternion.identity;
             return Quaternion.Euler(0f, rotationY, 0f) * prefabRotation;
         }
 
@@ -371,21 +450,14 @@ namespace InfraTown.Building
             ClearBuildingMode(); // 이전 미리보기 정리 (건물을 바꿔 고를 때 꺼짐→켜짐 알림이 나가지 않도록 알림 없이)
 
             // 다른 건물을 고르면 회전 초기화, 같은 건물을 다시 고르면 직전 회전 유지
-            if (data != _lastSelectedBuildingData) CurrentRotationY = 0f;
+            // 모양(R키)도 회전과 같은 규칙: 같은 건물이면 직전 모양 유지, 다른 건물이면 첫 모양
+            if (data != _lastSelectedBuildingData) { CurrentRotationY = 0f; CurrentVariantIndex = 0; }
+            CurrentVariantIndex = data.ClampVariant(CurrentVariantIndex);
             _lastSelectedBuildingData = data;
             _selectedBuildingData = data;
 
-            // 미리보기도 설치와 같은 회전(플레이어 Y 회전 × 설치 프리팹의 원래 회전)으로 생성
-            GameObject prefabToInstantiate = data.previewPrefab != null ? data.previewPrefab : data.buildingPrefab;
-            _previewInstance = Instantiate(prefabToInstantiate, prefabToInstantiate.transform.position, GetPlacementRotation(data));
-
-            foreach (var col in _previewInstance.GetComponentsInChildren<Collider>())
-            {
-                col.enabled = false;
-            }
-
-            _previewRenderers = _previewInstance.GetComponentsInChildren<MeshRenderer>();
-            SetPreviewMaterial(validPreviewMaterial);
+            // 미리보기도 설치와 같은 모양·회전(플레이어 Y 회전 × 설치 프리팹의 원래 회전)으로 생성
+            CreatePreviewInstance(data);
             // 고르자마자 지금 마우스 칸에 미리보기 표시 (Jinyu12)
             var grid = LightweightGridManager.Instance;
             UpdateBuildingPreview(grid != null ? grid.HoveredGridPos : new Vector2Int(-1, -1));
@@ -461,7 +533,7 @@ namespace InfraTown.Building
 
             LastPlacementError = null;
             var placedData = _selectedBuildingData;
-            BuildingInstance instance = SpawnBuilding(placedData, gridPos, CurrentRotationY);
+            BuildingInstance instance = SpawnBuilding(placedData, gridPos, CurrentRotationY, CurrentVariantIndex);
             OnBuildingPlaced?.Invoke(instance);
 
             ToastUIManager.Instance?.ShowToast($"✅ '{placedData.buildingName}' 건설 완료!", false);
@@ -571,7 +643,7 @@ namespace InfraTown.Building
                 else if (economy != null && !economy.TrySpendMoney(data.constructionCost)) reason = MoneyShortPlacementError;
                 else
                 {
-                    BuildingInstance instance = SpawnBuilding(data, cell, CurrentRotationY);
+                    BuildingInstance instance = SpawnBuilding(data, cell, CurrentRotationY, CurrentVariantIndex);
                     OnBuildingPlaced?.Invoke(instance);
                     placed++;
                     continue;
@@ -647,7 +719,7 @@ namespace InfraTown.Building
             _dragCells.AddRange(GetDragCells(data, _dragStart, current));
             EvaluateDragCells(data);
 
-            GameObject prefab = data.previewPrefab != null ? data.previewPrefab : data.buildingPrefab;
+            GameObject prefab = data.GetPreviewPrefab(CurrentVariantIndex); // 고른 모양 (R키)
             Vector2Int size = data.GridSize;
             for (int i = 0; i < _dragCells.Count; i++)
             {
@@ -852,15 +924,15 @@ namespace InfraTown.Building
         /// <summary>
         /// 건물 생성 + 점유 칸 등록 + 게임 루프 등록 (설치와 세이브 복원이 같이 씀). 검사·비용·OnBuildingPlaced는 부르는 쪽에서
         /// </summary>
-        private BuildingInstance SpawnBuilding(BuildingData data, Vector2Int gridPos, float rotationY)
+        private BuildingInstance SpawnBuilding(BuildingData data, Vector2Int gridPos, float rotationY, int variant = 0)
         {
             Vector2Int size = data.GridSize;
             Vector3 spawnPos = GetBuildingWorldPosition(gridPos.x, gridPos.y, size.x, size.y);
             // 미리보기와 같은 회전으로 생성 (예전에는 Quaternion.identity라 프리팹 회전이 사라졌음)
-            GameObject buildingObj = Instantiate(data.buildingPrefab, spawnPos, GetPlacementRotation(data, rotationY));
+            GameObject buildingObj = Instantiate(data.GetPrefab(variant), spawnPos, GetPlacementRotation(data, rotationY, variant));
 
             BuildingInstance instance = buildingObj.AddComponent<BuildingInstance>();
-            instance.Init(data, gridPos, rotationY);
+            instance.Init(data, gridPos, rotationY, variant);
 
             // 전신주 데이터면 전력 연결 컴포넌트 부착 (프리팹 수정 없이 동작)
             if (data.isPowerPole && !buildingObj.TryGetComponent<InfraTown.Power.UtilityPoleInstance>(out _))
@@ -903,12 +975,12 @@ namespace InfraTown.Building
         /// 저장된 건물 되살리기: 돈·해금 검사 없이 그 자리에 그 회전으로 생성. 칸을 벗어나거나 겹치면 null.
         /// 설치 대사·튜토리얼이 나오지 않도록 OnBuildingPlaced는 보내지 않는다
         /// </summary>
-        public BuildingInstance RestoreBuilding(BuildingData data, Vector2Int gridPos, float rotationY)
+        public BuildingInstance RestoreBuilding(BuildingData data, Vector2Int gridPos, float rotationY, int variant = 0)
         {
-            if (data == null || data.buildingPrefab == null) return null;
+            if (data == null || data.GetPrefab(variant) == null) return null;
             // 도로 접근·자금은 검사하지 않음 (저장 당시 이미 지어진 건물 — 그 뒤 도로가 철거됐어도 그대로 되살림)
             if (!IsAreaFree(data, gridPos, out _)) return null;
-            return SpawnBuilding(data, gridPos, Mathf.Repeat(rotationY, 360f));
+            return SpawnBuilding(data, gridPos, Mathf.Repeat(rotationY, 360f), data.ClampVariant(variant));
         }
 
         /// <summary>예전 자리 검사 (맵 안 + 빈 칸 + 고른 건물의 자금). 도로 접근은 보지 않음 — 설치·미리보기는 CanPlaceAt을 쓴다</summary>

@@ -368,6 +368,7 @@ namespace InfraTown.Save
                         x = b.OriginGridPos.x,
                         y = b.OriginGridPos.y,
                         rotationY = b.RotationY,
+                        variant = b.VariantIndex, // 도로 모양 등 (2026-11-26)
                     });
                 }
             }
@@ -884,7 +885,7 @@ namespace InfraTown.Save
                 {
                     bool isRoad = data != null && data.IsRoad;
                     if ((pass == 0) != isRoad) continue;
-                    if (data == null || manager.RestoreBuilding(data, new Vector2Int(s.x, s.y), s.rotationY) == null) missing++;
+                    if (data == null || manager.RestoreBuilding(data, new Vector2Int(s.x, s.y), s.rotationY, s.variant) == null) missing++;
                 }
             }
             if (missing > 0) Debug.LogWarning($"[SaveSystem] 건물 {missing}개를 되살리지 못했어요 (건물 목록에 없거나 자리가 겹침).");
