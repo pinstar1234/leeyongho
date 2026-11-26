@@ -2,9 +2,11 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 using InfraTown.Core;
 using InfraTown.Save;
 using InfraTown.TimeSystem;
+using InfraTown.UI;
 
 namespace InfraTown.Tests
 {
@@ -132,6 +134,64 @@ namespace InfraTown.Tests
             var info = SaveSystem.GetAutoSaveSlotInfo();
             Assert.IsTrue(info.isAutoSave && info.isEmpty);
             Assert.IsTrue(SaveSystem.GetLoadSlots()[0].isEmpty);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void 타이틀과_ESC의_불러오기에서_자동_저장_칸을_표시한다(bool hasAutoSave)
+        {
+            if (hasAutoSave) PassWeek();
+
+            var root = new GameObject("Save Menu Test", typeof(RectTransform));
+            try
+            {
+                var title = root.AddComponent<MainMenuManager>();
+                TestWorld.SetField(title, "_overlay", (RectTransform)root.transform);
+                TestWorld.Invoke(title, "BuildLoadPanel");
+
+                var pause = root.AddComponent<GamePauseMenu>();
+                TestWorld.Invoke(pause, "BuildMenu");
+                var pauseSavePanel = TestWorld.GetField<RectTransform>(pause, "_saveSlots");
+                TestWorld.Invoke(pause, "ShowSlots", pauseSavePanel, true, "");
+                Assert.IsFalse(pauseSavePanel.GetComponentsInChildren<Button>(true)
+                    .Any(button => button.name.StartsWith("자동 저장")));
+                TestWorld.Invoke(pause, "ShowMainMenu");
+
+                var pauseLoadPanel = TestWorld.GetField<RectTransform>(pause, "_loadSlots");
+                TestWorld.Invoke(pause, "ShowSlots", pauseLoadPanel, false, "");
+
+                string summary = hasAutoSave
+                    ? $"{_time.CurrentYear}년 {_time.CurrentMonth}월 {_time.CurrentWeek}주"
+                    : "빈 슬롯";
+                var titleSlots = TestWorld.GetField<RectTransform>(title, "_loadSlots");
+                var pauseRows = pauseLoadPanel.Find("Slot Controls");
+                foreach (var rows in new Transform[] { titleSlots, pauseRows })
+                {
+                    var buttons = rows.GetComponentsInChildren<Button>(true);
+                    Assert.AreEqual($"자동 저장   {summary}", buttons[0].name);
+                    Assert.AreEqual(hasAutoSave, buttons[0].interactable);
+                    Assert.AreEqual("1번   빈 슬롯", buttons[1].name);
+                    Assert.AreEqual("5번   빈 슬롯", buttons[5].name);
+                }
+
+                if (hasAutoSave)
+                {
+                    string autoSaveLabel = $"자동 저장   {summary}";
+                    pauseRows.Find(autoSaveLabel).GetComponent<Button>().onClick.Invoke();
+                    var confirm = pauseRows.Find("불러오기 확인").GetComponent<Button>();
+                    Assert.IsTrue(confirm.interactable);
+
+                    Assert.IsTrue(SaveSystem.DeleteSave(SaveSystem.AutoSaveSlot));
+                    titleSlots.Find(autoSaveLabel).GetComponent<Button>().onClick.Invoke();
+                    StringAssert.StartsWith("자동 저장에", SaveSystem.LastError);
+                    confirm.onClick.Invoke();
+                    StringAssert.StartsWith("자동 저장에", SaveSystem.LastError);
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
         }
 
         [Test]

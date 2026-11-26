@@ -3,6 +3,7 @@ using InfraTown.Save;
 using InfraTown.TimeSystem;
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using UIEventSystem = UnityEngine.EventSystems.EventSystem;
 
@@ -15,13 +16,15 @@ namespace InfraTown.UI
 
         private const string SensitivityKey = "InfraTown.MouseSensitivity";
         private const string VolumeKey = "InfraTown.MasterVolume";
+        private const float DefaultSensitivity = 1f;
+        private const float DefaultVolume = 1f;
         private static readonly Color PanelColor = new Color32(16, 27, 38, 255);
         private static readonly Color ButtonColor = new Color32(44, 67, 87, 255);
         private static readonly Color TextColor = new Color32(247, 240, 230, 255);
         private static readonly Color AccentColor = new Color32(92, 142, 112, 255);
 
         public static bool IsOpen { get; private set; }
-        public static float MouseSensitivity { get; private set; } = 1f;
+        public static float MouseSensitivity { get; private set; } = DefaultSensitivity;
 
         private TimeManager _timeManager;
         private GameObject _overlay;
@@ -34,7 +37,7 @@ namespace InfraTown.UI
         private RectTransform _saveSlots;
         private RectTransform _loadSlots;
         private bool _loading;
-        private TextMeshProUGUI _quitStatus;
+        private TextMeshProUGUI _returnToTitleStatus;
 
         private void Start()
         {
@@ -45,6 +48,7 @@ namespace InfraTown.UI
         private void Update()
         {
             if (_loading || !Input.GetKeyDown(KeyCode.Escape)) return;
+            if (ConstructionHelpWindow.TryCloseOpenWindow()) return;
 
             if (!IsOpen) Open();
             else if (!_menu.gameObject.activeSelf) ShowMainMenu();
@@ -122,22 +126,22 @@ namespace InfraTown.UI
             var saveButton = CreateButton(_menu, "저장", 38, () => ShowSlots(_saveSlots, true));
             var loadButton = CreateButton(_menu, "불러오기", -20, () => ShowSlots(_loadSlots, false));
             _settingsButton = CreateButton(_menu, "게임 설정", -78, () => ShowSettings(true));
-            var quitButton = CreateButton(_menu, "게임 종료", -136, QuitGame);
-            _quitStatus = CreateLabel(CreateRect(_menu, "Quit Status", 350, 26, 0, -174), "", 16);
-            LinkNavigation(_resumeButton, saveButton, loadButton, _settingsButton, quitButton);
+            var titleButton = CreateButton(_menu, "타이틀 화면으로", -136, ReturnToTitle);
+            _returnToTitleStatus = CreateLabel(CreateRect(_menu, "Return to Title Status", 350, 26, 0, -174), "", 16);
+            LinkNavigation(_resumeButton, saveButton, loadButton, _settingsButton, titleButton);
 
             _settings = CreateSettingsPanel(backdrop, () => ShowSettings(false), out _backButton);
             _settings.gameObject.SetActive(false);
             _saveSlots = CreatePanel(backdrop, "저장", 476);
-            _loadSlots = CreatePanel(backdrop, "불러오기", 476);
+            _loadSlots = CreatePanel(backdrop, "불러오기", 520);
             _saveSlots.gameObject.SetActive(false);
             _loadSlots.gameObject.SetActive(false);
         }
 
         internal static void ReadSettings()
         {
-            MouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(SensitivityKey, 1f), 0.25f, 2f);
-            AudioListener.volume = Mathf.Clamp01(PlayerPrefs.GetFloat(VolumeKey, 1f));
+            MouseSensitivity = Mathf.Clamp(PlayerPrefs.GetFloat(SensitivityKey, DefaultSensitivity), 0.25f, 2f);
+            AudioListener.volume = Mathf.Clamp01(PlayerPrefs.GetFloat(VolumeKey, DefaultVolume));
         }
 
         internal static RectTransform CreateSettingsPanel(Transform parent, UnityEngine.Events.UnityAction back, out Button backButton)
@@ -153,8 +157,14 @@ namespace InfraTown.UI
                 AudioListener.volume = value;
                 PlayerPrefs.SetFloat(VolumeKey, value);
             });
+            var resetButton = CreateButton(panel, "기본값", -77, () =>
+            {
+                sensitivity.value = DefaultSensitivity;
+                volume.value = DefaultVolume;
+                PlayerPrefs.Save();
+            });
             backButton = CreateButton(panel, "뒤로", -136, back);
-            LinkNavigation(sensitivity, volume, backButton);
+            LinkNavigation(sensitivity, volume, resetButton, backButton);
             return panel;
         }
 
@@ -196,11 +206,12 @@ namespace InfraTown.UI
             });
             confirm.interactable = false;
             var navigation = new List<Selectable>();
-            foreach (var slot in SaveSystem.GetAllSlots())
+            var slots = saving ? SaveSystem.GetAllSlots() : SaveSystem.GetLoadSlots();
+            float firstRowY = saving ? 122 : 166;
+            for (int i = 0; i < slots.Length; i++)
             {
-                string summary = slot.isEmpty ? "빈 슬롯" : slot.isBroken ? "읽을 수 없음" :
-                    $"{slot.summary.year}년 {slot.summary.month}월 {slot.summary.week}주";
-                var button = CreateButton(rows, $"{slot.slot}번   {summary}", 122 - (slot.slot - 1) * 44, () =>
+                var slot = slots[i];
+                var button = CreateButton(rows, GetSlotButtonLabel(slot), firstRowY - i * 44, () =>
                 {
                     selectedSlot = slot.slot;
                     status.text = saving
@@ -218,6 +229,14 @@ namespace InfraTown.UI
             var available = navigation.FindAll(control => control.interactable).ToArray();
             LinkNavigation(available);
             UIEventSystem.current?.SetSelectedGameObject(available[0].gameObject);
+        }
+
+        internal static string GetSlotButtonLabel(SaveSlotInfo slot)
+        {
+            string name = slot.isAutoSave ? "자동 저장" : $"{slot.slot}번";
+            string summary = slot.isEmpty ? "빈 슬롯" : slot.isBroken ? "읽을 수 없음" :
+                $"{slot.summary.year}년 {slot.summary.month}월 {slot.summary.week}주";
+            return $"{name}   {summary}";
         }
 
         internal static RectTransform CreatePanel(Transform parent, string title, float height = 380)
@@ -331,15 +350,19 @@ namespace InfraTown.UI
             if (!_loading) SaveSystem.SaveResumeForQuit();
         }
 
-        private void QuitGame()
+        private void ReturnToTitle()
         {
-            if (!SaveSystem.SaveResumeForQuit())
+            if (_loading) return;
+            if (!SaveSystem.SaveResume())
             {
-                _quitStatus.text = "이어하기 저장 실패";
+                _returnToTitleStatus.text = "이어하기 저장 실패";
                 return;
             }
 
-            ExitApplication();
+            _loading = true;
+            ReleasePause();
+            Time.timeScale = 1f;
+            SceneManager.LoadScene(SaveSystem.DefaultTitleScene);
         }
 
         internal static void ExitApplication()

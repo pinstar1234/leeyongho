@@ -2,6 +2,12 @@ using System.Collections.Generic;
 using NUnit.Framework;
 using InfraTown.EventSystem;
 using InfraTown.TimeSystem;
+using TMPro;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 namespace InfraTown.Tests
 {
@@ -74,6 +80,65 @@ namespace InfraTown.Tests
         private void PlayTwoLines() => _dialogue.Play(DialogueData.Create("talk", true, false,
             new DialogueLine("주민", "안녕하세요"),   // 5글자
             new DialogueLine("비서", "반가워요")));    // 4글자
+
+        [Test]
+        public void 게임_씬_대화창의_Auto와_Skip이_동작하고_오른쪽_초상화를_유지한다()
+        {
+            const string scenePath = "Assets/Scenes/2Park 1.unity";
+            var existingScene = SceneManager.GetSceneByPath(scenePath);
+            bool wasLoaded = existingScene.isLoaded;
+            var scene = wasLoaded ? existingScene : EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Additive);
+            var preview = EditorSceneManager.NewPreviewScene();
+            try
+            {
+                var source = System.Array.Find(scene.GetRootGameObjects(), root => root.name == "DialogueCanvas");
+                var canvas = Object.Instantiate(source);
+                SceneManager.MoveGameObjectToScene(canvas, preview);
+                var view = canvas.GetComponent<DialogueWindow>();
+                var window = TestWorld.GetField<GameObject>(view, "window");
+                var portrait = TestWorld.GetField<Image>(view, "portrait");
+                var skip = TestWorld.GetField<Button>(view, "skipButton");
+                var auto = TestWorld.GetField<Button>(view, "autoButton");
+                var autoLabel = TestWorld.GetField<TMP_Text>(view, "autoLabel");
+                var autoOffSprite = auto.image.sprite;
+                var autoOnSprite = TestWorld.GetField<Sprite>(view, "autoOnSprite");
+                Assert.IsNotNull(autoOffSprite);
+                Assert.IsNotNull(autoOnSprite);
+                Assert.AreNotEqual(autoOffSprite, autoOnSprite);
+                TestWorld.SetField(view, "manager", _dialogue);
+                TestWorld.Invoke(view, "Awake");
+                TestWorld.Invoke(view, "OnEnable");
+
+                var intro = AssetDatabase.LoadAssetAtPath<DialogueData>("Assets/Data/Dialouge/Start.asset");
+                _dialogue.CharactersPerSecond = 0f;
+                _dialogue.Play(intro);
+                Assert.IsTrue(window.activeSelf);
+                Assert.IsTrue(portrait.gameObject.activeSelf);
+                Assert.AreEqual(intro.lines[1].portrait, portrait.sprite);
+                Assert.AreEqual(_dialogue.DimmedPortraitColor, portrait.color);
+
+                auto.onClick.Invoke();
+                Assert.AreEqual("Auto ON", autoLabel.text);
+                Assert.AreEqual(autoOnSprite, auto.image.sprite);
+                _dialogue.Tick(_dialogue.AutoAdvanceDelay);
+                Assert.AreEqual(1, _dialogue.CurrentLineIndex);
+                Assert.AreEqual(Color.white, portrait.color);
+
+                auto.onClick.Invoke();
+                Assert.AreEqual("Auto", autoLabel.text);
+                Assert.AreEqual(autoOffSprite, auto.image.sprite);
+                skip.onClick.Invoke();
+                Assert.IsFalse(_dialogue.IsPlaying);
+                Assert.IsFalse(window.activeSelf);
+                TestWorld.Invoke(view, "OnDisable");
+            }
+            finally
+            {
+                EditorSceneManager.ClosePreviewScene(preview);
+                if (!wasLoaded)
+                    EditorSceneManager.CloseScene(scene, removeScene: !existingScene.IsValid());
+            }
+        }
 
         [Test]
         public void 글자가_시간에_따라_하나씩_나온다()

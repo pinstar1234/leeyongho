@@ -31,7 +31,7 @@ namespace InfraTown.CameraSystem
 
         private void Update()
         {
-            if (InfraTown.UI.GamePauseMenu.IsOpen) return;
+            if (InfraTown.UI.GamePauseMenu.IsOpen || InfraTown.UI.ConstructionHelpWindow.IsOpen) return;
             HandleHeightZoom();
             HandleEdgeMovement();
         }

@@ -207,7 +207,7 @@ namespace InfraTown.Building
 
         private void Update()
         {
-            if (_selectedBuildingData == null) return;
+            if (_selectedBuildingData == null || ConstructionHelpWindow.IsOpen) return;
 
             if (Input.GetKeyDown(rotateKeyPositive)) RotatePreview(rotationStep);
             else if (Input.GetKeyDown(rotateKeyNegative)) RotatePreview(-rotationStep);

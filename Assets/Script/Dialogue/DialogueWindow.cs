@@ -8,54 +8,57 @@ namespace InfraTown.EventSystem
     {
         [SerializeField] private DialogueEventManager manager;
         [SerializeField] private GameObject window;
-        [SerializeField] private Image speakerBadge;
         [SerializeField] private TMP_Text speakerLabel;
         [SerializeField] private Image portrait;
         [SerializeField] private ScrollRect bodyScroll;
         [SerializeField] private TMP_Text bodyText;
-        [SerializeField] private Button advanceButton;
-        [SerializeField] private TMP_Text advanceLabel;
+        [SerializeField] private Button skipButton;
+        [SerializeField] private Button autoButton;
+        [SerializeField] private TMP_Text autoLabel;
+        [SerializeField] private Sprite autoOnSprite;
 
         private int lineShownFrame = -1;
-        private bool isLastLine;
-        private Color npcBadgeColor;
+        private Sprite autoOffSprite;
 
         private void Awake()
         {
-            npcBadgeColor = speakerBadge.color;
+            autoOffSprite = autoButton.image.sprite;
             window.SetActive(false);
         }
 
         private void OnEnable()
         {
-            manager.OnLineShown += ShowLine;
+            manager.OnLineShown += HandleLineShown;
             manager.OnVisibleTextChanged += UpdateVisibleText;
-            manager.OnLineFullyShown += UpdateAdvanceLabel;
+            manager.OnAutoModeChanged += UpdateAutoButton;
             manager.OnDialogueEnded += HideWindow;
-            advanceButton.onClick.AddListener(Advance);
+            skipButton.onClick.AddListener(SkipDialogue);
+            autoButton.onClick.AddListener(ToggleAuto);
+            UpdateAutoButton(manager.IsAutoMode);
         }
 
         private void OnDisable()
         {
-            manager.OnLineShown -= ShowLine;
+            manager.OnLineShown -= HandleLineShown;
             manager.OnVisibleTextChanged -= UpdateVisibleText;
-            manager.OnLineFullyShown -= UpdateAdvanceLabel;
+            manager.OnAutoModeChanged -= UpdateAutoButton;
             manager.OnDialogueEnded -= HideWindow;
-            advanceButton.onClick.RemoveListener(Advance);
+            skipButton.onClick.RemoveListener(SkipDialogue);
+            autoButton.onClick.RemoveListener(ToggleAuto);
             window.SetActive(false);
         }
 
         private void Update()
         {
-            if (!window.activeSelf)
-                return;
+            if (!CanUseDialogueControls() || lineShownFrame == Time.frameCount) return;
 
-            if (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) ||
-                Input.GetKeyDown(KeyCode.KeypadEnter))
-                Advance();
+            // Enter와 마우스 클릭은 기본 입력을 사용하는 매니저에서 처리한다.
+            if (Input.GetKeyDown(KeyCode.Space) ||
+                (!manager.HandleInput && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))))
+                manager.Advance();
         }
 
-        private void ShowLine(DialogueLine line, int index, int total)
+        private void HandleLineShown(DialogueLine line, int index, int total)
         {
             if (!window.activeSelf)
             {
@@ -64,30 +67,20 @@ namespace InfraTown.EventSystem
             }
 
             lineShownFrame = Time.frameCount;
-            isLastLine = index == total - 1;
             string speaker = manager.GetCurrentSpeakerName();
             speakerLabel.text = string.IsNullOrWhiteSpace(speaker) ? "이야기" : speaker;
-            speakerBadge.color = manager.CurrentSide == DialogueSide.Left
-                ? new Color32(202, 220, 228, 255)
-                : npcBadgeColor;
 
-            portrait.sprite = manager.GetPortrait(line);
-            bool hasPortrait = portrait.sprite != null;
-            portrait.gameObject.SetActive(hasPortrait);
-            float textLeft = hasPortrait ? 246f : 48f;
-            var badgeRect = speakerBadge.rectTransform;
-            badgeRect.anchoredPosition = new Vector2(textLeft, badgeRect.anchoredPosition.y);
-            var viewport = bodyScroll.GetComponent<RectTransform>();
-            viewport.offsetMin = new Vector2(textLeft, viewport.offsetMin.y);
+            portrait.sprite = manager.RightPortrait;
+            portrait.color = manager.RightPortraitColor;
+            portrait.gameObject.SetActive(portrait.sprite != null);
 
             bodyText.text = manager.GetCurrentText();
             bodyText.maxVisibleCharacters = int.MaxValue;
             bodyText.ForceMeshUpdate();
             UpdateVisibleText(manager.GetVisibleText());
-            LayoutRebuilder.ForceRebuildLayoutImmediate(viewport);
+            LayoutRebuilder.ForceRebuildLayoutImmediate((RectTransform)bodyScroll.transform);
             bodyScroll.StopMovement();
             bodyScroll.verticalNormalizedPosition = 1f;
-            UpdateAdvanceLabel();
         }
 
         private void UpdateVisibleText(string visibleText)
@@ -101,18 +94,22 @@ namespace InfraTown.EventSystem
             bodyText.maxVisibleCharacters = count;
         }
 
-        private void UpdateAdvanceLabel()
+        private void UpdateAutoButton(bool enabled)
         {
-            advanceLabel.text = isLastLine && manager.IsLineFullyShown ? "닫기" : "다음";
+            autoLabel.text = enabled ? "Auto ON" : "Auto";
+            autoButton.image.sprite = enabled && autoOnSprite != null ? autoOnSprite : autoOffSprite;
         }
 
-        private void Advance()
+        private bool CanUseDialogueControls() => window.activeSelf && !manager.IsHeldByMenu;
+
+        private void SkipDialogue()
         {
-            if (!InfraTown.UI.GamePauseMenu.IsOpen && lineShownFrame != Time.frameCount)
-            {
-                lineShownFrame = Time.frameCount;
-                manager.Advance();
-            }
+            if (CanUseDialogueControls()) manager.Skip();
+        }
+
+        private void ToggleAuto()
+        {
+            if (CanUseDialogueControls()) manager.ToggleAutoMode();
         }
 
         private void HideWindow(DialogueData dialogue) => window.SetActive(false);
