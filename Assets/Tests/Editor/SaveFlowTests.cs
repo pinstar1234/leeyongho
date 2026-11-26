@@ -167,7 +167,9 @@ namespace InfraTown.Tests
                 var pauseRows = pauseLoadPanel.Find("Slot Controls");
                 foreach (var rows in new Transform[] { titleSlots, pauseRows })
                 {
-                    var buttons = rows.GetComponentsInChildren<Button>(true);
+                    // 슬롯 버튼만 (ESC 화면은 '불러오기 확인' 버튼을 슬롯보다 먼저 만듦 — 2026-11-26 병합 때 테스트 수정)
+                    var buttons = rows.GetComponentsInChildren<Button>(true)
+                        .Where(b => b.name.StartsWith("자동 저장") || (b.name.Length > 1 && char.IsDigit(b.name[0]) && b.name[1] == '번')).ToArray();
                     Assert.AreEqual($"자동 저장   {summary}", buttons[0].name);
                     Assert.AreEqual(hasAutoSave, buttons[0].interactable);
                     Assert.AreEqual("1번   빈 슬롯", buttons[1].name);
