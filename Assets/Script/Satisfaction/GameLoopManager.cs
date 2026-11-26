@@ -53,6 +53,14 @@ namespace InfraTown.Core
                 gameObject.AddComponent<InfraTown.Save.AutoSaveManager>();
             }
 
+            // 대화 관리자는 있는데 오프닝·튜토리얼·불만 대사를 띄우는 DialogueTriggers가 없으면 대화 관리자 오브젝트에 추가
+            // (사용자 결정 2026-11-26 — 2Park 1에 대화창만 있어 튜토리얼이 시작되지 않던 문제, 씬 수정 없이. 오프닝 대화 에셋은 씬에서 연결해야 나옴)
+            var dialogue = InfraTown.EventSystem.DialogueEventManager.Instance;
+            if (dialogue != null && Application.isPlaying && FindObjectOfType<InfraTown.EventSystem.DialogueTriggers>() == null)
+            {
+                dialogue.gameObject.AddComponent<InfraTown.EventSystem.DialogueTriggers>();
+            }
+
             BuildingInstance.OnBuildingDestroyed += HandleBuildingDestroyed;
 
             // TimeManager 틱 이벤트 연동

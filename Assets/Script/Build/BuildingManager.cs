@@ -439,6 +439,13 @@ namespace InfraTown.Building
                 return;
             }
 
+            // 0-1. 튜토리얼 중에는 지금 알려 주는 건물만 (사용자 기획 2026-11-26)
+            if (InfraTown.EventSystem.TutorialDialogues.BlocksBuilding(data, out string tutorialHint))
+            {
+                RejectPlacement(data, new Vector2Int(-1, -1), tutorialHint ?? "튜토리얼 중에는 지금 알려 주는 건물만 지을 수 있어요.");
+                return;
+            }
+
             // 1. 현재 인구수 기반 해금 검증
             if (!IsBuildingUnlocked(data))
             {

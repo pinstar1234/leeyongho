@@ -87,9 +87,17 @@ namespace InfraTown.EventSystem
         [SerializeField] private string residentSpeaker = "주민";
         [SerializeField] private Sprite residentPortrait;
 
-        [Header("건물 해금 스토리")]
+        [Header("필수 시설 첫 설치 대사")]
         [SerializeField] private string unlockSpeaker = "이장님";
         [SerializeField] private Sprite unlockSpeakerPortrait;
+
+        [Header("건물 해금 안내 (처음 해금 + 인구가 늘어 새로 해금)")]
+        [Tooltip("해금 안내를 말하는 인물 (사용자 결정 2026-11-26: 비서 — 예전에는 이장님이라 오프닝에 이어 이장님이 계속 말하는 것처럼 보였음)")]
+        [SerializeField] private string unlockMessageSpeaker = "비서";
+        [SerializeField] private Sprite unlockMessagePortrait;
+
+        /// <summary>해금 안내를 말하는 인물</summary>
+        public string UnlockMessageSpeaker => unlockMessageSpeaker;
 
         [Header("'나쁨' 지속 경고")]
         [SerializeField] private string warningSpeaker = "안내원";
@@ -413,8 +421,10 @@ namespace InfraTown.EventSystem
         /// </summary>
         public void ApplySaveState(InfraTown.Save.DialogueTriggerSaveState s)
         {
-            if (s == null || !s.storyStarted) return;
+            if (s == null) return;
 
+            // 불러온 게임은 이미 하던 게임 — 저장 파일에 '이야기 시작'이 꺼져 있어도(대화 트리거가 없는 씬에서 저장 등) 오프닝·처음 해금 안내를
+            // 다시 틀지 않는다 (2026-11-26 버그: 불러오기를 하면 처음 시작 대화가 다시 나옴)
             if (IsWaitingForPlayerName)
             {
                 IsWaitingForPlayerName = false;
@@ -431,6 +441,9 @@ namespace InfraTown.EventSystem
                     var d = BuildingManager.Instance.FindBuildingData(id);
                     if (d != null) _knownUnlocked.Add(d);
                 }
+                // 해금 안내 기록이 없는 저장이면 지금 해금된 건물은 이미 안내한 것으로 (불러오자마자 해금 안내가 쏟아지지 않게)
+                if (!s.storyStarted || s.knownUnlockedBuildingIds.Count == 0)
+                    foreach (var d in BuildingManager.Instance.GetUnlockedBuildings()) _knownUnlocked.Add(d);
             }
 
             foreach (var e in s.essentials)
@@ -501,14 +514,14 @@ namespace InfraTown.EventSystem
             {
                 // 같은 메시지를 쓰는 건물(도로·전신주)은 한 번만
                 if (lines.Any(l => l.text == d.unlockMessage)) continue;
-                lines.Add(new DialogueLine(unlockSpeaker, d.unlockMessage, null, unlockSpeakerPortrait));
+                lines.Add(new DialogueLine(unlockMessageSpeaker, d.unlockMessage, null, unlockMessagePortrait));
             }
 
             string names = string.Join(", ", buildings.Select(b => b.buildingName));
-            lines.Add(new DialogueLine(unlockSpeaker,
+            lines.Add(new DialogueLine(unlockMessageSpeaker,
                 $"이제 {names}을(를) 지을 수 있어요!",
                 $"새 건물이 생겼어요! {names}",
-                unlockSpeakerPortrait));
+                unlockMessagePortrait));
 
             Dialogue.Play(DialogueData.Create(dialogueId, true, true, lines.ToArray()));
         }

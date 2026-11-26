@@ -51,6 +51,7 @@ namespace InfraTown.Testing
             runner._outPath = Arg(args, "-infratownTestOut") ?? Path.Combine(Application.persistentDataPath, "build-test-result.txt");
             // 자동 저장(1주마다)이 플레이어의 실제 세이브 폴더를 덮어쓰지 않도록 테스트 폴더로
             SaveSystem.FolderOverrideForTests = Path.Combine(Application.temporaryCachePath, $"BuildTestSaves_{runner._seed}");
+            InfraTown.EventSystem.TutorialDialogues.SkipForAutomatedTests = true; // 튜토리얼(시간 정지·건물 잠금, 2026-11-26)은 시나리오를 막으므로 건너뜀
         }
 
         private static string Arg(string[] args, string name)

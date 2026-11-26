@@ -158,7 +158,7 @@ namespace InfraTown.Tests
                 essentials = { new EssentialFacilitySaveState { service = (int)ServiceType.School, missingWeeks = 5, threshold = 9, firstInstallPlayed = false },
                                new EssentialFacilitySaveState { service = (int)ServiceType.Hospital, missingWeeks = 0, threshold = -1, firstInstallPlayed = true } }
             });
-            m.tutorial.ApplySaveState(new TutorialSaveState { active = true, currentWeek = 4, triggeredStepIds = { "day1_welcome", "first_building", "day2_power", "day3_money", "day4_satisfaction" } });
+            m.tutorial.ApplySaveState(new TutorialSaveState { active = true, currentStep = 3, triggeredStepIds = { "guide_welcome", "guide_road", "guide_house" } }); // 2026-11-26 단계식 튜토리얼: 전봇대 단계 진행 중
         }
 
         private Managers SaveThenReopen()
@@ -231,9 +231,9 @@ namespace InfraTown.Tests
             Assert.AreEqual(5, m.triggers.GetMissingWeeks(ServiceType.School));
             Assert.AreEqual(9, m.triggers.GetComplaintThreshold(ServiceType.School));
             Assert.IsTrue(m.tutorial.IsActive);
-            Assert.AreEqual(4, m.tutorial.CurrentWeek);
-            Assert.IsTrue(m.tutorial.IsStepTriggered("day4_satisfaction"));
-            Assert.IsFalse(m.tutorial.IsStepTriggered("day5_access"));
+            Assert.AreEqual(3, m.tutorial.CurrentStepIndex, "하던 단계(전봇대)부터 이어서");
+            Assert.IsTrue(m.tutorial.IsStepTriggered("guide_house"));
+            Assert.IsFalse(m.tutorial.IsStepTriggered("guide_overview_open"));
         }
 
         [Test]
@@ -246,13 +246,12 @@ namespace InfraTown.Tests
             // 불러오기 마지막의 날짜 알림(NotifyStateRestored)이 이미 지나감 → 아무것도 세지 않았어야 함
             Assert.AreEqual(58, m.outcome.WeeksElapsed);
             Assert.AreEqual(5, m.triggers.GetMissingWeeks(ServiceType.School));
-            Assert.AreEqual(4, m.tutorial.CurrentWeek);
+            Assert.AreEqual(1, m.tutorial.CurrentWeek, "튜토리얼은 1주차에 모두 진행");
 
             // 다음 주
             TestWorld.Invoke(m.outcome, "HandleDateChanged", 2, 3, 4);
-            TestWorld.Invoke(m.tutorial, "HandleDateChanged", 2, 3, 4);
             Assert.AreEqual(59, m.outcome.WeeksElapsed);
-            Assert.AreEqual(5, m.tutorial.CurrentWeek);
+            Assert.AreEqual(1, m.tutorial.CurrentWeek);
         }
 
         [Test]
@@ -391,14 +390,20 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 이야기_시작_전에_저장했으면_불러온_뒤_처음처럼_오프닝이_나온다()
+        public void 이야기_시작_기록이_없는_저장을_불러와도_오프닝이_다시_나오지_않는다()
         {
+            // 2026-11-26 버그: 불러오기를 하면 처음 시작 대화가 다시 나옴 — 대화 트리거가 없는 씬에서 저장한 파일 등은 storyStarted가 꺼져 있었음
             var m = NewScene();
+            var started = new List<string>();
+            m.dialogue.OnDialogueStarted += d => started.Add(d.dialogueId);
+            m.dialogue.OnLineShown += (l, i, n) => { }; // 대화창이 있는 상황
+            TestWorld.SetField(m.triggers, "introDialogue", DialogueData.Create("Start", true, false, new DialogueLine("이장님", "어서 와요")));
             SaveSystem.ApplySaveData(new SaveData { sceneName = "x" }); // storyStarted = false
-            Assert.IsFalse(m.triggers.StoryStarted);
+            Assert.IsTrue(m.triggers.StoryStarted, "불러온 게임은 이미 하던 게임");
             TestWorld.Invoke(m.triggers, "Start");
             TestWorld.Invoke(m.triggers, "Update");
-            Assert.IsTrue(m.triggers.StoryStarted);
+            Assert.IsFalse(started.Any(id => id == "Start" || id.StartsWith("unlock_initial") || id.StartsWith("tutorial_")),
+                "오프닝·처음 해금 안내·튜토리얼이 나오지 않음: " + string.Join(", ", started));
         }
 
         [Test]

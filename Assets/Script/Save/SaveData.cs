@@ -138,6 +138,7 @@ namespace InfraTown.Save
         public bool completed;
         public int currentWeek;
         public List<string> triggeredStepIds = new List<string>();
+        public int currentStep = -1; // 진행 중인 단계 번호 (2026-11-26 단계식 튜토리얼, 없던 파일은 -1 → 마친 단계 다음부터)
     }
 
     /// <summary>타이틀 '이어하기' 버튼 옆에 보여줄 저장 요약</summary>

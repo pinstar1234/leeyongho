@@ -48,6 +48,10 @@ namespace InfraTown.Tests.Playtest
         private static readonly List<string> Report = new List<string>();
         private static readonly List<string> ConsoleErrors = new List<string>();
 
+        /// <summary>대사가 뜨면 바로 넘김 (대화창이 있는 씬에서 시간이 멈춘 채 시나리오가 막히지 않게)</summary>
+        private static bool AutoSkipDialogues;
+        private static readonly List<string> AutoSkippedDialogues = new List<string>();
+
         /// <summary>시나리오가 일부러 내는 콘솔 에러의 문구 (이 문구가 든 Error는 실패로 세지 않고 ExpectedErrors에 모음)</summary>
         private static readonly List<string> ExpectedErrorPatterns = new List<string>();
         private static readonly List<string> ExpectedErrors = new List<string>();
@@ -141,6 +145,16 @@ namespace InfraTown.Tests.Playtest
                 Steps.Push(Scenario());
             }
 
+            // 대화창이 있는 씬(2Park 1 — 2026-11-26부터 DialogueTriggers 자동 추가)에서는 대사가 뜨면 시간이 멈추므로, 플레이어가 넘기듯 바로 넘김
+            // (대사를 직접 확인하는 dialogue·tutorial 모드는 제외)
+            if (AutoSkipDialogues)
+            {
+                var dlg = InfraTown.EventSystem.DialogueEventManager.Instance;
+                if (dlg != null && dlg.IsPlaying) { AutoSkippedDialogues.Add(dlg.CurrentDialogue?.dialogueId); dlg.Skip(); }
+                var cut = InfraTown.EventSystem.CutsceneManager.Instance;
+                if (cut != null && cut.IsPlaying) cut.Skip();
+            }
+
             if (EditorApplication.timeSinceStartup - _startTime > TimeoutSeconds)
             {
                 Fail("전체 시간 초과", $"{TimeoutSeconds}초 안에 끝나지 않음");
@@ -172,6 +186,12 @@ namespace InfraTown.Tests.Playtest
         {
             // 자동 저장(1주마다)이 실제 세이브 폴더(persistentDataPath)를 덮어쓰지 않도록 테스트 폴더로 (save 모드도 같은 폴더를 비우고 씀)
             SaveSystem.FolderOverrideForTests = Path.Combine(SessionState.GetString(OutKey, "Logs/Playtest"), "Saves");
+            // 단계식 튜토리얼(2026-11-26: 시간 정지·건물 잠금)은 다른 시나리오를 막으므로 건너뜀 — tutorial 모드만 실제로 진행
+            bool tutorialMode = SessionState.GetString(ModeKey, "full") == "tutorial";
+            InfraTown.EventSystem.TutorialDialogues.SkipForAutomatedTests = !tutorialMode;
+            AutoSkipDialogues = !tutorialMode && SessionState.GetString(ModeKey, "full") != "dialogue";
+            if (!tutorialMode && InfraTown.EventSystem.TutorialDialogues.Instance != null && InfraTown.EventSystem.TutorialDialogues.Instance.IsActive)
+                InfraTown.EventSystem.TutorialDialogues.Instance.SkipTutorial();
             Section("0. 씬 시작");
             string injected = SessionState.GetString(InjectedKey, "");
             if (string.IsNullOrEmpty(injected)) Note("씬에 필요한 매니저·건물 목록이 모두 있음");
@@ -182,6 +202,12 @@ namespace InfraTown.Tests.Playtest
             if (SessionState.GetString(ModeKey, "full") == "save")
             {
                 yield return SaveScenario(); // PlaytestSave.cs
+                yield break;
+            }
+
+            if (tutorialMode)
+            {
+                yield return TutorialScenario(); // PlaytestTutorial.cs
                 yield break;
             }
 
@@ -216,12 +242,15 @@ namespace InfraTown.Tests.Playtest
 
             if (dialogueTriggers != null)
             {
+                if (AutoSkipDialogues) yield return Frames(3); // 대화창이 있는 씬: 설치 대사를 넘길 시간
                 var dialogue = InfraTown.EventSystem.DialogueEventManager.Instance;
                 Check("[대화] 씬에 대화 매니저 있음", dialogue != null);
                 Check("[대화] 필수 시설 4종을 처음 지을 때 설치 대사", firstInstalled.Count == 4,
                     string.Join(", ", firstInstalled));
-                Check("[대화] 대화창 UI가 없으면 대사는 콘솔에만, 게임은 멈추지 않음",
+                Check("[대화] 대사가 끝나면 게임이 멈춘 채로 남지 않음 (대화창이 없으면 콘솔에만, 있으면 넘긴 뒤)",
                     dialogue != null && !dialogue.IsPlaying && !TimeManager.Instance.IsEventPaused);
+                if (AutoSkippedDialogues.Count > 0)
+                    Note($"[대화] 대화창이 있는 씬이라 플레이어처럼 바로 넘긴 대사 {AutoSkippedDialogues.Count}개: {string.Join(", ", AutoSkippedDialogues.Distinct().Take(10))}");
                 Note($"[대화] 지금까지 재생된 대화 {dialogue?.PlayedDialogueIds.Count}개: {string.Join(", ", dialogue?.PlayedDialogueIds ?? new string[0])}");
             }
             else Note("[대화] 이 씬에는 DialogueTriggers 없음");

@@ -225,7 +225,7 @@ namespace InfraTown.Tests.Playtest
             float weekTimerBefore = TimeManager.Instance.GetSaveState().weekTimer;
             var before = Snapshot();
             Note($"저장 직전: {before}");
-            Check("저장 전에 진행된 내용이 있음", before.buildings.Count > 30 && before.weeksElapsed >= 5 && (!hasStory || (before.storyStarted && before.tutorialActive)), $"건물 {before.buildings.Count}개, {before.weeksElapsed}주");
+            Check("저장 전에 진행된 내용이 있음", before.buildings.Count > 30 && before.weeksElapsed >= 5 && (!hasStory || (before.storyStarted && (before.tutorialActive || before.tutorialCompleted))), $"건물 {before.buildings.Count}개, {before.weeksElapsed}주");
 
             // 카메라는 저장하지 않음 → 저장 직전에 옮겨 두고, 이어하기 뒤 씬 기본 위치인지 확인
             var cam = Camera.main;

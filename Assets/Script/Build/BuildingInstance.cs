@@ -42,6 +42,14 @@ namespace InfraTown.Building
             // 배드엔딩(게임 오버) 뒤에는 건물 정보 창(철거 버튼)을 띄우지 않음 (사용자 기획 2026-11-24)
             if (!InfraTown.Core.GameOutcomeManager.CanModifyTownNow) return;
 
+            // 튜토리얼 중에는 철거를 알려 주는 단계에서만 건물 정보 창을 엶 (사용자 기획 2026-11-26)
+            if (InfraTown.EventSystem.TutorialDialogues.BlocksBuildingClick)
+            {
+                string hint = InfraTown.EventSystem.TutorialDialogues.Instance?.CurrentHint();
+                if (hint != null) InfraTown.UI.ToastUIManager.Instance?.ShowToast(hint);
+                return;
+            }
+
             if (InfraTown.UI.BuildingUIManager.Instance != null)
             {
                 InfraTown.UI.BuildingUIManager.Instance.OnBuildingClicked(this);
