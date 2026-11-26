@@ -28,7 +28,48 @@ namespace InfraTown.Tests
         }
 
         [TearDown]
-        public void TearDown() => _world.Dispose();
+        public void TearDown()
+        {
+            DialogueEventManager.PauseMenuOpenOverrideForTests = null;
+            _world.Dispose();
+        }
+
+        // ─── 일시정지 메뉴가 열려 있는 동안 (2026-11-26) ───
+
+        [Test]
+        public void 일시정지_메뉴가_열려_있으면_글자_출력과_Auto가_멈춘다()
+        {
+            bool menuOpen = false;
+            DialogueEventManager.PauseMenuOpenOverrideForTests = () => menuOpen;
+            _dialogue.SetAutoMode(true);
+            PlayTwoLines();
+            _dialogue.Tick(0.2f);
+            Assert.AreEqual("안녕", _dialogue.GetVisibleText());
+
+            menuOpen = true;
+            Assert.IsTrue(_dialogue.IsHeldByMenu);
+            _dialogue.Tick(5f);
+            Assert.AreEqual("안녕", _dialogue.GetVisibleText(), "메뉴 뒤에서 글자가 더 나오지 않음");
+            Assert.AreEqual(0, _dialogue.CurrentLineIndex, "Auto로 다음 줄로 넘어가지 않음");
+
+            menuOpen = false;
+            _dialogue.Tick(0.3f);
+            Assert.AreEqual("안녕하세요", _dialogue.GetVisibleText(), "메뉴를 닫으면 그 자리에서 이어짐");
+        }
+
+        [Test]
+        public void 실제_일시정지_메뉴_상태를_읽는다()
+        {
+            var prop = typeof(InfraTown.UI.GamePauseMenu).GetProperty("IsOpen");
+            try
+            {
+                prop.SetValue(null, true);
+                Assert.IsTrue(_dialogue.IsHeldByMenu);
+                prop.SetValue(null, false);
+                Assert.IsFalse(_dialogue.IsHeldByMenu);
+            }
+            finally { prop.SetValue(null, false); }
+        }
 
         private void PlayTwoLines() => _dialogue.Play(DialogueData.Create("talk", true, false,
             new DialogueLine("주민", "안녕하세요"),   // 5글자

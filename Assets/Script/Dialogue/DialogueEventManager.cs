@@ -170,8 +170,18 @@ namespace InfraTown.EventSystem
         /// </summary>
         public bool BlocksWorldInput => IsBusy || _endFrame == Time.frameCount;
 
+        /// <summary>
+        /// 일시정지 메뉴(ESC, 팀원 1 GamePauseMenu)가 열려 있는 동안은 대화를 멈춤 (2026-11-26):
+        /// Enter·클릭이 메뉴 버튼과 뒤의 대사 넘기기로 함께 처리되고, Auto·글자 출력이 메뉴 뒤에서 계속 흐르던 문제
+        /// </summary>
+        public bool IsHeldByMenu => PauseMenuOpenOverrideForTests?.Invoke() ?? InfraTown.UI.GamePauseMenu.IsOpen;
+
+        /// <summary>테스트용: 일시정지 메뉴가 열렸는지 대신 정함 (null이면 실제 GamePauseMenu.IsOpen)</summary>
+        public static System.Func<bool> PauseMenuOpenOverrideForTests;
+
         private void Update()
         {
+            if (IsHeldByMenu) return; // 메뉴를 닫으면 그 자리에서 이어짐
             ProcessInput();
             Tick(Time.unscaledDeltaTime); // 대화 중 게임 시간이 멈춰도 글자는 실제 시간으로 나옴
         }
@@ -290,6 +300,7 @@ namespace InfraTown.EventSystem
         public void Tick(float deltaSeconds)
         {
             if (!IsPlaying || deltaSeconds <= 0f) return;
+            if (IsHeldByMenu) return; // 일시정지 메뉴 뒤에서 글자 출력·Auto가 흐르지 않음
 
             if (!IsLineFullyShown)
             {

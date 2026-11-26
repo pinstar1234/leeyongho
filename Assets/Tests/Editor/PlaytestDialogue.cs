@@ -317,8 +317,11 @@ namespace InfraTown.Tests.Playtest
             bool? interrupted = null;
             Action<int, int, int> onDate = (y, m, w) => { if (++weeks == 3) dlg.Play(data); };
             Action<bool> onEnd = i => interrupted = i;
+            var started = new List<string>();
+            Action<Dlg.DialogueData> onStarted = d => started.Add($"{WeekIndex(time) - startWeek}주:{d.dialogueId}");
             time.OnDateChanged += onDate;
             time.OnSkipEnded += onEnd;
+            dlg.OnDialogueStarted += onStarted;
 
             Check("스킵 시작", time.StartMonthSkip());
             double deadline = EditorApplication.timeSinceStartup + 15;
@@ -326,12 +329,15 @@ namespace InfraTown.Tests.Playtest
             if (time.IsSkipping) time.CancelSkip();
             time.OnDateChanged -= onDate;
             time.OnSkipEnded -= onEnd;
+            Note($"스킵 중 시작된 대화: {(started.Count == 0 ? "없음" : string.Join(", ", started))}, 지금 대화 {dlg.CurrentDialogue?.dialogueId}, 대기열 {dlg.QueueCount}");
 
             dlg.RevealCurrentLine();
             yield return Frames(1);
             RefreshView();
-            Check("3주째에 대화가 뜨자 스킵이 그 자리에서 멈춤", interrupted == true && WeekIndex(time) - startWeek == 3 && dlg.IsPlaying,
-                $"{WeekIndex(time) - startWeek}주 진행, 중단={interrupted}");
+            // 처음 뜬 대화의 주에서 멈춰야 함 — 보통 3주째 테스트 대화지만, 무작위 기간(4~12주)이 찬 필수 시설 불만이 먼저 뜨면 그 주 (2026-11-26)
+            int firstWeek = started.Count > 0 ? int.Parse(started[0].Split('주')[0]) : 3;
+            Check("대화가 뜨자 스킵이 그 주에서 멈춤 (테스트 대화는 3주째)", interrupted == true && WeekIndex(time) - startWeek == firstWeek && firstWeek <= 3 && dlg.IsPlaying,
+                $"{WeekIndex(time) - startWeek}주 진행 (처음 대화 {firstWeek}주째), 중단={interrupted}");
             Check("남은 주는 지나가지 않고 시간 정지", time.IsEventPaused && !time.IsSkipping);
             Shot("d11_week_skip_stopped_by_dialogue", _view.canvas);
 
@@ -339,7 +345,10 @@ namespace InfraTown.Tests.Playtest
             yield return RealSeconds(0.5f);
             Check("대화 중에는 스킵이 다시 시작되지 않음", WeekIndex(time) == before && !time.CanSkip);
             dlg.Skip();
+            while (dlg.IsBusy) { dlg.Skip(); yield return Frames(1); } // 대기열에 밀린 대화(테스트 대화 또는 불만)까지 닫음
             yield return Frames(1);
+            Note($"닫은 뒤: 대화 {dlg.CurrentDialogue?.dialogueId ?? "없음"}, 대기열 {dlg.QueueCount}, 시간 잠금 {time.PauseLockCount}개");
+            dlg.OnDialogueStarted -= onStarted;
             Check("대화를 닫으면 다시 스킵 가능", time.CanSkip);
         }
 
