@@ -21,6 +21,7 @@ namespace InfraTown.Save
         public string savedAt;
 
         public string playerName;
+        public int resumeSlot;
 
         public TimeSaveState time = new TimeSaveState();
         public EconomySaveState economy = new EconomySaveState();

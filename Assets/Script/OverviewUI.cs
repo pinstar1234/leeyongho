@@ -5,6 +5,7 @@ using InfraTown.Satisfaction;
 using InfraTown.Population;
 using InfraTown.Economy;
 using InfraTown.Power;
+using InfraTown.Gas;
 using InfraTown.Services;
 using InfraTown.TimeSystem;
 using DG.Tweening; // ★ DOTween 네임스페이스 추가
@@ -30,6 +31,8 @@ namespace InfraTown.UI
         [Header("1-1. 다음 달 전력 구매량 조절 (Slider)")]
         [SerializeField] private TextMeshProUGUI powerPurchaseText;
         [SerializeField] private Slider powerSlider;
+        [SerializeField] private TextMeshProUGUI gasPurchaseText;
+        [SerializeField] private Slider gasSlider;
 
         [Header("2. 인구 현황")]
         [SerializeField] private TextMeshProUGUI populationText;
@@ -49,10 +52,22 @@ namespace InfraTown.UI
         [SerializeField] private TextMeshProUGUI fireStationTimeText;
         [SerializeField] private TextMeshProUGUI convenienceTimeText;
 
+        [SerializeField] private bool separateMetricLabels;
+        [SerializeField] private Color warningColor = new Color32(255, 102, 102, 255);
+
+        [Header("전체 현황 탭")]
+        [SerializeField] private Button[] overviewTabs;
+        [SerializeField] private GameObject[] overviewPages;
+        [SerializeField] private RectTransform selectedTabUnderline;
+        [SerializeField] private Sprite selectedTabSprite;
+        [SerializeField] private Color selectedTabColor = new Color32(62, 104, 83, 255);
+        [SerializeField] private Color tabColor = new Color32(44, 67, 87, 255);
+
         private Vector2 _windowTargetPos; // 화면 중앙 원래 위치 (보통 Vector2.zero)
         private float _slideDistance = 1400f; // 오른쪽으로 빠져나갈 거리 (화면 너비 기준)
         private Tween _slideTween;
         private Tween _fadeTween;
+        private GasManager _gas;
 
         private void Awake()
         {
@@ -74,15 +89,48 @@ namespace InfraTown.UI
             if (powerSlider != null)
                 powerSlider.onValueChanged.AddListener(OnPowerSliderChanged);
 
+            _gas = GasManager.Instance;
+            if (gasSlider != null) gasSlider.onValueChanged.AddListener(OnGasSliderChanged);
+            if (_gas != null && gasPurchaseText != null) _gas.OnGasDataChanged += UpdateGasUI;
+            RegisterTabs(overviewTabs, overviewPages, 2);
             RegisterEvents();
 
             if (overviewPanel != null)
                 overviewPanel.SetActive(false);
         }
 
+        private void RegisterTabs(Button[] buttons, GameObject[] pages, int selected)
+        {
+            if (buttons == null || pages == null || buttons.Length == 0 || buttons.Length != pages.Length) return;
+
+            for (int i = 0; i < buttons.Length; i++)
+            {
+                int index = i;
+                buttons[i].onClick.AddListener(() => SelectTab(buttons, pages, index));
+            }
+            SelectTab(buttons, pages, Mathf.Clamp(selected, 0, pages.Length - 1));
+        }
+
+        private void SelectTab(Button[] buttons, GameObject[] pages, int selected)
+        {
+            for (int i = 0; i < pages.Length; i++)
+            {
+                bool active = i == selected;
+                pages[i].SetActive(active);
+                if (buttons[i].targetGraphic != null)
+                    buttons[i].targetGraphic.color = active ? selectedTabColor : tabColor;
+                if (selectedTabSprite != null && buttons[i].image != null)
+                    buttons[i].image.overrideSprite = active ? selectedTabSprite : null;
+            }
+
+            if (selectedTabUnderline != null)
+                selectedTabUnderline.SetParent(buttons[selected].transform, false);
+        }
+
         private void OnDestroy()
         {
             UnregisterEvents();
+            if (_gas != null) _gas.OnGasDataChanged -= UpdateGasUI;
             _slideTween?.Kill();
             _fadeTween?.Kill();
         }
@@ -191,6 +239,7 @@ namespace InfraTown.UI
         public void RefreshAllData()
         {
             UpdatePowerUI();
+            if (_gas != null) UpdateGasUI(_gas.CurrentUsedGas, _gas.CurrentAvailableGas);
 
             if (PopulationManager.Instance != null)
                 UpdatePopulationUI(PopulationManager.Instance.CurrentPopulation, PopulationManager.Instance.MaxPopulationCapacity);
@@ -211,7 +260,7 @@ namespace InfraTown.UI
 
             if (powerText != null)
             {
-                powerText.text = $"전기 수급: {power.CurrentUsedPower} / {power.CurrentAvailablePower} kW";
+                powerText.text = FormatMetric("전기 수급", $"{power.CurrentUsedPower} / {power.CurrentAvailablePower} kW");
             }
 
             if (powerSlider != null)
@@ -224,8 +273,11 @@ namespace InfraTown.UI
 
             if (powerPurchaseText != null)
             {
-                string shortage = power.NextMonthShortage > 0 ? $"\n<color=#FF6666>다음 달 {power.NextMonthShortage} kW 부족</color>" : "";
-                powerPurchaseText.text = $"다음 달 전력 구매: {power.TargetPurchasedPower} kW (월 {power.MonthlyPurchaseCost:N0} 원){shortage}";
+                string shortage = power.NextMonthShortage > 0
+                    ? "\n" + FormatWarning($"다음 달 {power.NextMonthShortage} kW 부족")
+                    : "";
+                powerPurchaseText.text = FormatMetric("다음 달 전력 구매",
+                    $"{power.TargetPurchasedPower} kW (월 {power.MonthlyPurchaseCost:N0} 원){shortage}");
             }
         }
 
@@ -235,11 +287,33 @@ namespace InfraTown.UI
             PowerManager.Instance?.SetTargetPurchasedPower(Mathf.RoundToInt(value));
         }
 
+        private void UpdateGasUI(int used, int available)
+        {
+            if (gasSlider != null)
+            {
+                gasSlider.maxValue = _gas.MaxPurchasableGas;
+                gasSlider.SetValueWithoutNotify(_gas.TargetPurchasedGas);
+            }
+            if (gasPurchaseText != null)
+            {
+                string shortage = _gas.NextMonthShortage > 0
+                    ? "\n" + FormatWarning($"다음 달 {_gas.NextMonthShortage:N0} 부족") : "";
+                gasPurchaseText.text = FormatMetric("다음 달 가스 구매",
+                    $"{_gas.TargetPurchasedGas:N0} (월 {_gas.MonthlyPurchaseCost:N0} 원){shortage}");
+            }
+        }
+
+        private void OnGasSliderChanged(float value)
+        {
+            if (_gas != null) _gas.SetTargetPurchasedGas(Mathf.RoundToInt(value));
+        }
+
         private void UpdatePopulationUI(int current, int maxCapacity)
         {
             if (populationText != null)
             {
-                populationText.text = $"인구 현황: {current}명 / 한계: {maxCapacity}명";
+                string capacityLabel = separateMetricLabels ? "한계" : "한계:";
+                populationText.text = FormatMetric("인구 현황", $"{current}명 / {capacityLabel} {maxCapacity}명");
             }
         }
 
@@ -249,12 +323,14 @@ namespace InfraTown.UI
             {
                 subsidySlider.minValue = 0;
                 subsidySlider.maxValue = maxEligible;
+                subsidySlider.wholeNumbers = true;
                 subsidySlider.SetValueWithoutNotify(requested);
             }
 
             if (subsidyText != null)
             {
-                subsidyText.text = $"신청 지원금: {requested:N0} 원 / 최대: {maxEligible:N0} 원";
+                string maximumLabel = separateMetricLabels ? "최대" : "최대:";
+                subsidyText.text = FormatMetric("신청 지원금", $"{requested:N0} 원 / {maximumLabel} {maxEligible:N0} 원");
             }
         }
 
@@ -268,16 +344,9 @@ namespace InfraTown.UI
         {
             if (satisfactionText != null)
             {
-                satisfactionText.text = $"현재 만족도: {Mathf.RoundToInt(score)}%";
+                satisfactionText.text = FormatMetric("현재 만족도", $"{Mathf.RoundToInt(score)}%");
             }
 
-            if (complaintsText != null)
-            {
-                if (ServiceAccessibilityManager.Instance != null)
-                {
-                    complaintsText.text = ServiceAccessibilityManager.Instance.GetServiceComplaintSummary();
-                }
-            }
         }
 
         private void UpdateServiceMetricsUI()
@@ -286,33 +355,44 @@ namespace InfraTown.UI
 
             var mgr = ServiceAccessibilityManager.Instance;
 
+            if (complaintsText != null) complaintsText.text = mgr.GetServiceComplaintSummary();
+
             if (patrolCountText != null)
             {
-                patrolCountText.text = mgr.HasPoliceStation
-                    ? $"경찰 하루 순찰: {mgr.DailyPolicePatrolCount} 회"
-                    : "경찰 하루 순찰: 0 회 (경찰서 없음)";
+                patrolCountText.text = FormatMetric("경찰 하루 순찰", mgr.HasPoliceStation
+                    ? $"{mgr.DailyPolicePatrolCount} 회"
+                    : "0 회 (경찰서 없음)");
             }
 
             if (hospitalTimeText != null)
             {
-                hospitalTimeText.text = mgr.HasHospital
-                    ? $"병원 접근 시간: {mgr.HospitalAccessTime:F1} 분"
-                    : "병원 접근 시간: 미설치 (위험)";
+                hospitalTimeText.text = FormatMetric("병원 접근 시간", mgr.HasHospital
+                    ? $"{mgr.HospitalAccessTime:F1} 분"
+                    : MissingServiceStatus());
             }
 
             if (fireStationTimeText != null)
             {
-                fireStationTimeText.text = mgr.HasFireStation
-                    ? $"소방서 접근 시간: {mgr.FireStationAccessTime:F1} 분"
-                    : "소방서 접근 시간: 미설치 (위험)";
+                fireStationTimeText.text = FormatMetric("소방서 접근 시간", mgr.HasFireStation
+                    ? $"{mgr.FireStationAccessTime:F1} 분"
+                    : MissingServiceStatus());
             }
 
             if (convenienceTimeText != null)
             {
-                convenienceTimeText.text = mgr.HasConvenienceStore
-                    ? $"편의시설 접근 시간: {mgr.ConvenienceAccessTime:F1} 분"
-                    : "편의시설 접근 시간: 미설치";
+                convenienceTimeText.text = FormatMetric("편의시설 접근 시간", mgr.HasConvenienceStore
+                    ? $"{mgr.ConvenienceAccessTime:F1} 분"
+                    : "미설치");
             }
         }
+
+        private string FormatMetric(string label, string value) =>
+            separateMetricLabels ? value : $"{label}: {value}";
+
+        private string MissingServiceStatus() =>
+            separateMetricLabels ? FormatWarning("미설치 (위험)") : "미설치 (위험)";
+
+        private string FormatWarning(string message) =>
+            $"<color=#{ColorUtility.ToHtmlStringRGB(warningColor)}>{message}</color>";
     }
 }

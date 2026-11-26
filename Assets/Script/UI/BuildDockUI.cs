@@ -15,6 +15,7 @@ namespace InfraTown.UI
         [SerializeField] private GameObject buildingDetails;
         [SerializeField] private Button foldButton;
         [SerializeField] private RectTransform arrow;
+        [SerializeField] private Button cancelPlacementButton;
 
         private RectTransform _foldRect;
         private Vector2 _expandedPosition;
@@ -26,6 +27,8 @@ namespace InfraTown.UI
             _foldRect = (RectTransform)foldButton.transform;
             _expandedPosition = _foldRect.anchoredPosition;
             foldButton.onClick.AddListener(ToggleDock);
+            if (cancelPlacementButton != null)
+                cancelPlacementButton.onClick.AddListener(buildingUI.CancelConstruction);
             buildingManager.OnPlacementModeChanged += SetPlacementMode;
             SetPlacementMode(buildingManager.IsPlacingBuilding);
         }
@@ -33,6 +36,8 @@ namespace InfraTown.UI
         private void OnDestroy()
         {
             if (foldButton != null) foldButton.onClick.RemoveListener(ToggleDock);
+            if (cancelPlacementButton != null && buildingUI != null)
+                cancelPlacementButton.onClick.RemoveListener(buildingUI.CancelConstruction);
             if (buildingManager != null) buildingManager.OnPlacementModeChanged -= SetPlacementMode;
         }
 
@@ -59,6 +64,8 @@ namespace InfraTown.UI
             topControls.SetActive(!_placing);
             buildingDetails.SetActive(!_placing);
             foldButton.gameObject.SetActive(!_placing);
+            if (cancelPlacementButton != null)
+                cancelPlacementButton.gameObject.SetActive(_placing);
 
             _foldRect.anchoredPosition = _collapsed
                 ? new Vector2(_expandedPosition.x, _foldRect.rect.height * 0.5f + 4f)

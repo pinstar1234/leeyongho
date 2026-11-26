@@ -58,11 +58,32 @@ namespace InfraTown.Tests
         [TearDown]
         public void TearDown()
         {
+            Time.timeScale = 1f;
             CleanupWorld();
             Object.DestroyImmediate(_prefab);
             SaveSystem.FolderOverrideForTests = null;
             SaveSystem.ClearPendingLoad();
             if (Directory.Exists(_folder)) Directory.Delete(_folder, true);
+        }
+
+        [Test]
+        public void 종료_시점_저장은_수동_슬롯과_분리된다()
+        {
+            var managers = NewScene();
+            Assert.IsFalse(SaveSystem.HasResume());
+            Assert.IsTrue(SaveSystem.SaveGame(3), SaveSystem.LastError);
+            string manual = File.ReadAllText(SaveSystem.GetSavePath(3));
+
+            managers.time.SetGameSpeed(GameSpeed.Fast);
+            Assert.IsTrue(SaveSystem.SaveResume(), SaveSystem.LastError);
+
+            Assert.IsTrue(SaveSystem.HasResume());
+            var resume = JsonUtility.FromJson<SaveData>(File.ReadAllText(Path.Combine(_folder, "resume.json")));
+            Assert.AreEqual(3, resume.resumeSlot);
+            Assert.AreEqual((int)GameSpeed.Fast, resume.time.speed);
+            Assert.AreEqual(manual, File.ReadAllText(SaveSystem.GetSavePath(3)));
+            CollectionAssert.AreEqual(new[] { 3 }, SaveSystem.GetAllSlots()
+                .Where(slot => !slot.isEmpty).Select(slot => slot.slot));
         }
 
         private void CleanupWorld()

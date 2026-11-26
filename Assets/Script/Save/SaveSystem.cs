@@ -24,6 +24,7 @@ namespace InfraTown.Save
     ///   ESC '저장 후 나가기'              → SaveSystem.SaveAndQuitToTitle(slot)  (실패하면 false, LastError — 나가지 않음)
     ///   타이틀 '이어하기'                 → SaveSystem.ContinueLatest()  (직전에 저장한 게임 = 가장 최근에 저장된 슬롯, 자동 저장 포함)
     ///                                       버튼 표시 여부는 SaveSystem.HasAnySave()
+    ///   (팀원 1, Jinyu234) 게임을 끌 때 이어하기 전용 파일 resume.json에 저장 → 타이틀 '이어하기' HasResume() / ContinueResume()
     ///   타이틀 '불러오기' 화면에서 슬롯 선택 → SaveSystem.ContinueGame(slot)  (저장한 씬을 열고 그 시점으로 되돌림)
     ///   타이틀 '새로 시작'                → SaveSystem.StartNewGame(게임 씬 이름)  (이전 게임 상태를 지우고 처음부터 — 이름은 게임 씬에서 입력, 저장 파일은 지우지 않음)
     ///   타이틀 '불러오기' 슬롯 화면       → SaveSystem.GetLoadSlots()  (자동 저장 칸 + 1~5번, 6칸)
@@ -103,6 +104,12 @@ namespace InfraTown.Save
             return Path.Combine(SaveFolder, slot == AutoSaveSlot ? "save_auto.json" : $"save_{slot}.json");
         }
 
+        /// <summary>이어하기 전용 파일 (팀원 1 Jinyu234: 게임을 끌 때 저장 — 1주 자동 저장 슬롯과는 별개 파일)</summary>
+        private static string ResumePath => Path.Combine(SaveFolder, "resume.json");
+
+        /// <summary>종료 직전 이어하기 저장이 있는지</summary>
+        public static bool HasResume() => File.Exists(ResumePath);
+
         /// <summary>마지막 실패 이유 (성공하면 null)</summary>
         public static string LastError { get; private set; }
 
@@ -119,6 +126,7 @@ namespace InfraTown.Save
         public static bool IsApplying { get; private set; }
 
         private static SaveData _pending;
+        private static bool _resumeSavedForQuit;
 
         // ───────────────── 저장 ─────────────────
 
@@ -190,16 +198,43 @@ namespace InfraTown.Save
             for (int s = 1; s <= SlotCount; s++) yield return s;
         }
 
-        /// <summary>지금 게임을 그 슬롯 파일에 씀 (임시 파일에 쓴 뒤 교체)</summary>
-        private static bool WriteSave(int slot)
+        /// <summary>이어하기 파일(resume.json)에 지금 게임과 현재 슬롯을 저장 (팀원 1 Jinyu234)</summary>
+        public static bool SaveResume()
+        {
+            LastError = null;
+            if (TimeManager.Instance == null || HasPendingLoad || IsApplying)
+            {
+                LastError = "이어하기에 저장할 게임이 준비되지 않았어요.";
+                return false;
+            }
+            return WriteSnapshot(ResumePath, CurrentSlot, "이어하기");
+        }
+
+        public static bool SaveResumeForQuit()
+        {
+            if (!_resumeSavedForQuit) _resumeSavedForQuit = SaveResume();
+            return _resumeSavedForQuit;
+        }
+
+        private static void HandleApplicationQuit()
+        {
+            var time = TimeManager.Instance;
+            if (time != null && time.gameObject.scene == SceneManager.GetActiveScene())
+                SaveResumeForQuit();
+        }
+
+        private static bool WriteSave(int slot) => WriteSnapshot(GetSavePath(slot), 0, SlotLabel(slot));
+
+        /// <summary>지금 게임을 그 파일에 씀 (임시 파일에 쓴 뒤 교체). resumeSlot은 이어하기 파일이 기억할 현재 슬롯</summary>
+        private static bool WriteSnapshot(string path, int resumeSlot, string label)
         {
             try
             {
                 var data = CaptureCurrentGame();
                 if (data == null) return false;
+                data.resumeSlot = resumeSlot;
 
                 Directory.CreateDirectory(SaveFolder);
-                string path = GetSavePath(slot);
                 string temp = path + ".tmp";
                 DateTime stamp = NextWriteStamp(); // 쓰기 전에 다른 저장들의 시각을 봄
                 File.WriteAllText(temp, JsonUtility.ToJson(data, true));
@@ -209,7 +244,7 @@ namespace InfraTown.Save
                 // 시계 해상도 때문에 시각이 같게 찍혀 엉뚱한 슬롯이 골라질 수 있으므로, 방금 저장한 파일이 항상 가장 나중이 되게 맞춘다
                 File.SetLastWriteTimeUtc(path, stamp);
 
-                Debug.Log($"[SaveSystem] 저장 완료 ({SlotLabel(slot)}): {path}");
+                Debug.Log($"[SaveSystem] 저장 완료 ({label}): {path}");
                 return true;
             }
             catch (Exception e)
@@ -302,6 +337,11 @@ namespace InfraTown.Save
             if (!CheckSlot(slot, allowAutoSave: true)) return null;
             string path = GetSavePath(slot);
             if (!File.Exists(path)) { LastError = $"{SlotLabel(slot)}에 저장된 게임이 없어요."; return null; }
+            return ReadSnapshot(path, logErrors);
+        }
+
+        private static SaveData ReadSnapshot(string path, bool logErrors)
+        {
             try
             {
                 var data = JsonUtility.FromJson<SaveData>(File.ReadAllText(path));
@@ -418,6 +458,25 @@ namespace InfraTown.Save
         {
             slot = Resolve(slot);
             var data = LoadData(slot);
+            return OpenSnapshot(data, slot);
+        }
+
+        public static bool ContinueResume()
+        {
+            LastError = null;
+            if (!HasResume())
+            {
+                LastError = "이어할 게임이 없어요.";
+                return false;
+            }
+
+            var data = ReadSnapshot(ResumePath, true);
+            if (data == null) return false;
+            return OpenSnapshot(data, IsValidSlot(data.resumeSlot) ? data.resumeSlot : 1);
+        }
+
+        private static bool OpenSnapshot(SaveData data, int slot)
+        {
             if (data == null) return false;
             if (string.IsNullOrEmpty(data.sceneName) || !Application.CanStreamedLevelBeLoaded(data.sceneName))
             {
@@ -483,8 +542,11 @@ namespace InfraTown.Save
             _pending = null;
             IsApplying = false;
             CurrentSlot = 1;
+            _resumeSavedForQuit = false;
             SceneManager.sceneLoaded -= HandleSceneLoaded;
             SceneManager.sceneLoaded += HandleSceneLoaded;
+            Application.quitting -= HandleApplicationQuit;
+            Application.quitting += HandleApplicationQuit;
         }
 
         private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)

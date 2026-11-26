@@ -9,12 +9,29 @@ using InfraTown.UI;
 
 namespace InfraTown.Building
 {
+#if UNITY_EDITOR
+    internal sealed class BuildingCatalogSceneProcessor : UnityEditor.Build.IProcessSceneWithReport
+    {
+        public int callbackOrder => 0;
+
+        public void OnProcessScene(UnityEngine.SceneManagement.Scene scene, UnityEditor.Build.Reporting.BuildReport report)
+        {
+            if (report == null) return;
+
+            foreach (var root in scene.GetRootGameObjects())
+            foreach (var manager in root.GetComponentsInChildren<BuildingManager>(true))
+                manager.IncludeProjectBuildingData();
+        }
+    }
+#endif
+
     public class BuildingManager : MonoBehaviour
     {
         public static BuildingManager Instance { get; private set; }
 
         [Header("건물 DB (ScriptableObjects)")]
         [SerializeField] private List<BuildingData> buildingDatabase;
+        [SerializeField] private bool discoverBuildingData;
 
         [Header("프리뷰 마테리얼 (반투명)")]
         [SerializeField] private Material validPreviewMaterial;   // 건설 가능 (초록 반투명)
@@ -135,11 +152,37 @@ namespace InfraTown.Building
             if (Instance != null && Instance != this) { InfraTown.Core.SingletonGuard.RemoveDuplicate(this, Instance); return; }
             Instance = this;
 
+#if UNITY_EDITOR
+            IncludeProjectBuildingData();
+#endif
             if (highlightController == null)
             {
                 highlightController = GetComponent<GridHighlightController>();
             }
         }
+
+#if UNITY_EDITOR
+        public void IncludeProjectBuildingData()
+        {
+            if (!discoverBuildingData) return;
+
+            buildingDatabase ??= new List<BuildingData>();
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var data in buildingDatabase)
+                if (data != null) ids.Add(data.buildingID);
+
+            var guids = UnityEditor.AssetDatabase.FindAssets("t:BuildingData", new[] { "Assets/Data/Build/Spec" });
+            Array.Sort(guids, StringComparer.Ordinal);
+            foreach (var guid in guids)
+            {
+                var data = UnityEditor.AssetDatabase.LoadAssetAtPath<BuildingData>(
+                    UnityEditor.AssetDatabase.GUIDToAssetPath(guid));
+                if (data == null || data.buildingPrefab == null || string.IsNullOrWhiteSpace(data.buildingID) ||
+                    !ids.Add(data.buildingID)) continue;
+                buildingDatabase.Add(data);
+            }
+        }
+#endif
 
         private void Start()
         {
