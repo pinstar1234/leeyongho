@@ -438,9 +438,12 @@ namespace InfraTown.Tests.Playtest
             var service = ServiceAccessibilityManager.Instance;
 
             UiText(overview, "powerText", $"{power.CurrentUsedPower} / {power.CurrentAvailablePower} kW");
-            UiText(overview, "populationText", $"{pop.CurrentPopulation}명 / 한계: {pop.MaxPopulationCapacity}명");
+            // 팀원 1(Jinyu234)이 문구를 바꿈: separateMetricLabels를 켜면 '한계 300명'·'최대 30,000 원' (콜론 없음)
+            bool separate = TestWorld.GetField<bool>(overview, "separateMetricLabels");
+            string colon = separate ? "" : ":";
+            UiText(overview, "populationText", $"{pop.CurrentPopulation}명 / 한계{colon} {pop.MaxPopulationCapacity}명");
             UiText(overview, "satisfactionText", $"{Mathf.RoundToInt(sat.CurrentAverageSatisfaction)}%");
-            UiText(overview, "subsidyText", $"{eco.GetRequestedSubsidy():N0} 원 / 최대: {eco.GetMaxEligibleSubsidy():N0} 원");
+            UiText(overview, "subsidyText", $"{eco.GetRequestedSubsidy():N0} 원 / 최대{colon} {eco.GetMaxEligibleSubsidy():N0} 원");
             UiText(overview, "patrolCountText", $"{service.DailyPolicePatrolCount} 회");
             UiText(overview, "hospitalTimeText", $"{service.HospitalAccessTime:F1} 분");
             UiText(overview, "fireStationTimeText", $"{service.FireStationAccessTime:F1} 분");
