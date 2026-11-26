@@ -215,6 +215,9 @@ namespace InfraTown.Tests.Playtest
             bool hasDialogue = dialogueManager != null;
             if (hasDialogue) { dialogueManager.UseEasyText = true; dialogueManager.SetAutoMode(true); }
             else Note("⚠ 이 씬에는 DialogueEventManager(대화 시스템)가 없음 → 대화·이야기·튜토리얼 저장은 확인할 수 없음 (값이 비어 있는 채로 비교)");
+            // 오프닝·튜토리얼은 DialogueTriggers가 띄움 — 대화 관리자·대화창만 있고 트리거가 없는 씬(2Park 1, 2026-11-26 Jinyu234)도 있음
+            bool hasStory = hasDialogue && Object.FindObjectOfType<Dlg.DialogueTriggers>() != null;
+            if (hasDialogue && !hasStory) Note("⚠ 이 씬에는 대화 관리자는 있지만 DialogueTriggers가 없음 → 오프닝·필수 시설 대사·튜토리얼이 나오지 않아 그 저장은 확인할 수 없음");
             yield return Frames(2);
 
             var fullBefore = FullState(SaveSystem.CaptureCurrentGame());
@@ -222,7 +225,7 @@ namespace InfraTown.Tests.Playtest
             float weekTimerBefore = TimeManager.Instance.GetSaveState().weekTimer;
             var before = Snapshot();
             Note($"저장 직전: {before}");
-            Check("저장 전에 진행된 내용이 있음", before.buildings.Count > 30 && before.weeksElapsed >= 5 && (!hasDialogue || (before.storyStarted && before.tutorialActive)), $"건물 {before.buildings.Count}개, {before.weeksElapsed}주");
+            Check("저장 전에 진행된 내용이 있음", before.buildings.Count > 30 && before.weeksElapsed >= 5 && (!hasStory || (before.storyStarted && before.tutorialActive)), $"건물 {before.buildings.Count}개, {before.weeksElapsed}주");
 
             // 카메라는 저장하지 않음 → 저장 직전에 옮겨 두고, 이어하기 뒤 씬 기본 위치인지 확인
             var cam = Camera.main;
@@ -278,9 +281,9 @@ namespace InfraTown.Tests.Playtest
             Check("주인공 이름", after.playerName == before.playerName);
             Check("본 대화 기록", after.playedDialogues == before.playedDialogues, $"{before.playedDialogues} → {after.playedDialogues}");
             Check("튜토리얼 진행", after.tutorialActive == before.tutorialActive && after.tutorialCompleted == before.tutorialCompleted && after.tutorialWeek == before.tutorialWeek);
-            if (Dlg.DialogueEventManager.Instance != null)
+            if (hasStory && Dlg.DialogueEventManager.Instance != null)
                 Check("오프닝이 다시 시작되지 않음 (이야기 이미 시작된 상태)", after.storyStarted && !Dlg.DialogueEventManager.Instance.IsBusy);
-            else Note("대화 시스템이 없어 오프닝 재시작 확인은 건너뜀");
+            else Note("오프닝을 띄우는 DialogueTriggers가 없어 오프닝 재시작 확인은 건너뜀");
 
             var camAfter = Camera.main;
             Check("카메라 위치는 저장되지 않음 (씬 기본 위치)", camAfter != null && Vector3.Distance(camAfter.transform.position, sceneCamPos) < 0.5f,
