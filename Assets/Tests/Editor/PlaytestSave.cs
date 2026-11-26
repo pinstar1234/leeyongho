@@ -344,6 +344,58 @@ namespace InfraTown.Tests.Playtest
             Check("이어하기 뒤 현재 슬롯 = 저장 당시 2번", SaveSystem.CurrentSlot == 2, $"{SaveSystem.CurrentSlot}");
             Shot("s03_after_resume", null);
 
+            // ── S-7. 깨진 저장 파일: 처음부터 한 번 더 → 또 안 되면 타이틀 + 안내 창 (사용자 기획 2026-11-26) ──
+            Section("S-7. 깨진 저장 파일 (다시 시도 → 타이틀 + 안내 창)");
+            string sceneName = Path.GetFileNameWithoutExtension(SessionState.GetString(SceneKey, DefaultScene));
+            if (!Application.CanStreamedLevelBeLoaded(sceneName) || !Application.CanStreamedLevelBeLoaded(SaveSystem.DefaultTitleScene))
+            {
+                Note($"씬 '{sceneName}' 또는 타이틀이 Build Settings에 없어 실제 흐름은 확인하지 않음 (단위 테스트 SaveFlowTests가 확인)");
+            }
+            else
+            {
+                ExpectedErrorPatterns.Add("[SaveSystem]"); // 깨진 파일이라 SaveSystem이 내는 에러는 의도한 것
+                // 타이틀 씬 자체의 문제 (팀원 1 씬, 2026-11-26 확인: 'Menu Shade'가 다른 오브젝트의 CanvasRenderer를 함께 가리킴) — 이 단계의 실패로 세지 않고 알려진 문제로 보고
+                ExpectedErrorPatterns.Add("Problem detected while opening the Scene file: 'Assets/Scenes/Title.unity'");
+                ExpectedErrorPatterns.Add("Component (CanvasRenderer) added to multiple GameObjects");
+                var broken = SaveSystem.CaptureCurrentGame();
+                broken.buildings.Add(new BuildingSaveState { buildingID = "removed_building", buildingName = "없어진 건물", x = 58, y = 38 });
+                File.WriteAllText(SaveSystem.GetSavePath(5), JsonUtility.ToJson(broken, true));
+
+                var loaded = new List<string>();
+                UnityEngine.Events.UnityAction<Scene, LoadSceneMode> onLoaded = (s, m) => loaded.Add(s.name);
+                SceneManager.sceneLoaded += onLoaded;
+                Placed.Clear();
+                Check("깨진 5번 슬롯 불러오기 시작 (파일 자체는 읽힘)", SaveSystem.ContinueGame(5), SaveSystem.LastError);
+                double until = EditorApplication.timeSinceStartup + 40;
+                while ((SceneManager.GetActiveScene().name != SaveSystem.DefaultTitleScene || SaveSystem.HasPendingLoad) && EditorApplication.timeSinceStartup < until)
+                    yield return null;
+                yield return Frames(3); // 타이틀의 Start들 + 안내 창 Start
+                SceneManager.sceneLoaded -= onLoaded;
+
+                Check("한 번 더 처음부터 불러온 뒤 타이틀로 돌아감", loaded.SequenceEqual(new[] { sceneName, sceneName, SaveSystem.DefaultTitleScene }),
+                    string.Join(" → ", loaded));
+                Check("타이틀에는 게임 매니저가 남지 않음 (오류가 있는 게임이 진행되지 않음)", GameLoopManager.Instance == null && !SaveSystem.IsLoadBroken);
+                var popup = SaveLoadFailurePopup.Current;
+                Check("'파일이 깨져 불러오지 못함' 창이 뜸", popup != null && popup.Canvas != null && popup.Message != null && popup.Message.Contains("깨져서"),
+                    popup?.Message?.Replace("\n", " ") ?? "창 없음");
+                Check("깨진 이유도 보여 줌 (되살리지 못한 건물)", popup?.Message != null && popup.Message.Contains("건물 1개"));
+                Check("깨진 상태는 어디에도 저장되지 않음 (자동 저장 그대로)", SaveSystem.LoadData(SaveSystem.AutoSaveSlot)?.buildings.All(b => b.buildingID != "removed_building") ?? true);
+                if (popup != null && popup.Canvas != null)
+                {
+                    if (Camera.main != null) Shot("s04_broken_save_popup", popup.Canvas.GetComponent<Canvas>());
+                    else Note("타이틀에 Main Camera가 없어 안내 창 스크린샷은 건너뜀");
+                    popup.Close();
+                    yield return Frames(1);
+                    Check("확인을 누르면 창이 닫히고 안내도 지워짐", SaveLoadFailurePopup.Current == null && SaveSystem.PendingLoadFailureMessage == null);
+                }
+                var titleErrors = ExpectedErrors.Where(e => !e.Contains("[SaveSystem]")).Distinct().ToList();
+                var saveErrors = ExpectedErrors.Where(e => e.Contains("[SaveSystem]")).Distinct().ToList();
+                Note($"의도한 에러 {saveErrors.Count}개 (깨진 저장 파일, 실패로 세지 않음): {string.Join(" / ", saveErrors.Take(3).Select(e => e.Length > 90 ? e.Substring(0, 90) + "…" : e))}");
+                if (titleErrors.Count > 0)
+                    Note($"⚠ 알려진 문제 — 타이틀 씬을 열 때 에러 {titleErrors.Count}개 (팀원 1 씬: 'Menu Shade'가 다른 오브젝트의 CanvasRenderer를 함께 가리킴): {string.Join(" / ", titleErrors)}");
+                ExpectedErrorPatterns.Clear();
+            }
+
             // 저장 폴더는 테스트 폴더 그대로 둠 (자동 저장이 실제 세이브 폴더를 덮어쓰지 않도록, 2026-11-25)
         }
     }

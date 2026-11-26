@@ -275,8 +275,9 @@ namespace InfraTown.Tests
         }
 
         [Test]
-        public void 건물_목록에_없는_건물은_건너뛴다()
+        public void 건물_목록에_없는_건물이_있으면_불러오기_실패로_본다()
         {
+            // 2026-11-26 사용자 기획: 되살리지 못한 건물이 있으면 '제대로 불러오지 못함' → 다시 시도 / 타이틀 (SaveFlowTests)
             var before = NewScene();
             MakeProgress(before);
             Assert.IsTrue(SaveSystem.SaveGame());
@@ -287,8 +288,10 @@ namespace InfraTown.Tests
             var m = NewScene();
 
             UnityEngine.TestTools.LogAssert.Expect(LogType.Warning, new System.Text.RegularExpressions.Regex("건물 1개를 되살리지 못했어요"));
-            SaveSystem.ApplySaveData(data);
-            Assert.AreEqual(4, m.loop.PlacedBuildings.Count);
+            UnityEngine.TestTools.LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("일부를 불러오지 못했어요: 건물 1개"));
+            Assert.IsFalse(SaveSystem.ApplySaveData(data));
+            CollectionAssert.AreEqual(new[] { "건물 1개" }, SaveSystem.LastApplyFailedSteps);
+            Assert.AreEqual(4, m.loop.PlacedBuildings.Count, "되살릴 수 있는 건물은 되살림");
         }
 
         [Test]

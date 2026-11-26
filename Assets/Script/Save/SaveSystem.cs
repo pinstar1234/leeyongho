@@ -246,6 +246,12 @@ namespace InfraTown.Save
         public static bool SaveResume()
         {
             LastError = null;
+            // 불러오기에 실패해 오류가 있는 게임은 저장하지 않음 — 다시 시도를 기다리는 중(HasPendingLoad)에도 종료는 막지 않음 (2026-11-26)
+            if (IsLoadBroken)
+            {
+                Debug.Log($"[SaveSystem] {BrokenLoadSaveError}");
+                return true;
+            }
             if (TimeManager.Instance == null || HasPendingLoad || IsApplying)
             {
                 LastError = "이어하기에 저장할 게임이 준비되지 않았어요.";
@@ -280,6 +286,13 @@ namespace InfraTown.Save
         /// <summary>지금 게임을 그 파일에 씀 (임시 파일에 쓴 뒤 교체). resumeSlot은 이어하기 파일이 기억할 현재 슬롯</summary>
         private static bool WriteSnapshot(string path, int resumeSlot, string label)
         {
+            // 불러오기에 실패해 오류가 있는 게임은 어떤 저장으로도 쓰지 않음 — 깨진 상태가 다른 슬롯·자동 저장으로 퍼지지 않게 (2026-11-26)
+            if (IsLoadBroken)
+            {
+                LastError = BrokenLoadSaveError;
+                Debug.LogWarning($"[SaveSystem] {LastError}");
+                return false;
+            }
             try
             {
                 var data = CaptureCurrentGame();
@@ -550,10 +563,20 @@ namespace InfraTown.Save
         }
 
         /// <summary>다음에 열리는 씬(data.sceneName)이 뜨면 이 데이터로 되돌리도록 예약 (씬은 직접 연다 — 에디터 테스트용)</summary>
-        public static void PrepareLoad(SaveData data) => _pending = data;
+        public static void PrepareLoad(SaveData data)
+        {
+            _pending = data;
+            _pendingJson = data != null ? JsonUtility.ToJson(data) : null; // 실패해서 다시 시도할 때 처음 읽은 그대로
+            _loadAttempt = 0;
+        }
 
         /// <summary>예약된 불러오기 취소</summary>
-        public static void ClearPendingLoad() => _pending = null;
+        public static void ClearPendingLoad()
+        {
+            _pending = null;
+            _pendingJson = null;
+            _loadAttempt = 0;
+        }
 
         /// <summary>
         /// 타이틀 '새로 시작' (사용자 기획 2026-11-25): 이전 게임에서 이어지는 상태를 지우고 게임 씬을 처음부터 연다.
@@ -580,7 +603,8 @@ namespace InfraTown.Save
         /// <summary>새 게임 준비: 예약된 불러오기·현재 슬롯(1번)·주인공 이름을 초기화 (씬은 열지 않음, 저장 파일은 그대로 — 테스트·UI용)</summary>
         public static void ResetForNewGame()
         {
-            _pending = null;
+            ClearPendingLoad();
+            IsLoadBroken = false;
             SetCurrentSlot(1);
             PlayerProfile.ClearPlayerName();
         }
@@ -589,7 +613,11 @@ namespace InfraTown.Save
         private static void ResetStatics()
         {
             _pending = null;
+            _pendingJson = null;
+            _loadAttempt = 0;
             IsApplying = false;
+            IsLoadBroken = false;
+            PendingLoadFailureMessage = null;
             CurrentSlot = 1;
             _resumeSavedForQuit = false;
             SceneManager.sceneLoaded -= HandleSceneLoaded;
@@ -600,31 +628,130 @@ namespace InfraTown.Save
 
         private static void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            if (_pending == null || mode != LoadSceneMode.Single) return;
+            if (mode != LoadSceneMode.Single) return;
+            // 반쯤 불러온 게임 씬이 닫혔으면 '깨진 불러오기' 상태도 끝 (타이틀 등)
+            if (_pending == null) IsLoadBroken = false;
+            if (_pending == null && PendingLoadFailureMessage != null) SaveLoadFailurePopup.ShowIfNoUI();
+            if (_pending == null) return;
             if (scene.name != _pending.sceneName)
             {
                 Debug.LogWarning($"[SaveSystem] 저장한 씬({_pending.sceneName})이 아닌 '{scene.name}'이 열려 불러오기를 취소했어요.");
-                _pending = null;
+                ClearPendingLoad();
                 return;
             }
             // 모든 매니저의 Start가 끝난 뒤, 다른 Update보다 먼저 적용 (SaveGameApplier)
             new GameObject("[SaveGameApplier]").AddComponent<SaveGameApplier>();
         }
 
-        /// <summary>예약된 데이터를 지금 씬에 적용 (SaveGameApplier가 부름)</summary>
+        // ───────────────── 깨진 저장 파일 (사용자 기획 2026-11-26) ─────────────────
+        // 불러오기가 제대로 안 되면(단계 예외·되살리지 못한 건물) 씬을 새로 열어 처음부터 한 번 더 불러오고,
+        // 또 안 되면 타이틀로 돌아가 '파일이 깨져 불러올 수 없음' 창을 띄운다. 오류가 있는 상태로는 게임을 진행시키지 않는다
+        // (그동안 시간 정지, 저장·자동 저장·이어하기 저장 거절).
+
+        /// <summary>실패했을 때 처음부터 다시 불러오는 횟수 (사용자 결정 2026-11-26: 1번)</summary>
+        public const int MaxLoadRetries = 1;
+
+        /// <summary>불러오기에 실패해 오류가 있는 게임이 열려 있음 — 이동 중 이 상태로는 저장하지 않는다</summary>
+        public static bool IsLoadBroken { get; private set; }
+
+        /// <summary>타이틀에서 보여 줄 불러오기 실패 안내 (보여 줬으면 AcknowledgeLoadFailure로 지움). 없으면 null</summary>
+        public static string PendingLoadFailureMessage { get; private set; }
+
+        /// <summary>다시 시도해도 불러오지 못해 타이틀로 돌아갈 때 (안내 문구). 팀원 UI가 구독하면 기본 임시 창은 뜨지 않는다</summary>
+        public static event Action<string> OnLoadFailed;
+
+        /// <summary>오류가 있는 불러오기 중 저장을 거절할 때의 이유</summary>
+        public const string BrokenLoadSaveError = "불러오기에 실패한 게임은 저장할 수 없어요.";
+
+        /// <summary>안내 창을 띄울 UI가 OnLoadFailed를 구독하고 있는지 (없으면 SaveLoadFailurePopup이 임시 창을 띄움)</summary>
+        public static bool HasLoadFailedUI => OnLoadFailed != null;
+
+        /// <summary>안내를 보여 줬음 (확인 버튼)</summary>
+        public static void AcknowledgeLoadFailure() => PendingLoadFailureMessage = null;
+
+        /// <summary>타이틀이 열린 뒤 구독한 UI에 실패를 알림. 구독한 UI가 있었으면 true (SaveLoadFailurePopup이 부름)</summary>
+        public static bool NotifyLoadFailedUI(string message)
+        {
+            if (OnLoadFailed == null) return false;
+            OnLoadFailed.Invoke(message);
+            return true;
+        }
+
+        /// <summary>테스트용: 씬 열기를 대신함 (null이면 SceneManager.LoadScene)</summary>
+        public static Action<string> SceneLoaderOverrideForTests;
+
+        /// <summary>테스트용: 씬을 열 수 있는지 대신 정함 (null이면 Build Settings 확인)</summary>
+        public static Func<string, bool> CanLoadSceneOverrideForTests;
+
+        private static string _pendingJson; // 다시 시도할 때 처음 읽은 그대로 쓰려고 보관
+        private static int _loadAttempt;
+        private static readonly object BrokenLoadLock = new object(); // 실패 처리 동안 시간을 멈추는 잠금
+
+        private static bool CanLoadScene(string scene) =>
+            CanLoadSceneOverrideForTests?.Invoke(scene) ?? (!string.IsNullOrEmpty(scene) && Application.CanStreamedLevelBeLoaded(scene));
+
+        private static void LoadScene(string scene)
+        {
+            Time.timeScale = 1f;
+            if (SceneLoaderOverrideForTests != null) SceneLoaderOverrideForTests(scene);
+            else SceneManager.LoadScene(scene);
+        }
+
+        /// <summary>예약된 데이터를 지금 씬에 적용 (SaveGameApplier가 부름). 실패하면 다시 시도하거나 타이틀로</summary>
         internal static void ApplyPending()
         {
             var data = _pending;
+            string json = _pendingJson;
             _pending = null;
-            if (data != null) ApplySaveData(data);
+            _pendingJson = null;
+            if (data == null) return;
+
+            if (ApplySaveData(data))
+            {
+                _loadAttempt = 0;
+                return;
+            }
+            HandleBrokenLoad(data, json);
+        }
+
+        /// <summary>테스트용: 예약된 불러오기를 지금 적용 (SaveGameApplier가 하는 일)</summary>
+        public static void ApplyPendingForTests() => ApplyPending();
+
+        private static void HandleBrokenLoad(SaveData data, string json)
+        {
+            IsLoadBroken = true;
+            TimeManager.Instance?.RequestEventPause(BrokenLoadLock); // 오류가 있는 상태로 시간이 흐르지 않게
+            string reason = LastError;
+
+            if (_loadAttempt < MaxLoadRetries && CanLoadScene(data.sceneName))
+            {
+                _loadAttempt++;
+                Debug.LogWarning($"[SaveSystem] 불러오기가 제대로 되지 않아 처음부터 다시 불러옵니다 ({_loadAttempt}/{MaxLoadRetries}). {reason}");
+                // 처음 읽은 그대로 다시 (적용 중에 바뀐 값이 섞이지 않게)
+                _pending = json != null ? JsonUtility.FromJson<SaveData>(json) : data;
+                _pendingJson = json;
+                LoadScene(data.sceneName);
+                return;
+            }
+
+            _loadAttempt = 0;
+            string message = $"저장 파일이 깨져서 게임을 불러오지 못했어요.\n({reason ?? "알 수 없는 오류"})";
+            PendingLoadFailureMessage = message;
+            LastError = message;
+            Debug.LogError($"[SaveSystem] 다시 시도해도 불러오지 못해 타이틀로 돌아갑니다. {reason}");
+            // 안내(OnLoadFailed 또는 임시 창)는 타이틀이 열린 뒤 SaveLoadFailurePopup이 띄움
+
+            if (CanLoadScene(DefaultTitleScene)) LoadScene(DefaultTitleScene);
+            else Debug.LogError($"[SaveSystem] 타이틀 씬 '{DefaultTitleScene}'이 Build Settings에 없어 돌아갈 수 없어요. 시간을 멈춘 채로 둡니다.");
         }
 
         /// <summary>
-        /// 저장 데이터를 지금 씬에 적용. 순서: 이름 → 시간 → 건물 → 인구 → 전력 → 돈 → 만족도 → 재계산 → 엔딩 → 대화·튜토리얼 → 화면 갱신 알림
+        /// 저장 데이터를 지금 씬에 적용. 순서: 이름 → 시간 → 건물 → 인구 → 전력 → 돈 → 만족도 → 재계산 → 엔딩 → 대화·튜토리얼 → 화면 갱신 알림.
+        /// 모든 단계가 오류 없이 끝났고 건물도 전부 되살렸으면 true
         /// </summary>
-        public static void ApplySaveData(SaveData data)
+        public static bool ApplySaveData(SaveData data)
         {
-            if (data == null) return;
+            if (data == null) return false;
             IsApplying = true;
             // 단계마다 따로 적용: 한 단계에서 예외가 나도 남은 단계는 이어서 적용하고, 실패한 단계는 LastError·콘솔 에러로 남김
             // (2026-11-26 — 예전에는 예외가 난 뒤 단계(돈·엔딩·대화 등)가 아무 안내 없이 빠진 채 게임이 이어졌음)
@@ -648,7 +775,11 @@ namespace InfraTown.Save
                     else PlayerProfile.ClearPlayerName();
                 });
                 Step("시간", () => time?.ApplySaveState(data.time));
-                Step("건물", () => RestoreBuildings(data.buildings));
+                Step("건물", () =>
+                {
+                    int missing = RestoreBuildings(data.buildings);
+                    if (missing > 0) failed.Add($"건물 {missing}개");
+                });
                 Step("인구", () => PopulationManager.Instance?.ApplySaveState(data.population));
                 Step("전력", () => PowerManager.Instance?.ApplySaveState(data.power));
                 Step("가스", () => InfraTown.Gas.GasManager.Instance?.ApplySaveState(data.gas));
@@ -692,17 +823,22 @@ namespace InfraTown.Save
             {
                 LastError = $"저장 파일 일부를 불러오지 못했어요: {string.Join(", ", failed)}";
                 Debug.LogError($"[SaveSystem] {LastError}");
+                return false; // 오류가 있는 상태 — ApplyPending이 다시 시도하거나 타이틀로 (OnGameLoaded는 알리지 않음)
             }
 
-            Debug.Log($"[SaveSystem] 불러오기 완료: {data.time.year}년 {data.time.month}월 {data.time.week}주차, 건물 {data.buildings.Count}개");
+            IsLoadBroken = false;
+            TimeManager.Instance?.ReleaseEventPause(BrokenLoadLock);
+            Debug.Log($"[SaveSystem] 불러오기 완료: {data.time?.year}년 {data.time?.month}월 {data.time?.week}주차, 건물 {data.buildings?.Count ?? 0}개");
             OnGameLoaded?.Invoke(data);
+            return true;
         }
 
-        private static void RestoreBuildings(List<BuildingSaveState> buildings)
+        /// <summary>저장된 건물을 되살림. 되살리지 못한 건물 수를 돌려준다 (건물 목록에 없거나 자리가 겹침)</summary>
+        private static int RestoreBuildings(List<BuildingSaveState> buildings)
         {
             var manager = BuildingManager.Instance;
             var loop = GameLoopManager.Instance;
-            if (manager == null) return;
+            if (manager == null) return 0;
 
             // 씬에 이미 있던 건물은 지우고 저장된 건물로 바꿈
             if (loop != null && Application.isPlaying)
@@ -714,6 +850,7 @@ namespace InfraTown.Save
             }
 
             int missing = 0;
+            if (buildings == null) return 0;
             // 도로를 먼저 되살림: 도로 위 전신주가 도로보다 먼저 복원되면 맨땅 전신주로 자리를 차지해 도로가 겹치게 된다 (사용자 기획 2026-11-24)
             var entries = new List<(BuildingSaveState state, BuildingData data)>();
             foreach (var s in buildings) entries.Add((s, manager.FindBuildingData(s.buildingID, s.buildingName)));
@@ -728,6 +865,7 @@ namespace InfraTown.Save
                 }
             }
             if (missing > 0) Debug.LogWarning($"[SaveSystem] 건물 {missing}개를 되살리지 못했어요 (건물 목록에 없거나 자리가 겹침).");
+            return missing;
         }
     }
 }

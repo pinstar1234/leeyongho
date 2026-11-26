@@ -47,6 +47,10 @@ namespace InfraTown.Tests.Playtest
         private static readonly Stack<IEnumerator> Steps = new Stack<IEnumerator>();
         private static readonly List<string> Report = new List<string>();
         private static readonly List<string> ConsoleErrors = new List<string>();
+
+        /// <summary>시나리오가 일부러 내는 콘솔 에러의 문구 (이 문구가 든 Error는 실패로 세지 않고 ExpectedErrors에 모음)</summary>
+        private static readonly List<string> ExpectedErrorPatterns = new List<string>();
+        private static readonly List<string> ExpectedErrors = new List<string>();
         private static int _passed, _failed;
         private static bool _started;
         private static double _startTime;
@@ -1239,6 +1243,12 @@ namespace InfraTown.Tests.Playtest
             if (type == LogType.Warning && condition.Contains("was not found in the"))
             {
                 UiWarnings.Add(condition);
+                return;
+            }
+
+            if (type == LogType.Error && ExpectedErrorPatterns.Any(p => condition.Contains(p)))
+            {
+                ExpectedErrors.Add(condition); // 시나리오가 일부러 낸 에러 (깨진 저장 파일 등) — 실패로 세지 않음
                 return;
             }
 

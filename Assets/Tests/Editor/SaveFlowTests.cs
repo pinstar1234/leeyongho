@@ -461,6 +461,176 @@ namespace InfraTown.Tests
             Assert.IsEmpty(SaveSystem.LastApplyFailedSteps, "다 되면 비어 있음");
         }
 
+        // ─── 깨진 저장 파일: 다시 시도 → 타이틀 + 안내 창 (사용자 기획 2026-11-26) ───
+
+        private readonly System.Collections.Generic.List<string> _loads = new System.Collections.Generic.List<string>();
+        private InfraTown.Building.BuildingManager _bm;
+
+        /// <summary>건물 목록에 없는 건물이 든 저장 (되살리지 못함 → 제대로 불러오지 못한 것). 씬 열기는 기록만</summary>
+        private SaveData BrokenSave(bool titleLoadable = true)
+        {
+            _bm = _world.CreateManager<InfraTown.Building.BuildingManager>();
+            SaveSystem.SceneLoaderOverrideForTests = s => _loads.Add(s);
+            SaveSystem.CanLoadSceneOverrideForTests = s => titleLoadable || s != SaveSystem.DefaultTitleScene;
+            var data = SaveSystem.CaptureCurrentGame();
+            data.sceneName = "GameScene";
+            data.buildings.Add(new BuildingSaveState { buildingID = "removed_building", x = 5, y = 5 });
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true; // 실패 과정의 콘솔 에러는 의도한 것
+            return data;
+        }
+
+        private void CleanupBrokenLoad()
+        {
+            SaveSystem.SceneLoaderOverrideForTests = null;
+            SaveSystem.CanLoadSceneOverrideForTests = null;
+            SaveSystem.AcknowledgeLoadFailure();
+            SaveSystem.ResetForNewGame(); // 깨진 불러오기 상태·예약 지움
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = false;
+            _loads.Clear();
+            if (SaveLoadFailurePopup.Current != null) Object.DestroyImmediate(SaveLoadFailurePopup.Current.gameObject);
+        }
+
+        [Test]
+        public void 불러오기가_제대로_안되면_처음부터_한번_더_시도하고_또_안되면_타이틀로()
+        {
+            try
+            {
+                SaveSystem.PrepareLoad(BrokenSave());
+
+                SaveSystem.ApplyPendingForTests(); // 1번째: 실패
+                CollectionAssert.AreEqual(new[] { "GameScene" }, _loads, "같은 씬을 새로 열어 처음부터 다시");
+                Assert.IsTrue(SaveSystem.HasPendingLoad, "다시 불러올 데이터 예약");
+                Assert.IsTrue(SaveSystem.IsLoadBroken);
+                Assert.IsTrue(_time.IsEventPaused, "오류가 있는 상태로 시간이 흐르지 않음");
+                Assert.IsNull(SaveSystem.PendingLoadFailureMessage);
+
+                SaveSystem.ApplyPendingForTests(); // 2번째(다시 시도): 또 실패 → 타이틀
+                CollectionAssert.AreEqual(new[] { "GameScene", SaveSystem.DefaultTitleScene }, _loads);
+                Assert.IsFalse(SaveSystem.HasPendingLoad);
+                StringAssert.Contains("저장 파일이 깨져서", SaveSystem.PendingLoadFailureMessage);
+                StringAssert.Contains("건물 1개", SaveSystem.PendingLoadFailureMessage, "무엇이 깨졌는지도");
+            }
+            finally { CleanupBrokenLoad(); }
+        }
+
+        [Test]
+        public void 다시_시도해서_제대로_불러오면_그대로_이어서_한다()
+        {
+            var prefab = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                SaveSystem.PrepareLoad(BrokenSave());
+                SaveSystem.ApplyPendingForTests(); // 1번째 실패
+                Assert.IsTrue(SaveSystem.IsLoadBroken);
+
+                // 다시 연 씬에는 그 건물이 있음 (일시적인 문제였던 경우)
+                var data = _world.CreateData(InfraTown.Building.BuildingType.Facility, id: "removed_building", name: "복원됨");
+                data.buildingPrefab = prefab;
+                TestWorld.SetField(_bm, "buildingDatabase", new System.Collections.Generic.List<InfraTown.Building.BuildingData> { data });
+                SaveSystem.ApplyPendingForTests();
+
+                CollectionAssert.AreEqual(new[] { "GameScene" }, _loads, "타이틀로 가지 않음");
+                Assert.IsFalse(SaveSystem.IsLoadBroken);
+                Assert.IsFalse(_time.IsEventPaused, "시간 정지도 풀림");
+                Assert.IsNull(SaveSystem.PendingLoadFailureMessage);
+                Assert.IsNotNull(_bm.GetBuildingAt(new Vector2Int(5, 5)));
+            }
+            finally
+            {
+                var b = _bm != null ? _bm.GetBuildingAt(new Vector2Int(5, 5)) : null;
+                if (b != null) Object.DestroyImmediate(b.gameObject);
+                Object.DestroyImmediate(prefab);
+                CleanupBrokenLoad();
+            }
+        }
+
+        [Test]
+        public void 오류가_있는_상태로는_어떤_저장도_하지_않는다()
+        {
+            try
+            {
+                SaveSystem.PrepareLoad(BrokenSave());
+                SaveSystem.ApplyPendingForTests();
+                Assert.IsTrue(SaveSystem.IsLoadBroken);
+
+                Assert.IsFalse(SaveSystem.SaveGame(2));
+                Assert.AreEqual(SaveSystem.BrokenLoadSaveError, SaveSystem.LastError);
+                Assert.IsFalse(SaveSystem.AutoSave());
+                Assert.IsTrue(SaveSystem.SaveResume(), "종료는 막지 않음");
+                Assert.IsFalse(SaveSystem.HasAnySave(), "깨진 상태가 어디에도 저장되지 않음");
+                Assert.IsFalse(File.Exists(ResumeFile));
+            }
+            finally { CleanupBrokenLoad(); }
+        }
+
+        [Test]
+        public void 타이틀로_돌아갈_수_없으면_시간을_멈춘_채_둔다()
+        {
+            try
+            {
+                SaveSystem.PrepareLoad(BrokenSave(titleLoadable: false));
+                SaveSystem.ApplyPendingForTests();
+                SaveSystem.ApplyPendingForTests();
+                CollectionAssert.AreEqual(new[] { "GameScene" }, _loads, "타이틀은 열지 못함");
+                Assert.IsTrue(_time.IsEventPaused);
+                Assert.IsTrue(SaveSystem.IsLoadBroken);
+                Assert.IsNotNull(SaveSystem.PendingLoadFailureMessage);
+            }
+            finally { CleanupBrokenLoad(); }
+        }
+
+        [Test]
+        public void 타이틀에서_파일이_깨졌다는_창을_띄우고_확인하면_닫힌다()
+        {
+            try
+            {
+                SaveSystem.PrepareLoad(BrokenSave());
+                SaveSystem.ApplyPendingForTests();
+                SaveSystem.ApplyPendingForTests();
+                string message = SaveSystem.PendingLoadFailureMessage;
+
+                SaveLoadFailurePopup.ShowIfNoUI(); // 타이틀 씬이 열리면 SaveSystem이 부름
+                var popup = SaveLoadFailurePopup.Current;
+                Assert.IsNotNull(popup);
+                TestWorld.Invoke(popup, "Start");
+                Assert.AreEqual(message, popup.Message);
+                Assert.IsNotNull(popup.Canvas, "구독한 UI가 없으면 임시 창을 그림");
+                var texts = popup.Canvas.GetComponentsInChildren<TMPro.TextMeshProUGUI>(true).Select(t => t.text).ToList();
+                CollectionAssert.Contains(texts, SaveLoadFailurePopup.Title);
+                CollectionAssert.Contains(texts, message);
+
+                popup.Close(); // 확인
+                Assert.IsNull(SaveSystem.PendingLoadFailureMessage);
+                Assert.IsNull(SaveLoadFailurePopup.Current);
+            }
+            finally { CleanupBrokenLoad(); }
+        }
+
+        [Test]
+        public void 팀원_UI가_구독하면_임시_창_대신_그_UI에_알린다()
+        {
+            string received = null;
+            System.Action<string> ui = m => received = m;
+            SaveSystem.OnLoadFailed += ui;
+            try
+            {
+                SaveSystem.PrepareLoad(BrokenSave());
+                SaveSystem.ApplyPendingForTests();
+                SaveSystem.ApplyPendingForTests();
+                Assert.IsNull(received, "게임 씬에서는 아직 알리지 않음 (타이틀이 열린 뒤)");
+
+                SaveLoadFailurePopup.ShowIfNoUI();
+                TestWorld.Invoke(SaveLoadFailurePopup.Current, "Start");
+                StringAssert.Contains("저장 파일이 깨져서", received);
+                Assert.IsNull(SaveLoadFailurePopup.Current, "임시 창은 그리지 않음");
+            }
+            finally
+            {
+                SaveSystem.OnLoadFailed -= ui;
+                CleanupBrokenLoad();
+            }
+        }
+
         [Test]
         public void 이어할_파일이_없으면_실패와_이유()
         {
