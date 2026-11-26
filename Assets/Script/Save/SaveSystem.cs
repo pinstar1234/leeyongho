@@ -136,6 +136,9 @@ namespace InfraTown.Save
             return null;
         }
 
+        /// <summary>게임 오버 중 저장을 거절할 때의 이유 (UI가 그대로 보여 줌)</summary>
+        public const string GameOverSaveError = "게임 오버 상태에서는 저장할 수 없어요.";
+
         /// <summary>마지막 실패 이유 (성공하면 null)</summary>
         public static string LastError { get; private set; }
 
@@ -183,6 +186,13 @@ namespace InfraTown.Save
             LastError = null;
             slot = Resolve(slot);
             if (!CheckSlot(slot)) { Debug.LogWarning($"[SaveSystem] {LastError}"); return false; }
+            // 배드엔딩 게임 오버 상태는 슬롯에 저장하지 않음 (2026-11-26 — 불러올 때마다 바로 게임 오버가 되는 슬롯이 생기지 않도록)
+            if (GameOutcomeManager.Instance != null && GameOutcomeManager.Instance.IsGameOver)
+            {
+                LastError = GameOverSaveError;
+                Debug.LogWarning($"[SaveSystem] {LastError}");
+                return false;
+            }
             if (!WriteSave(slot)) return false;
             SetCurrentSlot(slot);
             OnGameSaved?.Invoke(slot);

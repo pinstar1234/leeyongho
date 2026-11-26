@@ -365,6 +365,24 @@ namespace InfraTown.Tests
         }
 
         [Test]
+        public void 게임_오버_중에는_슬롯에_직접_저장할_수_없다()
+        {
+            Assert.IsTrue(SaveSystem.SaveGame(2), "진행 중에는 저장");
+            int savedWeek = SavedWeek(2);
+            var outcome = _world.CreateManager<GameOutcomeManager>();
+            TestWorld.Invoke(_time, "AdvanceOneWeek");
+            outcome.ApplySaveState(new OutcomeSaveState { result = (int)GameResult.Defeat });
+
+            Assert.IsFalse(SaveSystem.SaveGame(2));
+            Assert.AreEqual(SaveSystem.GameOverSaveError, SaveSystem.LastError);
+            Assert.IsFalse(SaveSystem.SaveGame(4));
+            Assert.IsFalse(SaveSystem.HasSave(4));
+            Assert.AreEqual(savedWeek, SavedWeek(2), "예전 2번 저장은 그대로");
+            Assert.IsFalse(SaveSystem.SaveAndQuitToTitle(3), "저장 후 나가기도 저장하지 않음 (게임 오버 화면은 ReturnToTitle)");
+            Assert.IsFalse(SaveSystem.HasSave(3));
+        }
+
+        [Test]
         public void 자동_저장만_있어도_이어하기를_할_수_있다()
         {
             Assert.IsFalse(SaveSystem.HasResume());

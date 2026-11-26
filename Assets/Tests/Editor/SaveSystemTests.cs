@@ -118,6 +118,7 @@ namespace InfraTown.Tests
             };
             m.triggers = m.dialogue.gameObject.AddComponent<DialogueTriggers>();
             TestWorld.Invoke(m.triggers, "Awake");
+            m.outcome.OnGameEnded += _ => { }; // 엔딩 화면 UI 역할 (없으면 해피엔딩이 자동 계속하기 — 2026-11-26)
 
             m.house = _world.CreateData(BuildingType.Housing, id: "house", name: "주택", capacity: 10, power: 5, maintenance: 10);
             m.hospital = _world.CreateData(BuildingType.Essential, id: "hospital", name: "병원", size: BuildingSizeType.Medium, power: 20);

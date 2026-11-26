@@ -37,6 +37,7 @@ namespace InfraTown.Tests
             _satisfaction = _world.CreateManager<SatisfactionManager>();
             _service = _world.CreateManager<ServiceAccessibilityManager>();
             _outcome = _world.CreateManager<GameOutcomeManager>();
+            _outcome.OnGameEnded += FakeEndingUI; // 엔딩 화면 UI가 있는 상황 (없을 때 자동 계속하기는 따로 테스트, 2026-11-26)
             _manager = _world.CreateManager<BuildingManager>(callStart: true);
             _manager.RequireRoadAccess = false; // 엔딩 흐름만 확인
             _prefab = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -52,6 +53,8 @@ namespace InfraTown.Tests
             Object.DestroyImmediate(_prefab);
             _world.Dispose();
         }
+
+        private static void FakeEndingUI(GameResult result) { }
 
         private void Recalculate()
         {
@@ -335,6 +338,66 @@ namespace InfraTown.Tests
             }
         }
 
+        // ─── 엔딩 화면 UI가 없을 때 (2026-11-26: 선택할 방법이 없어 시간이 영원히 멈추던 문제) ───
+
+        [Test]
+        public void 엔딩_UI가_없으면_해피엔딩_뒤_자동으로_계속하기()
+        {
+            _outcome.OnGameEnded -= FakeEndingUI;
+            bool freePlay = false;
+            _outcome.OnFreePlayStarted += () => freePlay = true;
+            Assert.IsFalse(_outcome.HasEndingUI);
+
+            ReachVictory();
+
+            Assert.AreEqual(GameResult.Victory, _outcome.Result);
+            Assert.IsTrue(_outcome.IsFreePlay, "자동 계속하기");
+            Assert.IsFalse(_outcome.IsVictoryChoicePending);
+            Assert.IsFalse(_time.IsEventPaused, "시간이 다시 흐름");
+            Assert.IsTrue(freePlay);
+        }
+
+        [Test]
+        public void 대화_트리거만_구독해도_엔딩_UI로_치지_않는다()
+        {
+            _outcome.OnGameEnded -= FakeEndingUI;
+            var go = new GameObject("triggers");
+            try
+            {
+                var triggers = go.AddComponent<InfraTown.EventSystem.DialogueTriggers>();
+                var method = typeof(InfraTown.EventSystem.DialogueTriggers).GetMethod("HandleGameEnded",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                Assert.IsNotNull(method, "DialogueTriggers.HandleGameEnded");
+                _outcome.OnGameEnded += (System.Action<GameResult>)System.Delegate.CreateDelegate(typeof(System.Action<GameResult>), triggers, method);
+                Assert.IsFalse(_outcome.HasEndingUI, "DialogueTriggers의 엔딩 대화 구독은 UI가 아님");
+
+                _outcome.OnGameEnded += FakeEndingUI;
+                Assert.IsTrue(_outcome.HasEndingUI, "다른 구독자가 있으면 UI");
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void 엔딩_UI가_없으면_선택_대기로_저장된_게임도_계속하기로_열린다()
+        {
+            ReachVictory();
+            var state = _outcome.GetSaveState();
+
+            var world = new TestWorld();
+            try
+            {
+                var time = world.CreateManager<TimeManager>();
+                var outcome = world.CreateManager<GameOutcomeManager>();
+                outcome.ApplySaveState(state);
+                Assert.IsTrue(outcome.IsFreePlay);
+                Assert.IsFalse(time.IsEventPaused);
+            }
+            finally
+            {
+                world.Dispose();
+            }
+        }
+
         [Test]
         public void 해피엔딩_선택_전에_저장하면_불러와도_선택을_기다린다()
         {
@@ -347,6 +410,7 @@ namespace InfraTown.Tests
             {
                 var time = world.CreateManager<TimeManager>();
                 var outcome = world.CreateManager<GameOutcomeManager>();
+                outcome.OnGameEnded += FakeEndingUI;
                 outcome.ApplySaveState(state);
                 Assert.IsTrue(outcome.IsVictoryChoicePending);
                 Assert.IsTrue(time.IsEventPaused);

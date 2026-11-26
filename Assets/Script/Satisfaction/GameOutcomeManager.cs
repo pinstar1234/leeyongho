@@ -53,6 +53,23 @@ namespace InfraTown.Core
         [Tooltip("마을 만족도 '나쁨'이 이 주 수만큼 연속되면 패배 (일반 모드 12주 = 3달)")]
         [SerializeField] private int defeatBadStreakWeeks = 3 * TimeManager.WeeksPerMonth;
 
+        [Header("엔딩 화면 UI가 없을 때")]
+        [Tooltip("해피엔딩에서 끝내기/계속하기를 고를 UI(OnGameEnded 구독자, 대화 트리거 제외)가 없으면 자동으로 '계속하기' — " +
+                 "시간이 멈춘 채 진행이 막히지 않도록 (2026-11-26). 엔딩 UI를 연결하면 원래대로 선택을 기다린다")]
+        [SerializeField] private bool autoContinueWithoutEndingUI = true;
+
+        /// <summary>엔딩 화면 UI가 OnGameEnded를 구독하고 있는지 (대화 트리거 같은 기능 코드 구독은 제외)</summary>
+        public bool HasEndingUI
+        {
+            get
+            {
+                if (OnGameEnded == null) return false;
+                foreach (var d in OnGameEnded.GetInvocationList())
+                    if (!(d.Target is InfraTown.EventSystem.DialogueTriggers)) return true;
+                return false;
+            }
+        }
+
         public int WeeksElapsed { get; private set; }
         public int GoodStreakWeeks { get; private set; }
         public int BadStreakWeeks { get; private set; }
@@ -260,6 +277,15 @@ namespace InfraTown.Core
             if (IsGameOver) BuildingManager.Instance?.CancelBuildingMode();
             OnBadStreakChanged?.Invoke(BadStreakWeeks, defeatBadStreakWeeks);
             OnWeekEvaluated?.Invoke();
+            AutoContinueIfNoEndingUI(); // 선택 대기로 저장된 게임도 UI가 없으면 멈춘 채 열리지 않게
+        }
+
+        /// <summary>해피엔딩 선택 대기인데 고를 UI가 없으면 자동으로 계속하기 (autoContinueWithoutEndingUI)</summary>
+        private void AutoContinueIfNoEndingUI()
+        {
+            if (!autoContinueWithoutEndingUI || !IsVictoryChoicePending || HasEndingUI) return;
+            Debug.LogWarning("[GameOutcomeManager] 해피엔딩 — 끝내기/계속하기를 고를 엔딩 화면 UI가 없어 자동으로 '계속하기'합니다.");
+            ContinueAfterVictory();
         }
 
         private static int CurrentPopulation =>
@@ -310,6 +336,7 @@ namespace InfraTown.Core
             if (result == GameResult.Defeat) BuildingManager.Instance?.CancelBuildingMode();
             Debug.Log($"[GameOutcomeManager] {(result == GameResult.Victory ? "해피엔딩 — 끝내기/계속하기 선택 대기" : "배드엔딩 — 게임 오버")} ({WeeksElapsed}주째)");
             OnGameEnded?.Invoke(result);
+            AutoContinueIfNoEndingUI();
         }
     }
 }
