@@ -342,5 +342,86 @@ namespace InfraTown.Tests
             Assert.AreEqual(3, SaveSystem.CurrentSlot);
             Assert.AreEqual("민수", PlayerProfile.PlayerName);
         }
+
+        // ─── 타이틀 '이어하기' (resume.json + 자동 저장, 2026-11-26) ───
+
+        private string ResumeFile => Path.Combine(_folder, "resume.json");
+
+        [Test]
+        public void 게임_오버면_이어하기_저장을_하지_않지만_종료는_막지_않는다()
+        {
+            PassWeek();
+            Assert.IsTrue(SaveSystem.SaveResume());
+            int savedWeek = JsonUtility.FromJson<SaveData>(File.ReadAllText(ResumeFile)).time.totalWeeksPassed;
+
+            var outcome = _world.CreateManager<GameOutcomeManager>();
+            TestWorld.Invoke(_time, "AdvanceOneWeek");
+            outcome.ApplySaveState(new OutcomeSaveState { result = (int)GameResult.Defeat });
+
+            Assert.IsTrue(SaveSystem.SaveResume(), "종료 버튼이 '저장 실패'로 막히지 않게 true");
+            var resume = JsonUtility.FromJson<SaveData>(File.ReadAllText(ResumeFile));
+            Assert.AreEqual(savedWeek, resume.time.totalWeeksPassed, "패배 직전 저장이 그대로 남음");
+            Assert.AreNotEqual((int)GameResult.Defeat, resume.outcome.result);
+        }
+
+        [Test]
+        public void 자동_저장만_있어도_이어하기를_할_수_있다()
+        {
+            Assert.IsFalse(SaveSystem.HasResume());
+            PassWeek();
+            Assert.IsFalse(File.Exists(ResumeFile), "강제 종료 등으로 resume.json이 없는 상황");
+            Assert.IsTrue(SaveSystem.HasResume());
+            var data = SaveSystem.LoadResumeData(out bool fromAuto);
+            Assert.IsTrue(fromAuto);
+            Assert.AreEqual(_time.TotalWeeksPassed, data.time.totalWeeksPassed);
+        }
+
+        [Test]
+        public void 이어하기는_더_최근인_자동_저장을_고르고_하던_슬롯을_기억한다()
+        {
+            Assert.IsTrue(SaveSystem.SaveGame(3));
+            Assert.IsTrue(SaveSystem.SaveResume()); // 예전에 정상 종료
+            PassWeek();                              // 그 뒤 몇 주 플레이하다 튕김 → 자동 저장이 더 최근
+            PassWeek();
+
+            var data = SaveSystem.LoadResumeData(out bool fromAuto);
+            Assert.IsTrue(fromAuto, "더 최근인 자동 저장");
+            Assert.AreEqual(_time.TotalWeeksPassed, data.time.totalWeeksPassed);
+            Assert.AreEqual(3, data.resumeSlot, "자동 저장도 하던 슬롯(3번)을 기억");
+        }
+
+        [Test]
+        public void 종료_직전_저장이_더_최근이면_그것을_고른다()
+        {
+            PassWeek();
+            TestWorld.Invoke(_time, "AdvanceOneWeek"); // 자동 저장 전에 끔 (주 중간)
+            Assert.IsTrue(SaveSystem.SaveResume());
+
+            var data = SaveSystem.LoadResumeData(out bool fromAuto);
+            Assert.IsFalse(fromAuto);
+            Assert.AreEqual(_time.TotalWeeksPassed, data.time.totalWeeksPassed);
+        }
+
+        [Test]
+        public void 최근_파일을_읽을_수_없으면_다른_쪽으로_이어한다()
+        {
+            Assert.IsTrue(SaveSystem.SaveResume());
+            int resumeWeek = _time.TotalWeeksPassed;
+            PassWeek();
+            File.WriteAllText(SaveSystem.GetSavePath(SaveSystem.AutoSaveSlot), "{ 깨진 파일");
+
+            var data = SaveSystem.LoadResumeData(out bool fromAuto);
+            Assert.IsNotNull(data, SaveSystem.LastError);
+            Assert.IsFalse(fromAuto);
+            Assert.AreEqual(resumeWeek, data.time.totalWeeksPassed);
+        }
+
+        [Test]
+        public void 이어할_파일이_없으면_실패와_이유()
+        {
+            Assert.IsNull(SaveSystem.LoadResumeData(out _));
+            Assert.IsFalse(SaveSystem.ContinueResume());
+            Assert.IsNotEmpty(SaveSystem.LastError);
+        }
     }
 }

@@ -107,8 +107,34 @@ namespace InfraTown.Save
         /// <summary>이어하기 전용 파일 (팀원 1 Jinyu234: 게임을 끌 때 저장 — 1주 자동 저장 슬롯과는 별개 파일)</summary>
         private static string ResumePath => Path.Combine(SaveFolder, "resume.json");
 
-        /// <summary>종료 직전 이어하기 저장이 있는지</summary>
-        public static bool HasResume() => File.Exists(ResumePath);
+        /// <summary>
+        /// 타이틀 '이어하기'로 이어할 게임이 있는지: 종료 직전 저장(resume.json) 또는 1주 자동 저장 (2026-11-26 — 강제 종료·튕김으로
+        /// resume.json이 안 써졌어도 자동 저장으로 이어가도록)
+        /// </summary>
+        public static bool HasResume() => File.Exists(ResumePath) || HasAutoSave();
+
+        /// <summary>
+        /// '이어하기'가 불러올 데이터: resume.json과 자동 저장 중 파일 수정 시각이 더 최근인 것 (읽을 수 없으면 다른 쪽).
+        /// fromAutoSave = 자동 저장을 골랐는지. 둘 다 없거나 못 읽으면 null (LastError)
+        /// </summary>
+        public static SaveData LoadResumeData(out bool fromAutoSave)
+        {
+            LastError = null;
+            fromAutoSave = false;
+            string auto = GetSavePath(AutoSaveSlot);
+            bool hasResume = File.Exists(ResumePath), hasAuto = File.Exists(auto);
+            if (!hasResume && !hasAuto) { LastError = "이어할 게임이 없어요."; return null; }
+
+            bool autoFirst = hasAuto && (!hasResume || File.GetLastWriteTimeUtc(auto) > File.GetLastWriteTimeUtc(ResumePath));
+            foreach (bool useAuto in autoFirst ? new[] { true, false } : new[] { false, true })
+            {
+                if (useAuto ? !hasAuto : !hasResume) continue;
+                var data = ReadSnapshot(useAuto ? auto : ResumePath, false);
+                if (data != null) { fromAutoSave = useAuto; LastError = null; return data; }
+            }
+            Debug.LogError($"[SaveSystem] 이어하기 파일을 읽지 못했어요: {LastError}");
+            return null;
+        }
 
         /// <summary>마지막 실패 이유 (성공하면 null)</summary>
         public static string LastError { get; private set; }
@@ -188,6 +214,11 @@ namespace InfraTown.Save
                 DateTime t = File.GetLastWriteTimeUtc(p);
                 if (t >= stamp) stamp = t.AddTicks(1);
             }
+            if (File.Exists(ResumePath))
+            {
+                DateTime t = File.GetLastWriteTimeUtc(ResumePath); // 이어하기가 resume.json과 자동 저장 중 최근 것을 고르므로 함께 비교
+                if (t >= stamp) stamp = t.AddTicks(1);
+            }
             return stamp;
         }
 
@@ -207,6 +238,13 @@ namespace InfraTown.Save
                 LastError = "이어하기에 저장할 게임이 준비되지 않았어요.";
                 return false;
             }
+            // 배드엔딩 게임 오버 상태는 저장하지 않음 (2026-11-26, 자동 저장과 같은 규칙 — 패배한 채 끄면 '이어하기'가 게임 오버 화면으로 열리던 문제).
+            // 직전 이어하기·자동 저장을 그대로 남긴다. 종료를 막지 않도록 true
+            if (GameOutcomeManager.Instance != null && GameOutcomeManager.Instance.IsGameOver)
+            {
+                Debug.Log("[SaveSystem] 게임 오버 상태라 이어하기 저장을 하지 않습니다.");
+                return true;
+            }
             return WriteSnapshot(ResumePath, CurrentSlot, "이어하기");
         }
 
@@ -223,7 +261,8 @@ namespace InfraTown.Save
                 SaveResumeForQuit();
         }
 
-        private static bool WriteSave(int slot) => WriteSnapshot(GetSavePath(slot), 0, SlotLabel(slot));
+        // 자동 저장도 현재 슬롯을 기억 → '이어하기'가 자동 저장을 골라도 이어서 '저장'하면 하던 슬롯에
+        private static bool WriteSave(int slot) => WriteSnapshot(GetSavePath(slot), slot == AutoSaveSlot ? CurrentSlot : 0, SlotLabel(slot));
 
         /// <summary>지금 게임을 그 파일에 씀 (임시 파일에 쓴 뒤 교체). resumeSlot은 이어하기 파일이 기억할 현재 슬롯</summary>
         private static bool WriteSnapshot(string path, int resumeSlot, string label)
@@ -461,16 +500,13 @@ namespace InfraTown.Save
             return OpenSnapshot(data, slot);
         }
 
+        /// <summary>
+        /// 타이틀 '이어하기': resume.json(종료 직전)과 자동 저장(1주마다) 중 더 최근 것을 열고, 저장 당시 슬롯을 현재 슬롯으로 되돌린다.
+        /// 실패하면 false (LastError)
+        /// </summary>
         public static bool ContinueResume()
         {
-            LastError = null;
-            if (!HasResume())
-            {
-                LastError = "이어할 게임이 없어요.";
-                return false;
-            }
-
-            var data = ReadSnapshot(ResumePath, true);
+            var data = LoadResumeData(out _);
             if (data == null) return false;
             return OpenSnapshot(data, IsValidSlot(data.resumeSlot) ? data.resumeSlot : 1);
         }
