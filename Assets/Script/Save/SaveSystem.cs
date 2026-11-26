@@ -664,7 +664,23 @@ namespace InfraTown.Save
         public const string BrokenLoadSaveError = "불러오기에 실패한 게임은 저장할 수 없어요.";
 
         /// <summary>안내 창을 띄울 UI가 OnLoadFailed를 구독하고 있는지 (없으면 SaveLoadFailurePopup이 임시 창을 띄움)</summary>
-        public static bool HasLoadFailedUI => OnLoadFailed != null;
+        public static bool HasLoadFailedUI
+        {
+            get { PruneDeadLoadFailedHandlers(); return OnLoadFailed != null; }
+        }
+
+        /// <summary>
+        /// 이미 사라진 UI의 구독 빼기 (2026-11-26): 정적 이벤트라 씬이 바뀌어도 남으므로, 해제하지 않고 사라진 UI가 남아 있으면
+        /// 'UI가 있다'고 보고 임시 창을 그리지 않아 아무 창도 안 뜨던 문제
+        /// </summary>
+        private static void PruneDeadLoadFailedHandlers()
+        {
+            if (OnLoadFailed == null) return;
+            foreach (Action<string> handler in OnLoadFailed.GetInvocationList())
+            {
+                if (handler.Target is UnityEngine.Object o && o == null) OnLoadFailed -= handler;
+            }
+        }
 
         /// <summary>안내를 보여 줬음 (확인 버튼)</summary>
         public static void AcknowledgeLoadFailure() => PendingLoadFailureMessage = null;
@@ -672,9 +688,16 @@ namespace InfraTown.Save
         /// <summary>타이틀이 열린 뒤 구독한 UI에 실패를 알림. 구독한 UI가 있었으면 true (SaveLoadFailurePopup이 부름)</summary>
         public static bool NotifyLoadFailedUI(string message)
         {
+            PruneDeadLoadFailedHandlers();
             if (OnLoadFailed == null) return false;
-            OnLoadFailed.Invoke(message);
-            return true;
+            // 구독자마다 따로: 사라진 오브젝트를 건드려 예외가 난 구독자는 '창을 띄운 UI'로 치지 않음
+            bool shown = false;
+            foreach (Action<string> handler in OnLoadFailed.GetInvocationList())
+            {
+                try { handler(message); shown = true; }
+                catch (Exception e) { Debug.LogWarning($"[SaveSystem] 불러오기 실패 안내 구독자에서 예외 — 그 구독은 뺍니다: {e.Message}"); OnLoadFailed -= handler; }
+            }
+            return shown;
         }
 
         /// <summary>테스트용: 씬 열기를 대신함 (null이면 SceneManager.LoadScene)</summary>
