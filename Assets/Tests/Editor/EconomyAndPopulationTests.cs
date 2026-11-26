@@ -29,6 +29,24 @@ namespace InfraTown.Tests
         }
 
         [Test]
+        public void 돈이_int_최댓값을_넘지_않고_음수로_바뀌지_않는다()
+        {
+            // 고친 저장 파일처럼 최댓값 근처에서 시작 (2026-11-26)
+            _economy.ApplySaveState(new InfraTown.Save.EconomySaveState { money = int.MaxValue - 100 });
+            int changed = 0;
+            _economy.OnMoneyChanged += (money, delta) => changed = delta;
+
+            _economy.AddMoney(30000);
+            Assert.AreEqual(int.MaxValue, _economy.CurrentMoney);
+            Assert.AreEqual(100, changed, "실제로 늘어난 만큼만 알림");
+
+            changed = 0;
+            _economy.AddMoney(5000);
+            Assert.AreEqual(int.MaxValue, _economy.CurrentMoney);
+            Assert.AreEqual(0, changed, "더 늘지 않으면 알리지 않음");
+        }
+
+        [Test]
         public void 잔액이_충분하면_차감되고_이벤트가_발생한다()
         {
             int changed = 0;

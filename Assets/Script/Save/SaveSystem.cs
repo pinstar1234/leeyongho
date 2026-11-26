@@ -136,6 +136,9 @@ namespace InfraTown.Save
             return null;
         }
 
+        /// <summary>마지막 불러오기에서 예외가 나 적용하지 못한 단계 이름 (다 됐으면 비어 있음, UI 안내용)</summary>
+        public static IReadOnlyList<string> LastApplyFailedSteps { get; private set; } = new List<string>();
+
         /// <summary>게임 오버 중 저장을 거절할 때의 이유 (UI가 그대로 보여 줌)</summary>
         public const string GameOverSaveError = "게임 오버 상태에서는 저장할 수 없어요.";
 
@@ -623,50 +626,72 @@ namespace InfraTown.Save
         {
             if (data == null) return;
             IsApplying = true;
+            // 단계마다 따로 적용: 한 단계에서 예외가 나도 남은 단계는 이어서 적용하고, 실패한 단계는 LastError·콘솔 에러로 남김
+            // (2026-11-26 — 예전에는 예외가 난 뒤 단계(돈·엔딩·대화 등)가 아무 안내 없이 빠진 채 게임이 이어졌음)
+            var failed = new List<string>();
+            void Step(string name, Action apply)
+            {
+                try { apply(); }
+                catch (Exception e)
+                {
+                    failed.Add(name);
+                    Debug.LogError($"[SaveSystem] 불러오기 중 '{name}' 단계 실패: {e}");
+                }
+            }
+
+            var time = TimeManager.Instance;
             try
             {
-                if (!string.IsNullOrEmpty(data.playerName)) PlayerProfile.TrySetPlayerName(data.playerName, out _);
-                else PlayerProfile.ClearPlayerName();
-
-                var time = TimeManager.Instance;
-                time?.ApplySaveState(data.time);
-
-                RestoreBuildings(data.buildings);
-
-                PopulationManager.Instance?.ApplySaveState(data.population);
-                PowerManager.Instance?.ApplySaveState(data.power);
-                InfraTown.Gas.GasManager.Instance?.ApplySaveState(data.gas);
-                EconomyManager.Instance?.ApplySaveState(data.economy);
-                SatisfactionManager.Instance?.ApplySaveState(data.satisfaction);
-                GameLoopManager.Instance?.RecalculateAll();
-                GameOutcomeManager.Instance?.ApplySaveState(data.outcome);
-
-                var dialogue = DialogueEventManager.Instance;
-                if (dialogue != null)
+                Step("주인공 이름", () =>
                 {
+                    if (!string.IsNullOrEmpty(data.playerName)) PlayerProfile.TrySetPlayerName(data.playerName, out _);
+                    else PlayerProfile.ClearPlayerName();
+                });
+                Step("시간", () => time?.ApplySaveState(data.time));
+                Step("건물", () => RestoreBuildings(data.buildings));
+                Step("인구", () => PopulationManager.Instance?.ApplySaveState(data.population));
+                Step("전력", () => PowerManager.Instance?.ApplySaveState(data.power));
+                Step("가스", () => InfraTown.Gas.GasManager.Instance?.ApplySaveState(data.gas));
+                Step("돈", () => EconomyManager.Instance?.ApplySaveState(data.economy));
+                Step("만족도", () => SatisfactionManager.Instance?.ApplySaveState(data.satisfaction));
+                Step("재계산", () => GameLoopManager.Instance?.RecalculateAll());
+                Step("엔딩 판정", () => GameOutcomeManager.Instance?.ApplySaveState(data.outcome));
+
+                Step("대화 기록", () =>
+                {
+                    var dialogue = DialogueEventManager.Instance;
+                    if (dialogue == null) return;
                     dialogue.ClearAll();
                     dialogue.ResetPlayed();
                     foreach (var id in data.dialogue.playedDialogueIds) dialogue.MarkPlayed(id);
                     dialogue.UseEasyText = data.dialogue.useEasyText;
                     dialogue.SetAutoMode(data.dialogue.autoMode);
-                }
-                var cutscenes = CutsceneManager.Instance;
-                if (cutscenes != null)
+                });
+                Step("컷씬 기록", () =>
                 {
+                    var cutscenes = CutsceneManager.Instance;
+                    if (cutscenes == null) return;
                     cutscenes.ClearAll();
                     cutscenes.ResetPlayed();
                     foreach (var id in data.dialogue.playedCutsceneIds) cutscenes.MarkPlayed(id);
-                }
+                });
 
-                UnityEngine.Object.FindObjectOfType<DialogueTriggers>()?.ApplySaveState(data.dialogueTriggers);
-                TutorialDialogues.Instance?.ApplySaveState(data.tutorial);
+                Step("대화 트리거", () => UnityEngine.Object.FindObjectOfType<DialogueTriggers>()?.ApplySaveState(data.dialogueTriggers));
+                Step("튜토리얼", () => TutorialDialogues.Instance?.ApplySaveState(data.tutorial));
 
                 // 마지막에 날짜·배속 알림 (날짜를 세는 매니저는 위에서 이미 이 날짜로 맞춰 둬서 하루로 세지 않음)
-                time?.NotifyStateRestored();
+                Step("날짜 알림", () => time?.NotifyStateRestored());
             }
             finally
             {
                 IsApplying = false;
+            }
+
+            LastApplyFailedSteps = failed;
+            if (failed.Count > 0)
+            {
+                LastError = $"저장 파일 일부를 불러오지 못했어요: {string.Join(", ", failed)}";
+                Debug.LogError($"[SaveSystem] {LastError}");
             }
 
             Debug.Log($"[SaveSystem] 불러오기 완료: {data.time.year}년 {data.time.month}월 {data.time.week}주차, 건물 {data.buildings.Count}개");

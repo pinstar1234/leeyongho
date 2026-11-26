@@ -106,10 +106,29 @@ namespace InfraTown.EventSystem
             End(true);
         }
 
+        /// <summary>일시정지 메뉴 때문에 멈춘 중 (CutsceneManager가 SetHeld로 정함)</summary>
+        public bool IsHeld { get; private set; }
+
+        /// <summary>
+        /// 일시정지 메뉴(ESC)가 열려 있는 동안 연출을 멈추고(Timeline Pause), 닫으면 그 자리에서 이어감 (2026-11-26 —
+        /// UnscaledGameTime이라 메뉴 뒤에서도 끝까지 재생되던 문제)
+        /// </summary>
+        public void SetHeld(bool held)
+        {
+            if (!IsPlaying || IsHeld == held) return;
+            IsHeld = held;
+            if (_directorStarted && director != null)
+            {
+                if (held) director.Pause();
+                else director.Resume();
+            }
+        }
+
         /// <summary>시간 경과 확인 (CutsceneManager.Tick이 실제 시간으로 부름)</summary>
         public void Tick(float deltaSeconds)
         {
             if (!IsPlaying) return;
+            if (IsHeld) return; // 멈춘 동안은 시간도 세지 않고, Pause 상태를 '누가 멈춤'으로 보고 끝내지 않음
             Elapsed += deltaSeconds;
 
             if (_directorStarted && director != null)
@@ -128,7 +147,8 @@ namespace InfraTown.EventSystem
             if (!IsPlaying) return;
             IsPlaying = false;
 
-            if (_directorStarted && director != null && director.state == PlayState.Playing) director.Stop();
+            if (_directorStarted && director != null && (director.state == PlayState.Playing || IsHeld)) director.Stop();
+            IsHeld = false;
             _directorStarted = false;
             if (activateWhilePlaying != null) activateWhilePlaying.SetActive(false);
 

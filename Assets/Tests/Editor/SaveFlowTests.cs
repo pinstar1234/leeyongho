@@ -435,6 +435,33 @@ namespace InfraTown.Tests
         }
 
         [Test]
+        public void 불러오기_중_한_단계에서_예외가_나도_나머지는_적용하고_알린다()
+        {
+            _world.CreateManager<InfraTown.EventSystem.DialogueEventManager>();
+            var data = SaveSystem.CaptureCurrentGame();
+            data.time.month = 5;
+            data.time.week = 3;
+            data.time.totalWeeksPassed = 19;
+            data.dialogue = null; // 손상된 저장 파일 → '대화 기록' 단계에서 예외
+            int dateNotified = 0;
+            _time.OnDateChanged += (y, m, w) => dateNotified++;
+
+            UnityEngine.TestTools.LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("'대화 기록' 단계 실패"));
+            UnityEngine.TestTools.LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("일부를 불러오지 못했어요"));
+            SaveSystem.ApplySaveData(data);
+
+            CollectionAssert.AreEqual(new[] { "대화 기록" }, SaveSystem.LastApplyFailedSteps);
+            StringAssert.Contains("대화 기록", SaveSystem.LastError);
+            Assert.AreEqual(19, _time.TotalWeeksPassed, "앞 단계(시간)는 적용됨");
+            Assert.AreEqual(1, dateNotified, "뒤 단계(날짜 알림)도 이어서 적용됨");
+            Assert.IsFalse(SaveSystem.IsApplying);
+
+            data.dialogue = new DialogueSaveState();
+            SaveSystem.ApplySaveData(data);
+            Assert.IsEmpty(SaveSystem.LastApplyFailedSteps, "다 되면 비어 있음");
+        }
+
+        [Test]
         public void 이어할_파일이_없으면_실패와_이유()
         {
             Assert.IsNull(SaveSystem.LoadResumeData(out _));

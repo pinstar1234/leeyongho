@@ -177,8 +177,11 @@ namespace InfraTown.Economy
         public void AddMoney(int amount)
         {
             if (amount <= 0) return;
-            CurrentMoney += amount;
-            OnMoneyChanged?.Invoke(CurrentMoney, amount);
+            // int 최댓값에서 멈춤 (2026-11-26 — 넘치면 음수가 되던 문제, 고친 저장 파일 등)
+            long total = (long)CurrentMoney + amount;
+            int added = (int)(System.Math.Min(total, int.MaxValue) - CurrentMoney);
+            CurrentMoney += added;
+            if (added > 0) OnMoneyChanged?.Invoke(CurrentMoney, added);
         }
 
         /// <summary>

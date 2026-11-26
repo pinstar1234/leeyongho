@@ -95,6 +95,9 @@ namespace InfraTown.EventSystem
 
         private void Update() => Tick(Time.unscaledDeltaTime);
 
+        /// <summary>일시정지 메뉴(ESC)가 열려 있어 컷씬을 멈춘 중 (대화와 같은 기준 — DialogueEventManager.IsPauseMenuOpen)</summary>
+        public bool IsHeldByMenu => DialogueEventManager.IsPauseMenuOpen;
+
         /// <summary>
         /// 컷씬 재생. 끝나면(건너뛰어도) onFinished 호출. 다른 컷씬이 재생 중이면 대기열에 넣는다.
         /// 내용이 없거나 한 번만 보는 컷씬을 이미 봤으면 false (onFinished도 호출하지 않음).
@@ -163,12 +166,18 @@ namespace InfraTown.EventSystem
         public void Tick(float deltaSeconds)
         {
             if (!IsPlaying) return;
+            bool held = IsHeldByMenu; // 일시정지 메뉴가 열려 있으면 연출을 멈춤 (2026-11-26)
 
             if (IsCinemachine)
             {
-                if (CurrentSequence != null) CurrentSequence.Tick(deltaSeconds);
+                if (CurrentSequence != null)
+                {
+                    CurrentSequence.SetHeld(held);
+                    if (!held) CurrentSequence.Tick(deltaSeconds);
+                }
                 return;
             }
+            if (held) return; // 카툰 자동 넘김 타이머도 멈춤
 
             var shot = CurrentShot;
             if (shot != null && shot.autoAdvanceSeconds > 0f)

@@ -169,7 +169,59 @@ namespace InfraTown.Tests
         }
 
         [TearDown]
-        public void TearDown() => _world.Dispose();
+        public void TearDown()
+        {
+            DialogueEventManager.PauseMenuOpenOverrideForTests = null;
+            _world.Dispose();
+        }
+
+        // ─── 일시정지 메뉴가 열려 있는 동안 (2026-11-26) ───
+
+        [Test]
+        public void 일시정지_메뉴가_열려_있으면_카툰_자동_넘김이_멈춘다()
+        {
+            bool menuOpen = false;
+            DialogueEventManager.PauseMenuOpenOverrideForTests = () => menuOpen;
+            AttachViewers();
+            _cutscene.Play(CutsceneData.CreateComic("auto", new CutsceneShot(null, "a", 2f), new CutsceneShot(null, "b", 0f)));
+            _cutscene.Tick(1.5f);
+
+            menuOpen = true;
+            Assert.IsTrue(_cutscene.IsHeldByMenu);
+            _cutscene.Tick(100f);
+            Assert.AreEqual(0, _cutscene.CurrentShotIndex, "메뉴 뒤에서 다음 컷으로 넘어가지 않음");
+
+            menuOpen = false;
+            _cutscene.Tick(0.6f);
+            Assert.AreEqual(1, _cutscene.CurrentShotIndex, "닫으면 남은 0.5초 뒤 이어서 넘어감");
+        }
+
+        [Test]
+        public void 일시정지_메뉴가_열려_있으면_시네머신도_멈췄다가_이어진다()
+        {
+            try
+            {
+                bool menuOpen = false;
+                DialogueEventManager.PauseMenuOpenOverrideForTests = () => menuOpen;
+                var seq = MakeSequence("held", duration: 3f);
+                _cutscene.Play(CutsceneData.CreateCinemachine("c", "held"));
+                _cutscene.Tick(2f);
+
+                menuOpen = true;
+                _cutscene.Tick(100f);
+                Assert.IsTrue(seq.IsHeld);
+                Assert.IsTrue(_cutscene.IsPlaying, "메뉴 뒤에서 끝나지 않음");
+                Assert.AreEqual(2f, seq.Elapsed, 0.001f);
+
+                menuOpen = false;
+                _cutscene.Tick(0.5f);
+                Assert.IsFalse(seq.IsHeld);
+                Assert.IsTrue(_cutscene.IsPlaying);
+                _cutscene.Tick(0.6f);
+                Assert.IsFalse(_cutscene.IsPlaying, "남은 1초가 지나면 끝");
+            }
+            finally { CleanupTemp(); }
+        }
 
         private void AttachViewers()
         {
