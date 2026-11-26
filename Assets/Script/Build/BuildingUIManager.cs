@@ -431,7 +431,8 @@ namespace InfraTown.UI
                 actionPanel.SetActive(true);
                 actionPanel.transform.position = _mainCamera.WorldToScreenPoint(building.transform.position);
                 actionPanel.transform.localScale = Vector3.zero;
-                actionPanel.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack);
+                // SetUpdate(true): 시간이 멈춰 있어도(튜토리얼·일시정지) 열림 — 없으면 크기 0인 채 안 보였음 (2026-11-26, 사용자 2회 확인)
+                actionPanel.transform.DOScale(Vector3.one, 0.3f).SetEase(Ease.OutBack).SetUpdate(true);
             }
         }
 

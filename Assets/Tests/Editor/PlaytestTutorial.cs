@@ -28,9 +28,15 @@ namespace InfraTown.Tests.Playtest
             dlg.OnLineShown += NoOpLine; // 대화창이 없는 씬에서도 줄마다 멈추게 (대화창이 있으면 그대로)
 
             double until = UnityEditor.EditorApplication.timeSinceStartup + 20;
+            var shotTalks = new HashSet<string>();
             while ((Dlg.TutorialDialogues.Instance == null || !Dlg.TutorialDialogues.Instance.IsActive) && UnityEditor.EditorApplication.timeSinceStartup < until)
             {
-                if (dlg.IsPlaying) dlg.Next();
+                if (dlg.IsPlaying)
+                {
+                    string id = dlg.CurrentDialogue?.dialogueId;
+                    if (id != null && shotTalks.Add(id)) yield return ShotTalk($"t00_{id}");
+                    dlg.Next();
+                }
                 yield return null;
             }
             var tutorial = Dlg.TutorialDialogues.Instance;
@@ -49,8 +55,13 @@ namespace InfraTown.Tests.Playtest
             int shot = 0;
             for (int guard = 0; guard < 40 && tutorial.IsActive; guard++)
             {
-                // 설명 대화 넘기기 (대화창이 있으면 대화창 버튼과 같은 Advance)
-                for (int i = 0; i < 60 && dlg.IsPlaying && !tutorial.IsWaitingForAction; i++) { dlg.RevealCurrentLine(); dlg.Advance(); yield return null; }
+                // 설명 대화 넘기기 (대화창이 있으면 대화창 버튼과 같은 Advance) — 단계마다 첫 줄 화면을 한 장
+                for (int i = 0; i < 60 && dlg.IsPlaying && !tutorial.IsWaitingForAction; i++)
+                {
+                    string id = dlg.CurrentDialogue?.dialogueId;
+                    if (id != null && shotTalks.Add(id)) yield return ShotTalk($"t{shot + 1:00}a_{id}");
+                    dlg.RevealCurrentLine(); dlg.Advance(); yield return null;
+                }
                 if (!tutorial.IsActive) break;
                 if (!tutorial.IsWaitingForAction) { yield return Frames(2); continue; }
 
@@ -59,19 +70,27 @@ namespace InfraTown.Tests.Playtest
                 tutorial.ApplyGate();
                 Section($"T-{++shot}. {step.stepId} ({step.goal})");
                 var allowed = tutorial.AllowedSelectables();
+                foreach (var a in allowed.Take(3))
+                {
+                    var rc = a.GetComponentInParent<Canvas>()?.rootCanvas;
+                    var rt = a.transform as RectTransform;
+                    var g = a.targetGraphic;
+                    float groupAlpha = a.GetComponentsInParent<CanvasGroup>(true).Aggregate(1f, (acc, cg) => acc * cg.alpha);
+                    Note($"'{a.gameObject.name}' 화면 층 {rc?.name}({rc?.sortingOrder}), 보임 {a.gameObject.activeInHierarchy}, 위치 {(rt != null ? rt.position.ToString() : "-")}, " +
+                         $"그림 알파 {(g != null ? g.color.a * g.canvasRenderer.GetAlpha() : -1):F2}, CanvasGroup 알파 {groupAlpha:F2}, 화면 크기 {Screen.width}x{Screen.height}");
+                }
                 var others = Object.FindObjectsOfType<Selectable>(true).Where(s => s != null && s.gameObject.activeInHierarchy && !allowed.Contains(s)).ToList();
                 var openOthers = others.Where(s => s.interactable && !IsTutorialExempt(s)).Select(s => s.gameObject.name).ToList();
                 Note($"허용 버튼: {(allowed.Count == 0 ? "없음 (기능 행동만)" : string.Join(", ", allowed.Select(a => a.gameObject.name)))} / 잠근 버튼 {tutorial.LockedCount}개");
                 Check("허용 버튼은 눌림", allowed.All(a => a.interactable));
                 Check("나머지 버튼은 잠김 (대화창·일시정지 메뉴 제외)", openOthers.Count == 0, openOthers.Count == 0 ? "" : string.Join(", ", openOthers.Take(8)));
                 Check("누를 버튼 강조", allowed.Count == 0 || tutorial.HighlightedObjects().Count > 0, $"{tutorial.HighlightedObjects().Count}개");
-                var canvas = allowed.Select(a => a.GetComponentInParent<Canvas>()).FirstOrDefault(c => c != null);
-                Shot($"t{shot:00}_{step.stepId}", canvas != null ? canvas.rootCanvas : null);
+                ShotScreen($"t{shot:00}b_{step.stepId}_action"); // 허용 버튼만 밝고 테두리 강조, 나머지는 흐리게 잠김
 
                 switch (step.goal)
                 {
                     case Dlg.TutorialGoal.PlaceBuilding:
-                        yield return TutorialPlace(tutorial, step, manager);
+                        yield return TutorialPlace(tutorial, step, manager, $"t{shot:00}c_{step.stepId}_menu");
                         break;
                     case Dlg.TutorialGoal.OpenOverview:
                     case Dlg.TutorialGoal.CloseOverview:
@@ -90,11 +109,15 @@ namespace InfraTown.Tests.Playtest
                         Check("철거할 건물이 있음", target != null);
                         if (target == null) break;
                         TestWorld.Invoke(target, "OnMouseDown"); // 건물 클릭 → 정보창
-                        yield return RealSeconds(0.3f);
+                        yield return RealSeconds(0.5f); // 정보창 여는 애니메이션(0.3초) — 시간이 멈춰 있어도 열려야 함
                         tutorial.ApplyGate();
                         var demolish = tutorial.AllowedSelectables().OfType<Button>().FirstOrDefault(b => b.gameObject.activeInHierarchy && b.gameObject.name.ToLower().Contains("demol"))
                                        ?? tutorial.AllowedSelectables().OfType<Button>().FirstOrDefault(b => b.gameObject.activeInHierarchy && b.GetComponentInChildren<TMPro.TMP_Text>(true)?.text.Contains("철거") == true);
-                        Shot($"t{shot:00}b_demolish_info", demolish != null ? demolish.GetComponentInParent<Canvas>()?.rootCanvas : null);
+                        ShotScreen($"t{shot:00}c_demolish_info");
+                        // 2026-11-26: 정보창이 시간 정지 중 크기 0인 채 안 보이던 문제 — 버튼을 코드로만 누를 수 있는 게 아니라 실제로 보이는지
+                        float scale = demolish != null ? demolish.transform.lossyScale.x : 0f;
+                        Check("건물을 누르면 철거 버튼이 화면에 보임 (튜토리얼로 시간이 멈춰 있어도)", demolish != null && scale > 0.5f,
+                            demolish == null ? "철거 버튼 없음" : $"크기 {scale:F2}");
                         if (demolish != null) { Note($"'{demolish.gameObject.name}' 누름"); demolish.onClick.Invoke(); }
                         else { Note("⚠ 정보창의 철거 버튼을 찾지 못해 코드로 철거"); target.DestroyBuilding(); }
                         yield return Frames(3);
@@ -122,7 +145,7 @@ namespace InfraTown.Tests.Playtest
             manager.SelectBuildingToBuild(manager.FindBuildingData("village_hall") ?? manager.FindBuildingData("house"));
             Check("끝난 뒤에는 다른 건물도 고를 수 있음", manager.IsPlacingBuilding, manager.LastPlacementError);
             manager.CancelBuildingMode();
-            Shot("t99_tutorial_done", null);
+            ShotScreen("t99_tutorial_done");
 
             tutorial.OnStepFinished -= onFinished;
             dlg.OnLineShown -= onLine;
@@ -130,6 +153,72 @@ namespace InfraTown.Tests.Playtest
         }
 
         private static void NoOpLine(Dlg.DialogueLine l, int i, int n) { }
+
+        private static bool _canvasListNoted;
+
+        /// <summary>
+        /// 실제 게임 화면처럼 찍기: 카메라는 그대로 두고, 켜져 있는 모든 오버레이 캔버스(HUD·건설 UI·대화창·현황판·토스트)를
+        /// 정렬 순서대로 잠시 카메라 캔버스로 바꿔 함께 렌더링 (배치 모드에는 게임 화면이 없어서)
+        /// </summary>
+        private static void ShotScreen(string name)
+        {
+            var cam = Camera.main;
+            if (cam == null) { Note($"스크린샷 {name}: Main Camera 없음"); return; }
+            Canvas.ForceUpdateCanvases();
+            // 같은 정렬 순서면 하이어라키에서 뒤에 있는 캔버스가 위 (오버레이 렌더링 순서와 같게)
+            var canvases = Object.FindObjectsOfType<Canvas>()
+                .Where(c => c != null && c.isRootCanvas && c.isActiveAndEnabled && c.renderMode == RenderMode.ScreenSpaceOverlay)
+                .OrderBy(c => c.sortingOrder).ThenBy(c => c.transform.GetSiblingIndex()).ToList();
+            if (!_canvasListNoted)
+            {
+                _canvasListNoted = true;
+                Note("화면 층(아래→위): " + string.Join(", ", canvases.Select(c => $"{c.name}({c.sortingOrder})")));
+            }
+            const int w = 1920, h = 1080;
+            var rt = new RenderTexture(w, h, 24);
+            var prev = cam.targetTexture;
+
+            // 렌더 대상을 먼저 1920x1080으로 (배치 모드 화면은 640x480이라 캔버스 배치를 맞추려고),
+            // 모든 오버레이 캔버스를 카메라 캔버스로 바꾸되 정렬 번호를 순서대로 서로 다르게 줘서 실제 화면과 같은 순서로 겹침
+            cam.targetTexture = rt;
+            var saved = canvases.Select(c => (c, c.renderMode, c.worldCamera, c.planeDistance, c.sortingOrder)).ToList();
+            float dist = cam.nearClipPlane + 0.5f;
+            for (int i = 0; i < canvases.Count; i++)
+            {
+                canvases[i].renderMode = RenderMode.ScreenSpaceCamera;
+                canvases[i].worldCamera = cam;
+                canvases[i].planeDistance = dist;
+                canvases[i].sortingOrder = 30000 + i;
+            }
+            Canvas.ForceUpdateCanvases();
+            cam.Render();
+            foreach (var (c, mode, wc, pd, order) in saved) { c.renderMode = mode; c.worldCamera = wc; c.planeDistance = pd; c.sortingOrder = order; }
+            Canvas.ForceUpdateCanvases();
+
+            RenderTexture.active = rt;
+            var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+            tex.Apply();
+            cam.targetTexture = prev;
+            RenderTexture.active = null;
+
+            string dir = UnityEditor.SessionState.GetString(OutKey, "Logs/Playtest");
+            System.IO.Directory.CreateDirectory(dir);
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, name + ".png"), tex.EncodeToPNG());
+            Object.DestroyImmediate(tex);
+            rt.Release();
+            Note($"📷 화면: {name}.png");
+        }
+
+        /// <summary>설명 대사의 첫 줄이 다 나온 화면을 찍음 (단계마다 한 장)</summary>
+        private static IEnumerator ShotTalk(string name)
+        {
+            var dlg = Dlg.DialogueEventManager.Instance;
+            if (dlg == null || !dlg.IsPlaying) yield break;
+            dlg.RevealCurrentLine();
+            yield return Frames(2);
+            ShotScreen(name);
+        }
 
         private static bool IsTutorialExempt(Selectable s)
         {
@@ -140,7 +229,7 @@ namespace InfraTown.Tests.Playtest
         }
 
         /// <summary>건물 단계: 허용된 분류 버튼 → (크기 메뉴) → 목록 칸을 실제로 눌러 건물을 고르고, 맞는 칸에 설치</summary>
-        private static IEnumerator TutorialPlace(Dlg.TutorialDialogues tutorial, Dlg.TutorialStep step, BuildingManager manager)
+        private static IEnumerator TutorialPlace(Dlg.TutorialDialogues tutorial, Dlg.TutorialStep step, BuildingManager manager, string menuShot)
         {
             var data = manager.FindBuildingData(step.buildingId);
             Check($"건물 데이터 '{step.buildingId}'", data != null);
@@ -162,6 +251,7 @@ namespace InfraTown.Tests.Playtest
                 b.onClick.Invoke();
                 yield return RealSeconds(0.4f);
                 tutorial.ApplyGate();
+                if (menuShot != null && !manager.IsPlacingBuilding) { ShotScreen(menuShot); menuShot = null; } // 분류 버튼을 누른 뒤 목록
             }
             if (!manager.IsPlacingBuilding)
             {
@@ -184,8 +274,9 @@ namespace InfraTown.Tests.Playtest
 
         private static Vector2Int FindTutorialCell(BuildingManager manager, BuildingData data)
         {
-            for (int y = 2; y < 38; y++)
-                for (int x = 2; x < 50; x++)
+            // 카메라가 보는 맵 가운데부터 (스크린샷에 지은 건물·정보창이 보이게)
+            for (int y = 16; y < 38; y++)
+                for (int x = 24; x < 50; x++)
                 {
                     var c = new Vector2Int(x, y);
                     if (data.IsRoad)
